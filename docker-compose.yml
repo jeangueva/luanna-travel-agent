@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  agent:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - PORT=8000
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ANTHROPIC_BASE_URL=http://headroom-proxy:8787
+      - META_ACCESS_TOKEN=${META_ACCESS_TOKEN}
+      - META_PHONE_NUMBER_ID=${META_PHONE_NUMBER_ID}
+      - META_BUSINESS_ACCOUNT_ID=${META_BUSINESS_ACCOUNT_ID}
+      - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN}
+      - META_APP_SECRET=${META_APP_SECRET}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TRAVELPAYOUTS_TOKEN=${TRAVELPAYOUTS_TOKEN}
+      - TRAVELPAYOUTS_MARKER=${TRAVELPAYOUTS_MARKER}
+      - DATABASE_URL=sqlite:///./data/luanna.db
+      - REDIS_URL=redis://redis:6379
+      - LANGCHAIN_TRACING_V2=true
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+      - LANGCHAIN_PROJECT=luanna
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./knowledge:/app/knowledge
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  redis_data:

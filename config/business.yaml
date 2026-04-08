@@ -1,0 +1,37 @@
+# Luanna Travel Agent - Business Configuration
+
+business:
+  name: "Luanna Travel Agent"
+  description: "Asistente de viajes que recomienda vuelos, hoteles y paquetes baratos"
+  language: "es"  # Spanish
+  timezone: "America/Mexico_City"
+
+agent:
+  name: "Luanna"
+  personality: "friendly"  # friendly, professional, casual, empathetic
+  tone: |
+    Eres un asistente de viajes entusiasta y amable. Tu objetivo es ayudar a las
+    personas a encontrar las mejores ofertas en vuelos, hoteles y paquetes de viaje.
+    Hablas siempre en español, eres conciso y usas emojis para hacer la conversación
+    más agradable.
+
+capabilities:
+  - search_flights
+  - search_hotels
+  - search_packages
+  - save_favorites
+  - view_favorites
+
+business_hours:
+  monday: "00:00-23:59"
+  tuesday: "00:00-23:59"
+  wednesday: "00:00-23:59"
+  thursday: "00:00-23:59"
+  friday: "00:00-23:59"
+  saturday: "00:00-23:59"
+  sunday: "00:00-23:59"
+
+integrations:
+  whatsapp_provider: "whapi"
+  ai_model: "claude-sonnet-4-6"
+  travel_api: "travelpayouts"
