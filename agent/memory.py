@@ -10,23 +10,28 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import StaticPool
 
-# Get database URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./luanna.db")
+# Get database URL from environment, but ALWAYS override for SQLite to force sync driver
+_raw_url = os.getenv("DATABASE_URL", "sqlite:///./luanna.db")
 
-# Force sync drivers since this module uses sync SQLAlchemy
-if "+aiosqlite" in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("sqlite+aiosqlite", "sqlite")
-if "+asyncpg" in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg", "postgresql+psycopg2")
+# Force sync drivers (this module uses sync SQLAlchemy, not async)
+if "sqlite" in _raw_url.lower():
+    # Hard override: always use plain sqlite:// regardless of what env var says
+    DATABASE_URL = "sqlite:///./luanna.db"
+elif "+asyncpg" in _raw_url:
+    DATABASE_URL = _raw_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+else:
+    DATABASE_URL = _raw_url
 
-print(f"✓ Using DATABASE_URL: {DATABASE_URL}")
+print(f"[memory] Using DATABASE_URL: {DATABASE_URL}", flush=True)
 
-# Create engine
-if "sqlite" in DATABASE_URL:
+# Create engine with explicit sync dialect
+if DATABASE_URL.startswith("sqlite"):
+    from sqlalchemy.dialects.sqlite import pysqlite
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
+        module=__import__("sqlite3"),
     )
 else:
     engine = create_engine(DATABASE_URL)
