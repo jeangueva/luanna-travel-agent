@@ -98,9 +98,59 @@ class SearchHistory(Base):
 
 # Initialize database
 def init_db():
-    """Create all tables."""
-    Base.metadata.create_all(bind=engine)
-    print("✓ Database initialized")
+    """Create all tables using raw sqlite3 to avoid SQLAlchemy dialect issues."""
+    import sqlite3
+
+    # Extract DB path from URL
+    db_path = "./luanna.db"
+    if "sqlite" in DATABASE_URL:
+        db_path = DATABASE_URL.split("///")[-1]
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            whatsapp_id TEXT UNIQUE NOT NULL,
+            name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS ix_users_whatsapp_id ON users(whatsapp_id);
+
+        CREATE TABLE IF NOT EXISTS conversation_history (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS favorite_destinations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            destination TEXT NOT NULL,
+            iata_code TEXT,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS search_history (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            origin TEXT,
+            destination TEXT NOT NULL,
+            travel_date TEXT,
+            search_type TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    """)
+
+    conn.commit()
+    conn.close()
+    print(f"[memory] Database initialized at {db_path}", flush=True)
 
 
 # Utility functions
