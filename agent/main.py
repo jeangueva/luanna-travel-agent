@@ -9,8 +9,9 @@ import os
 import json
 import logging
 import time
+from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import PlainTextResponse, JSONResponse, HTMLResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
 
 from agent.memory import init_db, find_or_create_user, get_or_create_user_token
 from agent.graph import travel_graph
@@ -20,6 +21,8 @@ from agent.preferences import router as preferences_router
 
 BASE_URL = os.getenv("BASE_URL", "https://luanna-travel-agent-production.up.railway.app")
 PREFERENCE_TRIGGERS = {"preferencias", "configurar", "mis ciudades", "mis paises", "mis países", "settings", "perfil", "editar"}
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,141 +48,22 @@ async def health_check():
     })
 
 
-@app.get("/privacy", response_class=HTMLResponse)
+@app.get("/")
+async def landing():
+    """Marketing landing page."""
+    return FileResponse(ROOT_DIR / "index.html")
+
+
+@app.get("/privacy")
 async def privacy_policy():
     """Privacy policy page (required by Meta)."""
-    return """<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Política de Privacidad — Luanna</title>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #333; line-height: 1.6; }
-h1 { color: #191c1f; border-bottom: 2px solid #494fdf; padding-bottom: 10px; }
-h2 { color: #494fdf; margin-top: 30px; }
-ul { margin-left: 20px; }
-.updated { color: #8d969e; font-size: 14px; margin-bottom: 30px; }
-</style>
-</head>
-<body>
-<h1>Política de Privacidad — Luanna</h1>
-<p class="updated">Última actualización: 21 de abril de 2026</p>
-
-<h2>1. Información que Recopilamos</h2>
-<p>Luanna es un chatbot de WhatsApp para recomendaciones de viajes. Recopilamos únicamente la información necesaria para brindarte el servicio:</p>
-<ul>
-<li><strong>Número de WhatsApp:</strong> Para identificarte y enviarte mensajes.</li>
-<li><strong>Nombre:</strong> Si lo compartes con nosotros.</li>
-<li><strong>Historial de conversación:</strong> Últimos mensajes intercambiados para dar respuestas contextualizadas.</li>
-<li><strong>Preferencias de viaje:</strong> Destinos favoritos, fechas, presupuesto que nos indiques.</li>
-<li><strong>Búsquedas realizadas:</strong> Para mejorar recomendaciones futuras.</li>
-</ul>
-
-<h2>2. Cómo Usamos tu Información</h2>
-<ul>
-<li>Responder tus consultas sobre vuelos, hoteles y paquetes turísticos.</li>
-<li>Personalizar recomendaciones según tus preferencias.</li>
-<li>Mejorar nuestros servicios mediante análisis agregado.</li>
-<li>Enviarte ofertas relevantes (solo si lo autorizas).</li>
-</ul>
-
-<h2>3. Servicios de Terceros</h2>
-<p>Para funcionar, Luanna utiliza los siguientes servicios:</p>
-<ul>
-<li><strong>Meta (WhatsApp):</strong> Plataforma de mensajería.</li>
-<li><strong>Anthropic (Claude):</strong> Procesamiento de lenguaje natural. Los mensajes se envían para generar respuestas.</li>
-<li><strong>Travelpayouts:</strong> Búsqueda de vuelos y hoteles.</li>
-</ul>
-<p>Cada servicio tiene su propia política de privacidad que aplica cuando usan tus datos.</p>
-
-<h2>4. Almacenamiento y Seguridad</h2>
-<ul>
-<li>Tus datos se almacenan de forma segura en servidores encriptados.</li>
-<li>Solo nuestro sistema automatizado accede a tu información para procesarla.</li>
-<li>No vendemos ni compartimos tus datos con terceros con fines comerciales.</li>
-</ul>
-
-<h2>5. Tus Derechos</h2>
-<p>Puedes en cualquier momento:</p>
-<ul>
-<li>Solicitar copia de tus datos enviándonos un mensaje.</li>
-<li>Solicitar eliminación de tu información.</li>
-<li>Cancelar la suscripción enviando "STOP" o "BAJA".</li>
-</ul>
-
-<h2>6. Retención de Datos</h2>
-<p>Conservamos tus datos mientras uses el servicio. Si no interactúas con Luanna por 12 meses, tus datos se eliminan automáticamente.</p>
-
-<h2>7. Menores de Edad</h2>
-<p>Luanna no está dirigido a menores de 18 años. No recopilamos intencionalmente datos de menores.</p>
-
-<h2>8. Cambios a esta Política</h2>
-<p>Podemos actualizar esta política. Notificaremos cambios significativos por WhatsApp.</p>
-
-<h2>9. Contacto</h2>
-<p>Para ejercer tus derechos o preguntas sobre privacidad:</p>
-<ul>
-<li>Email: jeangueva@gmail.com</li>
-<li>WhatsApp: Envía un mensaje a Luanna con "privacidad"</li>
-</ul>
-
-<p style="margin-top: 40px; text-align: center; color: #8d969e; font-size: 14px;">
-© 2026 Luanna Travel Agent · Política de Privacidad
-</p>
-</body>
-</html>"""
+    return FileResponse(ROOT_DIR / "privacy.html")
 
 
-@app.get("/terms", response_class=HTMLResponse)
+@app.get("/terms")
 async def terms_of_service():
     """Terms of service page."""
-    return """<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Términos de Servicio — Luanna</title>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #333; line-height: 1.6; }
-h1 { color: #191c1f; border-bottom: 2px solid #494fdf; padding-bottom: 10px; }
-h2 { color: #494fdf; margin-top: 30px; }
-ul { margin-left: 20px; }
-.updated { color: #8d969e; font-size: 14px; margin-bottom: 30px; }
-</style>
-</head>
-<body>
-<h1>Términos de Servicio — Luanna</h1>
-<p class="updated">Última actualización: 21 de abril de 2026</p>
-
-<h2>1. Descripción del Servicio</h2>
-<p>Luanna es un asistente de viajes por WhatsApp que ofrece recomendaciones de vuelos, hoteles y paquetes turísticos.</p>
-
-<h2>2. Uso Aceptable</h2>
-<p>Al usar Luanna aceptas:</p>
-<ul>
-<li>No usar el servicio para fines ilegales.</li>
-<li>No enviar spam o contenido inapropiado.</li>
-<li>Proporcionar información veraz.</li>
-</ul>
-
-<h2>3. Limitación de Responsabilidad</h2>
-<p>Las recomendaciones de Luanna son informativas. Los precios y disponibilidad son provistos por terceros (Travelpayouts) y pueden cambiar. Luanna no es responsable de errores en datos de terceros.</p>
-
-<h2>4. Enlaces de Afiliados</h2>
-<p>Luanna puede incluir enlaces de afiliados (Travelpayouts). Recibimos comisión sin costo adicional para ti.</p>
-
-<h2>5. Modificaciones</h2>
-<p>Podemos modificar estos términos en cualquier momento.</p>
-
-<h2>6. Contacto</h2>
-<p>Email: jeangueva@gmail.com</p>
-
-<p style="margin-top: 40px; text-align: center; color: #8d969e; font-size: 14px;">
-© 2026 Luanna Travel Agent
-</p>
-</body>
-</html>"""
+    return FileResponse(ROOT_DIR / "terms.html")
 
 
 @app.get("/webhook")

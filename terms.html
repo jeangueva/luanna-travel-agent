@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Términos de Servicio — Luanna</title>
+  <meta name="description" content="Términos de servicio de Luanna — condiciones de uso del chatbot de viajes por WhatsApp." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --dark:        #191c1f;
+      --white:       #ffffff;
+      --surface:     #f4f4f4;
+      --blue:        #494fdf;
+      --teal:        #00a87e;
+      --mid-slate:   #505a63;
+      --cool-gray:   #8d969e;
+      --border:      #c9c9cd;
+      --font-display: 'Space Grotesk', Arial, sans-serif;
+      --font-body:    'Inter', Arial, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-body);
+      background: var(--white);
+      color: var(--dark);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { text-decoration: none; color: inherit; }
+
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+    }
+    .container { width: 100%; max-width: 860px; margin: 0 auto; padding: 0 24px; }
+    .nav-container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .nav-logo {
+      font-family: var(--font-display);
+      font-size: 22px; font-weight: 600;
+      color: var(--dark); letter-spacing: -0.02em;
+    }
+    .nav-logo span { color: var(--blue); }
+    .nav-back {
+      font-family: var(--font-display);
+      font-size: 15px; font-weight: 500;
+      color: var(--mid-slate);
+    }
+    .nav-back:hover { color: var(--dark); }
+
+    .legal-hero {
+      background: var(--surface);
+      padding: 72px 0 56px;
+      border-bottom: 1px solid var(--border);
+    }
+    .legal-hero-label {
+      font-family: var(--font-display);
+      font-size: 13px; font-weight: 500;
+      letter-spacing: 0.8px; text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 12px;
+    }
+    .legal-hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(36px, 6vw, 56px);
+      font-weight: 500;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      color: var(--dark);
+    }
+    .legal-hero .updated {
+      font-size: 14px;
+      color: var(--cool-gray);
+      margin-top: 16px;
+      letter-spacing: 0.16px;
+    }
+
+    article {
+      padding: 64px 0 96px;
+    }
+    article h2 {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      color: var(--dark);
+      margin-top: 48px;
+      margin-bottom: 16px;
+    }
+    article h2:first-child { margin-top: 0; }
+    article p {
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--mid-slate);
+      margin-bottom: 16px;
+    }
+    article ul {
+      list-style: none;
+      margin-bottom: 16px;
+    }
+    article ul li {
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--mid-slate);
+      padding-left: 20px;
+      position: relative;
+      margin-bottom: 8px;
+    }
+    article ul li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 11px;
+      width: 6px;
+      height: 6px;
+      border-radius: 9999px;
+      background: var(--blue);
+    }
+    article strong { color: var(--dark); font-weight: 600; }
+    article a { color: var(--blue); border-bottom: 1px solid transparent; transition: border-color 0.15s; }
+    article a:hover { border-bottom-color: var(--blue); }
+
+    .callout {
+      background: var(--surface);
+      border-left: 3px solid var(--blue);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin: 32px 0;
+    }
+    .callout p { margin-bottom: 0; color: var(--dark); }
+
+    footer {
+      background: var(--dark);
+      color: var(--cool-gray);
+      padding: 48px 0 32px;
+    }
+    footer .container { max-width: 1200px; }
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer-brand {
+      font-family: var(--font-display);
+      font-size: 18px; font-weight: 600;
+      color: var(--white);
+    }
+    .footer-brand span { color: var(--blue); }
+    .footer-legal {
+      display: flex; gap: 24px;
+      font-size: 14px;
+    }
+    .footer-legal a:hover { color: var(--white); }
+    .footer-copy {
+      font-size: 13px;
+      color: var(--cool-gray);
+      margin-top: 16px;
+      width: 100%;
+      text-align: center;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    @media (max-width: 640px) {
+      .legal-hero { padding: 48px 0 40px; }
+      article { padding: 48px 0 72px; }
+      .footer-inner { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-container">
+      <div class="nav-inner">
+        <a href="/" class="nav-logo">Luanna<span>.</span></a>
+        <a href="/" class="nav-back">← Volver al inicio</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="legal-hero">
+    <div class="container">
+      <div class="legal-hero-label">Legal</div>
+      <h1>Términos de Servicio</h1>
+      <p class="updated">Última actualización: 21 de abril de 2026</p>
+    </div>
+  </section>
+
+  <article>
+    <div class="container">
+
+      <h2>1. Descripción del servicio</h2>
+      <p>Luanna es un asistente de viajes por WhatsApp que ofrece recomendaciones de vuelos, hoteles y paquetes turísticos. El servicio se presta "tal cual" y puede modificarse en cualquier momento.</p>
+
+      <h2>2. Uso aceptable</h2>
+      <p>Al usar Luanna aceptas:</p>
+      <ul>
+        <li>No usar el servicio para fines ilegales.</li>
+        <li>No enviar spam, contenido ofensivo o material inapropiado.</li>
+        <li>Proporcionar información veraz.</li>
+        <li>No intentar vulnerar la seguridad del sistema ni aplicar ingeniería inversa.</li>
+      </ul>
+
+      <h2>3. Limitación de responsabilidad</h2>
+      <p>Las recomendaciones de Luanna son informativas. Los precios, disponibilidad y condiciones son provistos por terceros (<strong>Travelpayouts</strong> y sus socios como Aviasales, Hotellook, Kiwi, Booking). Pueden cambiar sin previo aviso. Luanna no es responsable de:</p>
+      <ul>
+        <li>Errores en datos de terceros.</li>
+        <li>Cancelaciones, retrasos o cambios en reservas hechas fuera de Luanna.</li>
+        <li>Pérdidas derivadas de decisiones basadas en las recomendaciones.</li>
+      </ul>
+
+      <h2>4. Enlaces de afiliados</h2>
+      <p>Luanna puede incluir enlaces de afiliados (principalmente Travelpayouts). Cuando reservas a través de esos enlaces, recibimos una comisión <strong>sin costo adicional para ti</strong>. Esto nos permite mantener el servicio gratuito.</p>
+
+      <h2>5. Propiedad intelectual</h2>
+      <p>El nombre "Luanna", el logotipo y el contenido del sitio son propiedad de sus titulares. Las marcas de terceros (WhatsApp, Meta, Travelpayouts, aerolíneas, cadenas hoteleras) pertenecen a sus respectivos dueños y se muestran con fines informativos.</p>
+
+      <h2>6. Suspensión del servicio</h2>
+      <p>Podemos suspender o terminar tu acceso si detectamos uso abusivo, actividad fraudulenta o incumplimiento de estos términos.</p>
+
+      <h2>7. Modificaciones</h2>
+      <p>Podemos modificar estos términos en cualquier momento. Los cambios importantes se notificarán por WhatsApp. El uso continuado del servicio constituye aceptación de los nuevos términos.</p>
+
+      <h2>8. Ley aplicable</h2>
+      <p>Estos términos se rigen por las leyes de la República del Perú. Cualquier disputa se resolverá en los tribunales de Lima, Perú.</p>
+
+      <div class="callout">
+        <p><strong>¿Dudas sobre los términos?</strong> Escríbenos a <a href="mailto:jeangueva@gmail.com">jeangueva@gmail.com</a>.</p>
+      </div>
+
+    </div>
+  </article>
+
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">Luanna<span>.</span></div>
+        <div class="footer-legal">
+          <a href="/">Inicio</a>
+          <a href="/privacy">Privacidad</a>
+          <a href="/terms">Términos</a>
+        </div>
+      </div>
+      <p class="footer-copy">© 2026 Luanna. Todos los derechos reservados.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
