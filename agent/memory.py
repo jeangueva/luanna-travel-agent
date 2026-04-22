@@ -162,21 +162,20 @@ def _init_sqlite():
 
 
 def _init_postgres():
-    """Initialize PostgreSQL using psycopg2 directly."""
+    """Initialize PostgreSQL using psycopg2 directly. Idempotent — safe to re-run."""
     import psycopg2
 
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
+
+    # Create base tables (only if they don't already exist)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id VARCHAR PRIMARY KEY,
             whatsapp_id VARCHAR UNIQUE NOT NULL,
             name VARCHAR,
-            preferences_token VARCHAR UNIQUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-        CREATE INDEX IF NOT EXISTS ix_users_whatsapp_id ON users(whatsapp_id);
-        CREATE INDEX IF NOT EXISTS ix_users_pref_token ON users(preferences_token);
 
         CREATE TABLE IF NOT EXISTS conversation_history (
             id VARCHAR PRIMARY KEY,
@@ -191,7 +190,6 @@ def _init_postgres():
             user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             destination VARCHAR NOT NULL,
             iata_code VARCHAR,
-            country_code VARCHAR,
             added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -221,6 +219,15 @@ def _init_postgres():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+
+    # Add columns added after initial deploy (ALTER is idempotent in PG 9.6+)
+    cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences_token VARCHAR UNIQUE;")
+    cursor.execute("ALTER TABLE favorite_destinations ADD COLUMN IF NOT EXISTS country_code VARCHAR;")
+
+    # Indexes (after columns exist)
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_users_whatsapp_id ON users(whatsapp_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS ix_users_pref_token ON users(preferences_token);")
+
     conn.commit()
     cursor.close()
     conn.close()
