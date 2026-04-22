@@ -13,8 +13,10 @@ from sqlalchemy.pool import StaticPool
 # Get database URL from environment
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./luanna.db")
 
+# Strip async drivers since this module uses sync SQLAlchemy
+DATABASE_URL = DATABASE_URL.replace("+aiosqlite", "").replace("+asyncpg", "")
+
 # Create engine
-# For SQLite, use check_same_thread=False for development
 if "sqlite" in DATABASE_URL:
     engine = create_engine(
         DATABASE_URL,
