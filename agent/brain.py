@@ -53,13 +53,39 @@ async def extract_preferences_haiku(user_message: str) -> dict:
         return {}
 
 
+LUANNA_VOICE = """Eres Luanna, asistente de viajes por WhatsApp.
+
+TONO:
+- Conciso: 1-2 frases por mensaje. Nada de palabreo.
+- Coloquial: usa "tú", no "usted". Como hablar con un amigo.
+- Directo: preguntas al grano, sin rodeos.
+- Sin saludos de corporativo ("Estimado...", "Apreciado usuario").
+
+FORMATO:
+- Frases cortas.
+- Emojis solo si aportan (máx 1-2 por mensaje).
+- Sin markdown pesado (ni ##, ni **, ni listas largas).
+- Usa saltos de línea para separar ideas.
+
+EJEMPLOS BUENOS:
+"¿Cuándo viajas? 📅"
+"Lima → CDMX desde $280. ¿Te muestro hoteles?"
+"Te armé un plan de 5 días. Presupuesto: $900 🌴"
+
+EJEMPLOS MALOS (evitar):
+"Hola estimado usuario, me encantaría ayudarte..."
+"Para poder brindarte la mejor experiencia..."
+"A continuación te presento una lista detallada de..."
+"""
+
+
 async def generate_response_haiku(state: dict, context: str = "") -> str:
     """Generate conversational response using Haiku (fast)."""
     response = await brain_haiku.messages.create(
         model=MODEL_HAIKU,
-        max_tokens=300,
-        system="You are Luanna, a friendly travel assistant. Respond in Spanish, be concise, use emojis.",
-        messages=[{"role": "user", "content": f"{context}\n\nUser: {state.get('user_message', '')}"}],
+        max_tokens=200,
+        system=LUANNA_VOICE,
+        messages=[{"role": "user", "content": f"{context}\n\nUsuario: {state.get('user_message', '')}"}],
     )
     return response.content[0].text.strip()
 
@@ -84,8 +110,22 @@ Create a detailed day-by-day itinerary with times, activities, estimated costs, 
 
     response = await brain_sonnet.messages.create(
         model=MODEL_SONNET,
-        max_tokens=2000,
-        system="You are an expert travel itinerary planner. Create detailed, realistic itineraries. Use markdown format.",
+        max_tokens=1200,
+        system="""Armas itinerarios de viaje para WhatsApp.
+
+TONO: conciso y coloquial. Nada de palabreo.
+FORMATO: día por día, bullets cortos, sin markdown pesado.
+LÍMITES: Max 5-6 líneas por día. Solo lo esencial.
+
+Ejemplo:
+Día 1 🛬
+• Llegada + check-in
+• Cena en Polanco ($25)
+
+Día 2 🏛️
+• Zócalo y Catedral (AM)
+• Xochimilco tarde ($30)
+""",
         messages=[{"role": "user", "content": prompt}],
     )
     return response.content[0].text.strip()
