@@ -10,23 +10,29 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import StaticPool
 
-# Get database URL from environment, but ALWAYS override for SQLite to force sync driver
+# Get database URL from environment
 _raw_url = os.getenv("DATABASE_URL", "sqlite:///./luanna.db")
 
-# Force sync drivers (this module uses sync SQLAlchemy, not async)
+# Force sync drivers (this module uses sync SQLAlchemy)
 if "sqlite" in _raw_url.lower():
-    # Hard override: always use plain sqlite:// regardless of what env var says
     DATABASE_URL = "sqlite:///./luanna.db"
-elif "+asyncpg" in _raw_url:
-    DATABASE_URL = _raw_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+elif "postgres" in _raw_url.lower():
+    # Railway gives postgresql://, make sure it's sync psycopg2
+    DATABASE_URL = _raw_url.replace("postgresql+asyncpg", "postgresql")
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
 else:
     DATABASE_URL = _raw_url
 
-print(f"[memory] Using DATABASE_URL: {DATABASE_URL}", flush=True)
+# Mask password in logs
+_log_url = DATABASE_URL
+if "@" in _log_url:
+    _parts = _log_url.split("@")
+    _log_url = _parts[0].split(":")[0] + ":***@" + _parts[1]
+print(f"[memory] Using DATABASE_URL: {_log_url}", flush=True)
 
-# Create engine with explicit sync dialect
-if DATABASE_URL.startswith("sqlite"):
-    from sqlalchemy.dialects.sqlite import pysqlite
+# Create engine
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
+if IS_SQLITE:
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False},
@@ -34,7 +40,7 @@ if DATABASE_URL.startswith("sqlite"):
         module=__import__("sqlite3"),
     )
 else:
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -98,17 +104,20 @@ class SearchHistory(Base):
 
 # Initialize database
 def init_db():
-    """Create all tables using raw sqlite3 to avoid SQLAlchemy dialect issues."""
+    """Create all tables. Uses raw drivers to avoid SQLAlchemy dialect issues."""
+    if IS_SQLITE:
+        _init_sqlite()
+    else:
+        _init_postgres()
+
+
+def _init_sqlite():
+    """Initialize SQLite using native sqlite3."""
     import sqlite3
 
-    # Extract DB path from URL
-    db_path = "./luanna.db"
-    if "sqlite" in DATABASE_URL:
-        db_path = DATABASE_URL.split("///")[-1]
-
+    db_path = DATABASE_URL.split("///")[-1]
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-
     cursor.executescript("""
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
@@ -147,10 +156,56 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     """)
-
     conn.commit()
     conn.close()
-    print(f"[memory] Database initialized at {db_path}", flush=True)
+    print(f"[memory] SQLite initialized at {db_path}", flush=True)
+
+
+def _init_postgres():
+    """Initialize PostgreSQL using psycopg2 directly."""
+    import psycopg2
+
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id VARCHAR PRIMARY KEY,
+            whatsapp_id VARCHAR UNIQUE NOT NULL,
+            name VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS ix_users_whatsapp_id ON users(whatsapp_id);
+
+        CREATE TABLE IF NOT EXISTS conversation_history (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role VARCHAR NOT NULL,
+            content TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS favorite_destinations (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            destination VARCHAR NOT NULL,
+            iata_code VARCHAR,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS search_history (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            origin VARCHAR,
+            destination VARCHAR NOT NULL,
+            travel_date VARCHAR,
+            search_type VARCHAR NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    cursor.close()
+    conn.close()
+    print("[memory] PostgreSQL initialized", flush=True)
 
 
 # Utility functions
