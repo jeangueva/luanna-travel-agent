@@ -12,16 +12,21 @@ import time
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse, HTMLResponse
 
-from agent.memory import init_db, find_or_create_user
+from agent.memory import init_db, find_or_create_user, get_or_create_user_token
 from agent.graph import travel_graph
 from agent.state import AgentState
 from agent.providers import proveedor
+from agent.preferences import router as preferences_router
+
+BASE_URL = os.getenv("BASE_URL", "https://luanna-travel-agent-production.up.railway.app")
+PREFERENCE_TRIGGERS = {"preferencias", "configurar", "mis ciudades", "mis paises", "mis países", "settings", "perfil", "editar"}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # FastAPI app
 app = FastAPI(title="Luanna Travel Agent", version="1.0.0")
+app.include_router(preferences_router)
 
 
 @app.on_event("startup")
@@ -215,6 +220,14 @@ async def handle_webhook(request: Request):
         user_name = mensaje.name
 
         logger.info(f"Message from {phone_number}: {user_message[:50]}")
+
+        # Shortcut: if user asks for preferences, send webview link and exit
+        if user_message.strip().lower() in PREFERENCE_TRIGGERS:
+            _, token = get_or_create_user_token(phone_number)
+            link = f"{BASE_URL}/preferences/{token}"
+            reply = f"Configura tus preferencias acá 👇\n{link}"
+            await proveedor.enviar_mensaje(phone_number, reply)
+            return JSONResponse({"status": "ok", "action": "preferences_link"})
 
         # Get or create user
         user = find_or_create_user(phone_number, user_name)

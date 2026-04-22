@@ -172,9 +172,11 @@ def _init_postgres():
             id VARCHAR PRIMARY KEY,
             whatsapp_id VARCHAR UNIQUE NOT NULL,
             name VARCHAR,
+            preferences_token VARCHAR UNIQUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS ix_users_whatsapp_id ON users(whatsapp_id);
+        CREATE INDEX IF NOT EXISTS ix_users_pref_token ON users(preferences_token);
 
         CREATE TABLE IF NOT EXISTS conversation_history (
             id VARCHAR PRIMARY KEY,
@@ -189,7 +191,24 @@ def _init_postgres():
             user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             destination VARCHAR NOT NULL,
             iata_code VARCHAR,
+            country_code VARCHAR,
             added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS favorite_countries (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            country_name VARCHAR NOT NULL,
+            country_code VARCHAR NOT NULL,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id VARCHAR PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            budget VARCHAR,
+            travel_styles TEXT,
+            origin_city VARCHAR,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS search_history (
@@ -206,6 +225,151 @@ def _init_postgres():
     cursor.close()
     conn.close()
     print("[memory] PostgreSQL initialized", flush=True)
+
+
+def get_db_connection():
+    """Get raw DB connection (psycopg2 for Postgres, sqlite3 for SQLite)."""
+    if IS_SQLITE:
+        import sqlite3
+        db_path = DATABASE_URL.split("///")[-1]
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    else:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+
+def get_or_create_user_token(whatsapp_id: str) -> tuple:
+    """Get or create user with preferences token. Returns (user_id, token)."""
+    import secrets
+    from uuid import uuid4
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = "?" if IS_SQLITE else "%s"
+
+    cursor.execute(f"SELECT id, preferences_token FROM users WHERE whatsapp_id = {placeholder}", (whatsapp_id,))
+    row = cursor.fetchone()
+
+    if row:
+        user_id = row[0] if IS_SQLITE else row["id"]
+        token = row[1] if IS_SQLITE else row["preferences_token"]
+        if not token:
+            token = secrets.token_urlsafe(16)
+            cursor.execute(f"UPDATE users SET preferences_token = {placeholder} WHERE id = {placeholder}", (token, user_id))
+            conn.commit()
+    else:
+        user_id = str(uuid4())
+        token = secrets.token_urlsafe(16)
+        name = f"User_{whatsapp_id[-4:]}"
+        cursor.execute(
+            f"INSERT INTO users (id, whatsapp_id, name, preferences_token) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+            (user_id, whatsapp_id, name, token)
+        )
+        conn.commit()
+
+    cursor.close()
+    conn.close()
+    return user_id, token
+
+
+def get_user_by_token(token: str) -> dict:
+    """Find user by preferences token."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = "?" if IS_SQLITE else "%s"
+
+    cursor.execute(f"SELECT id, whatsapp_id, name FROM users WHERE preferences_token = {placeholder}", (token,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not row:
+        return None
+    if IS_SQLITE:
+        return {"id": row[0], "whatsapp_id": row[1], "name": row[2]}
+    return dict(row)
+
+
+def save_user_preferences(user_id: str, countries: list, cities: list, budget: str = None, styles: list = None, origin: str = None):
+    """Replace user's countries, cities and preferences atomically."""
+    from uuid import uuid4
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = "?" if IS_SQLITE else "%s"
+
+    # Clear existing
+    cursor.execute(f"DELETE FROM favorite_countries WHERE user_id = {placeholder}", (user_id,))
+    cursor.execute(f"DELETE FROM favorite_destinations WHERE user_id = {placeholder}", (user_id,))
+
+    # Insert countries
+    for c in countries:
+        cursor.execute(
+            f"INSERT INTO favorite_countries (id, user_id, country_name, country_code) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+            (str(uuid4()), user_id, c["name"], c["code"])
+        )
+
+    # Insert cities
+    for city in cities:
+        cursor.execute(
+            f"INSERT INTO favorite_destinations (id, user_id, destination, iata_code, country_code) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})",
+            (str(uuid4()), user_id, city["name"], city.get("iata"), city.get("country_code"))
+        )
+
+    # Upsert preferences
+    styles_str = ",".join(styles) if styles else None
+    if IS_SQLITE:
+        cursor.execute(
+            f"INSERT OR REPLACE INTO user_preferences (user_id, budget, travel_styles, origin_city) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+            (user_id, budget, styles_str, origin)
+        )
+    else:
+        cursor.execute("""
+            INSERT INTO user_preferences (user_id, budget, travel_styles, origin_city, updated_at)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id) DO UPDATE SET
+                budget = EXCLUDED.budget,
+                travel_styles = EXCLUDED.travel_styles,
+                origin_city = EXCLUDED.origin_city,
+                updated_at = CURRENT_TIMESTAMP
+        """, (user_id, budget, styles_str, origin))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_user_preferences(user_id: str) -> dict:
+    """Get full user preferences (countries, cities, budget, styles)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = "?" if IS_SQLITE else "%s"
+
+    cursor.execute(f"SELECT country_name, country_code FROM favorite_countries WHERE user_id = {placeholder}", (user_id,))
+    countries = [{"name": r[0] if IS_SQLITE else r["country_name"], "code": r[1] if IS_SQLITE else r["country_code"]} for r in cursor.fetchall()]
+
+    cursor.execute(f"SELECT destination, iata_code, country_code FROM favorite_destinations WHERE user_id = {placeholder}", (user_id,))
+    cities = [{"name": r[0] if IS_SQLITE else r["destination"], "iata": r[1] if IS_SQLITE else r["iata_code"], "country_code": r[2] if IS_SQLITE else r["country_code"]} for r in cursor.fetchall()]
+
+    cursor.execute(f"SELECT budget, travel_styles, origin_city FROM user_preferences WHERE user_id = {placeholder}", (user_id,))
+    row = cursor.fetchone()
+    budget = None
+    styles = []
+    origin = None
+    if row:
+        if IS_SQLITE:
+            budget, styles_str, origin = row[0], row[1], row[2]
+        else:
+            budget, styles_str, origin = row["budget"], row["travel_styles"], row["origin_city"]
+        styles = styles_str.split(",") if styles_str else []
+
+    cursor.close()
+    conn.close()
+
+    return {"countries": countries, "cities": cities, "budget": budget, "styles": styles, "origin": origin}
 
 
 # Utility functions
