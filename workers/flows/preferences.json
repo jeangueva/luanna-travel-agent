@@ -1,0 +1,97 @@
+{
+  "version": "7.0",
+  "screens": [
+    {
+      "id": "PREFERENCES",
+      "title": "Mis preferencias",
+      "terminal": true,
+      "data": {},
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "Cuéntame de ti"
+          },
+          {
+            "type": "TextSubheading",
+            "text": "Luanna usa esto para recomendarte mejor."
+          },
+          {
+            "type": "Form",
+            "name": "form",
+            "children": [
+              {
+                "type": "TextInput",
+                "name": "origin",
+                "label": "Ciudad de origen",
+                "input-type": "text",
+                "required": false,
+                "helper-text": "Ej: Lima, Madrid, CDMX"
+              },
+              {
+                "type": "TextInput",
+                "name": "countries",
+                "label": "Países de interés",
+                "input-type": "text",
+                "required": false,
+                "helper-text": "Sepáralos con comas"
+              },
+              {
+                "type": "TextInput",
+                "name": "cities",
+                "label": "Ciudades de interés",
+                "input-type": "text",
+                "required": false,
+                "helper-text": "Sepáralas con comas"
+              },
+              {
+                "type": "TextInput",
+                "name": "budget_min",
+                "label": "Presupuesto mín (USD)",
+                "input-type": "number",
+                "required": false
+              },
+              {
+                "type": "TextInput",
+                "name": "budget_max",
+                "label": "Presupuesto máx (USD)",
+                "input-type": "number",
+                "required": false
+              },
+              {
+                "type": "CheckboxGroup",
+                "name": "styles",
+                "label": "Estilo de viaje",
+                "required": false,
+                "data-source": [
+                  { "id": "aventura", "title": "Aventura" },
+                  { "id": "relax", "title": "Relax" },
+                  { "id": "cultura", "title": "Cultura" },
+                  { "id": "gastronomia", "title": "Gastronomía" },
+                  { "id": "naturaleza", "title": "Naturaleza" },
+                  { "id": "fiesta", "title": "Fiesta" }
+                ]
+              },
+              {
+                "type": "Footer",
+                "label": "Guardar",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "origin": "${form.origin}",
+                    "countries": "${form.countries}",
+                    "cities": "${form.cities}",
+                    "budget_min": "${form.budget_min}",
+                    "budget_max": "${form.budget_max}",
+                    "styles": "${form.styles}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
