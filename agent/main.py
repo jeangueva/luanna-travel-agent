@@ -57,13 +57,13 @@ async def landing():
 @app.get("/privacy")
 async def privacy_policy():
     """Privacy policy page (required by Meta)."""
-    return FileResponse(ROOT_DIR / "privacy.html")
+    return FileResponse(ROOT_DIR / "workers" / "public" / "privacy.html")
 
 
 @app.get("/terms")
 async def terms_of_service():
     """Terms of service page."""
-    return FileResponse(ROOT_DIR / "terms.html")
+    return FileResponse(ROOT_DIR / "workers" / "public" / "terms.html")
 
 
 @app.get("/webhook")

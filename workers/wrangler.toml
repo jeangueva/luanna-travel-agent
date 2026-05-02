@@ -1,0 +1,24 @@
+name = "luanna-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+
+[triggers]
+crons = ["0 */6 * * *"]
+
+# Secrets (set via `wrangler secret put <NAME>`):
+#   ANTHROPIC_API_KEY      — key de console.anthropic.com (no el Claude Pro de claude.ai)
+#   KAPSO_WEBHOOK_SECRET   — para verificar firma del webhook
+#   KAPSO_API_KEY          — para enviar mensajes a Kapso
+#   LUANNA_MODEL           — modelo de Anthropic (default: claude-haiku-4-5)
+#   DATABASE_URL           — Postgres (Neon) connection string
+#   TRAVELPAYOUTS_TOKEN    — API token de Travelpayouts
+#   TRAVELPAYOUTS_MARKER   — affiliate marker para links de Travelpayouts
+#   WEBVIEW_SIGNING_KEY    — HMAC key para tokens del webview (fallback)
+#   KAPSO_PREFS_FLOW_ID    — meta_flow_id del Flow de preferencias
+#   KAPSO_PREFS_FLOW_DRAFT — "1" para enviar el Flow en modo draft (preview, sin publicar)
+
+# Para desarrollo local, usar workers/.dev.vars (git-ignored)

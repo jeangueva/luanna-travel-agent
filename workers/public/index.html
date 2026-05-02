@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Luanna — Tu agente de viajes por WhatsApp</title>
+  <meta name="description" content="Luanna encuentra vuelos baratos, hoteles y paquetes — solo escríbele en WhatsApp.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --rausch: #ff385c;
+      --rausch-dark: #e00b41;
+      --text: #222222;
+      --text-2: #6a6a6a;
+      --text-3: #929292;
+      --bg: #ffffff;
+      --surface: #f7f7f7;
+      --surface-2: #f2f2f2;
+      --border: rgba(0, 0, 0, 0.08);
+      --shadow-card: rgba(0, 0, 0, 0.02) 0px 0px 0px 1px,
+                     rgba(0, 0, 0, 0.04) 0px 2px 6px,
+                     rgba(0, 0, 0, 0.10) 0px 4px 8px;
+      --shadow-hover: rgba(0, 0, 0, 0.08) 0px 4px 12px;
+      --r-btn: 8px;
+      --r-badge: 14px;
+      --r-card: 20px;
+      --r-large: 32px;
+      --font: "Plus Jakarta Sans", "Airbnb Cereal VF", Circular, -apple-system,
+              BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font);
+      font-weight: 500;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ─── Typography ─── */
+    .t-display {
+      font-size: clamp(40px, 6vw, 64px);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.44px;
+    }
+    .t-section {
+      font-size: clamp(28px, 3.5vw, 40px);
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.44px;
+    }
+    .t-feature {
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.18;
+      letter-spacing: -0.44px;
+    }
+    .t-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.18;
+      letter-spacing: 0.32px;
+      text-transform: uppercase;
+      color: var(--rausch);
+    }
+    .t-body {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+    .t-body-lg {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text-2);
+      line-height: 1.55;
+    }
+    .t-small {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-2);
+      line-height: 1.4;
+    }
+
+    /* ─── Buttons ─── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 24px;
+      font-family: var(--font);
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.25;
+      border-radius: var(--r-btn);
+      border: none;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--rausch);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: var(--rausch-dark);
+      box-shadow: var(--shadow-hover);
+      transform: translateY(-1px);
+    }
+    .btn-dark {
+      background: var(--text);
+      color: #fff;
+    }
+    .btn-dark:hover {
+      background: #000;
+      box-shadow: var(--shadow-hover);
+    }
+    .btn-outlined {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--text);
+    }
+    .btn-outlined:hover {
+      background: var(--text);
+      color: #fff;
+    }
+    .btn-lg { padding: 16px 28px; font-size: 17px; }
+
+    /* ─── Header ─── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: saturate(180%) blur(12px);
+      -webkit-backdrop-filter: saturate(180%) blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 76px;
+    }
+    .logo {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--rausch);
+      letter-spacing: -0.5px;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 2px;
+    }
+    .logo span { color: var(--text); }
+    .nav-links {
+      display: flex;
+      gap: 32px;
+    }
+    .nav-links a {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--rausch); }
+    .nav-cta { display: inline-flex; }
+
+    /* ─── Hero ─── */
+    .hero {
+      padding: 80px 0 96px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: -200px;
+      right: -200px;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(255, 56, 92, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: #fff;
+      border-radius: 999px;
+      box-shadow: var(--shadow-card);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 24px;
+    }
+    .hero-badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #25d366;
+      box-shadow: 0 0 0 4px rgba(37, 211, 102, 0.18);
+    }
+    .hero h1 { margin-bottom: 24px; }
+    .hero h1 .accent { color: var(--rausch); }
+    .hero-sub { max-width: 520px; margin-bottom: 32px; }
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .hero-proof {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .hero-avatars {
+      display: flex;
+    }
+    .hero-avatars .av {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 2px solid #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      margin-left: -8px;
+    }
+    .hero-avatars .av:first-child { margin-left: 0; }
+    .hero-avatars .av:nth-child(1) { background: #ffd9e0; }
+    .hero-avatars .av:nth-child(2) { background: #ffe4cc; }
+    .hero-avatars .av:nth-child(3) { background: #d6f0e0; }
+    .hero-avatars .av:nth-child(4) { background: #d6e4ff; }
+    .hero-proof-text { font-size: 13px; font-weight: 500; color: var(--text-2); }
+    .hero-proof-text strong { color: var(--text); font-weight: 700; }
+
+    /* Hero visual: chat mockup */
+    .hero-visual { position: relative; }
+    .chat {
+      background: #fff;
+      border-radius: var(--r-large);
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    .chat-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      background: linear-gradient(180deg, #fff 0%, #fafafa 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .chat-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--rausch);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .chat-name { font-size: 15px; font-weight: 700; color: var(--text); }
+    .chat-status {
+      font-size: 12px;
+      font-weight: 500;
+      color: #25d366;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .chat-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #fafafa;
+      min-height: 320px;
+    }
+    .msg {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .msg-user {
+      background: var(--text);
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .msg-ai {
+      background: #fff;
+      color: var(--text);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+      box-shadow: var(--shadow-card);
+    }
+    .price-card {
+      align-self: flex-start;
+      max-width: 88%;
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: var(--shadow-card);
+    }
+    .price-card .route { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+    .price-card .price {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.44px;
+    }
+    .price-card .price sup { font-size: 16px; font-weight: 600; color: var(--text-2); }
+    .price-card .price span { font-size: 12px; font-weight: 500; color: var(--text-2); }
+    .price-card .meta { font-size: 12px; font-weight: 500; color: var(--text-2); margin-top: 4px; }
+
+    .float-badge {
+      position: absolute;
+      top: -16px;
+      left: -16px;
+      padding: 10px 16px;
+      background: #fff;
+      border-radius: var(--r-badge);
+      box-shadow: var(--shadow-card);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .float-badge .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--rausch);
+    }
+
+    /* ─── Sections ─── */
+    .section {
+      padding: 96px 0;
+    }
+    .section-surface { background: var(--surface); }
+    .section-head {
+      max-width: 720px;
+      margin: 0 auto 56px;
+      text-align: center;
+    }
+    .section-head .t-eyebrow { display: inline-block; margin-bottom: 12px; }
+    .section-head h2 { margin-bottom: 16px; }
+    .section-head p {
+      font-size: 17px;
+      color: var(--text-2);
+      max-width: 560px;
+      margin: 0 auto;
+    }
+
+    /* ─── Steps ─── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .step {
+      background: #fff;
+      border-radius: var(--r-card);
+      padding: 32px 28px;
+      box-shadow: var(--shadow-card);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .step:hover {
+      transform: translateY(-4px);
+      box-shadow: rgba(0, 0, 0, 0.02) 0px 0px 0px 1px,
+                  rgba(0, 0, 0, 0.06) 0px 8px 16px,
+                  rgba(0, 0, 0, 0.12) 0px 12px 24px;
+    }
+    .step-number {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.32px;
+      text-transform: uppercase;
+      color: var(--rausch);
+      margin-bottom: 16px;
+    }
+    .step-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      background: var(--surface-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+    .step h3 { font-size: 20px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.18px; }
+    .step p { font-size: 15px; font-weight: 500; color: var(--text-2); }
+
+    /* ─── Features ─── */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .feature {
+      background: #fff;
+      border-radius: var(--r-card);
+      padding: 32px;
+      box-shadow: var(--shadow-card);
+      transition: transform 0.2s ease;
+    }
+    .feature:hover { transform: translateY(-4px); }
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: rgba(255, 56, 92, 0.10);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 20px;
+    }
+    .feature h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.18px; }
+    .feature p { font-size: 14px; font-weight: 500; color: var(--text-2); line-height: 1.5; }
+
+    /* ─── Testimonials ─── */
+    .testimonials {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .testimonial {
+      background: #fff;
+      border-radius: var(--r-card);
+      padding: 28px;
+      box-shadow: var(--shadow-card);
+    }
+    .stars {
+      color: var(--rausch);
+      font-size: 14px;
+      margin-bottom: 14px;
+      letter-spacing: 2px;
+    }
+    .testimonial-quote {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1.55;
+      margin-bottom: 20px;
+    }
+    .testimonial-user {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .testimonial-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .testimonial-name { font-size: 14px; font-weight: 700; color: var(--text); }
+    .testimonial-meta { font-size: 12px; font-weight: 500; color: var(--text-2); }
+
+    /* ─── Pricing ─── */
+    .price-box {
+      max-width: 480px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: var(--r-large);
+      padding: 48px 40px;
+      box-shadow: var(--shadow-card);
+      text-align: center;
+    }
+    .price-tag { display: inline-block; padding: 6px 14px; background: rgba(255, 56, 92, 0.10); color: var(--rausch); font-size: 12px; font-weight: 700; border-radius: 999px; margin-bottom: 20px; letter-spacing: 0.32px; text-transform: uppercase; }
+    .price-amount {
+      font-size: 64px;
+      font-weight: 700;
+      letter-spacing: -1.2px;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .price-amount sup { font-size: 24px; font-weight: 600; color: var(--text-2); margin-right: 4px; }
+    .price-amount .per { font-size: 16px; font-weight: 500; color: var(--text-2); }
+    .price-list {
+      list-style: none;
+      text-align: left;
+      margin: 32px 0;
+      padding: 0;
+    }
+    .price-list li {
+      padding: 10px 0;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .price-list li::before {
+      content: "✓";
+      color: var(--rausch);
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    /* ─── Final CTA ─── */
+    .cta-banner {
+      padding: 96px 0;
+      background: var(--text);
+      color: #fff;
+      text-align: center;
+    }
+    .cta-banner h2 {
+      font-size: clamp(32px, 4vw, 48px);
+      font-weight: 700;
+      letter-spacing: -0.44px;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+    .cta-banner h2 span { color: var(--rausch); }
+    .cta-banner p {
+      font-size: 17px;
+      color: rgba(255, 255, 255, 0.7);
+      max-width: 520px;
+      margin: 0 auto 32px;
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      padding: 48px 0 32px;
+      background: #fff;
+      border-top: 1px solid var(--border);
+    }
+    .footer-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+    .footer-links {
+      display: flex;
+      gap: 28px;
+    }
+    .footer-links a {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-2);
+      transition: color 0.15s;
+    }
+    .footer-links a:hover { color: var(--rausch); }
+    .footer-bottom {
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-3);
+      text-align: center;
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 950px) {
+      .hero { padding: 56px 0 72px; }
+      .hero-grid {
+        grid-template-columns: 1fr;
+        gap: 56px;
+      }
+      .hero-visual { order: -1; }
+      .float-badge { display: none; }
+      .nav-links { display: none; }
+      .steps, .features, .testimonials {
+        grid-template-columns: 1fr;
+      }
+      .section { padding: 72px 0; }
+    }
+    @media (max-width: 540px) {
+      .container { padding: 0 20px; }
+      .hero-actions { flex-direction: column; align-items: stretch; }
+      .hero-actions .btn { justify-content: center; }
+      .footer-grid { flex-direction: column; align-items: flex-start; }
+      .footer-links { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ───── Header ───── -->
+  <header>
+    <div class="container">
+      <nav class="nav">
+        <a href="/" class="logo">luanna<span>.</span></a>
+        <div class="nav-links">
+          <a href="#como-funciona">Cómo funciona</a>
+          <a href="#features">Características</a>
+          <a href="#precios">Precio</a>
+        </div>
+        <a href="https://wa.me/15559144311" class="btn btn-primary nav-cta" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+          </svg>
+          Hablar con Luanna
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ───── Hero ───── -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-grid">
+        <div>
+          <div class="hero-badge">
+            <span class="hero-badge-dot"></span>
+            En WhatsApp ahora mismo
+          </div>
+          <h1 class="t-display">
+            Viaja más.<br><span class="accent">Paga menos.</span>
+          </h1>
+          <p class="t-body-lg hero-sub">
+            Luanna es tu agente de viajes personal en WhatsApp. Encuentra vuelos baratos, hoteles y paquetes todo incluido — solo escríbele.
+          </p>
+          <div class="hero-actions">
+            <a href="https://wa.me/15559144311" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              Hablar con Luanna
+            </a>
+            <a href="#como-funciona" class="btn btn-outlined btn-lg">Ver cómo funciona</a>
+          </div>
+          <div class="hero-proof">
+            <div class="hero-avatars">
+              <div class="av">M</div>
+              <div class="av">S</div>
+              <div class="av">A</div>
+              <div class="av">R</div>
+            </div>
+            <p class="hero-proof-text">
+              <strong>+2,400 viajeros</strong> ya ahorraron con Luanna
+            </p>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="float-badge"><span class="dot"></span>Vuelo encontrado · $187</div>
+          <div class="chat">
+            <div class="chat-header">
+              <div class="chat-avatar">✈</div>
+              <div>
+                <div class="chat-name">Luanna</div>
+                <div class="chat-status">● En línea ahora</div>
+              </div>
+            </div>
+            <div class="chat-body">
+              <div class="msg msg-user">Quiero ir a Cancún en agosto, budget $300 por persona</div>
+              <div class="msg msg-ai">¡Encontré varias opciones! La mejor de hoy ✈️</div>
+              <div class="price-card">
+                <div class="route">MIA → CUN · Agosto 14–21</div>
+                <div class="price"><sup>$</sup>187 <span>/ ida y vuelta</span></div>
+                <div class="meta">Aeromexico · 3h 20min · Sin escalas</div>
+              </div>
+              <div class="msg msg-ai">También tengo paquete <strong>vuelo + hotel</strong> por $412 total. ¿Lo reservo? 🏨</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── How it works ───── -->
+  <section class="section section-surface" id="como-funciona">
+    <div class="container">
+      <div class="section-head">
+        <span class="t-eyebrow">Cómo funciona</span>
+        <h2 class="t-section">Tan fácil como mandar un mensaje.</h2>
+        <p>Sin apps que descargar. Sin cuentas que crear. Solo escríbele a Luanna en WhatsApp.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">Paso 01</div>
+          <div class="step-icon">💬</div>
+          <h3>Escríbele a Luanna</h3>
+          <p>Cuéntale a dónde quieres ir, cuándo y cuánto puedes gastar. Como si le escribieras a un amigo.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">Paso 02</div>
+          <div class="step-icon">🔍</div>
+          <h3>Busca por ti</h3>
+          <p>Compara vuelos, hoteles y paquetes en cientos de aerolíneas y portales para darte la mejor opción.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">Paso 03</div>
+          <div class="step-icon">🎉</div>
+          <h3>Reserva en segundos</h3>
+          <p>Te envía el link directo para reservar al mejor precio. Sin redirecciones raras ni letra chica.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Features ───── -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-head">
+        <span class="t-eyebrow">Características</span>
+        <h2 class="t-section">Todo lo que necesitas para viajar inteligente.</h2>
+      </div>
+      <div class="features">
+        <div class="feature">
+          <div class="feature-icon">✈️</div>
+          <h3>Vuelos baratos</h3>
+          <p>Compara precios en tiempo real entre cientos de aerolíneas y portales para encontrar la mejor tarifa.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🏨</div>
+          <h3>Hoteles y estadías</h3>
+          <p>Encuentra hospedaje al precio justo: hoteles, hostales o departamentos según tu estilo de viaje.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">📦</div>
+          <h3>Paquetes todo incluido</h3>
+          <p>Vuelo + hotel + traslados en un solo precio. Más simple, normalmente más barato.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🔔</div>
+          <h3>Alertas de precio</h3>
+          <p>Te avisa cuando bajan los vuelos a tus destinos favoritos. Solo cuando vale la pena.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🗺️</div>
+          <h3>Recomendaciones locales</h3>
+          <p>Tips de qué hacer, dónde comer y cómo moverte en cada destino — sin guías genéricas.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">⚡</div>
+          <h3>Respuestas en segundos</h3>
+          <p>No esperas días. Luanna responde al instante, 24/7, en español.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Testimonials ───── -->
+  <section class="section section-surface">
+    <div class="container">
+      <div class="section-head">
+        <span class="t-eyebrow">Testimonios</span>
+        <h2 class="t-section">Viajeros que ya ahorraron con Luanna.</h2>
+      </div>
+      <div class="testimonials">
+        <div class="testimonial">
+          <div class="stars">★★★★★</div>
+          <p class="testimonial-quote">"Le pedí un viaje a Madrid y en 2 minutos me mandó 4 opciones. Reservé la de $480 ida y vuelta. Increíble."</p>
+          <div class="testimonial-user">
+            <div class="testimonial-avatar">M</div>
+            <div>
+              <div class="testimonial-name">María C.</div>
+              <div class="testimonial-meta">Bogotá → Madrid</div>
+            </div>
+          </div>
+        </div>
+        <div class="testimonial">
+          <div class="stars">★★★★★</div>
+          <p class="testimonial-quote">"Más fácil que cualquier app. Le escribo como si fuera una amiga y resuelve todo. Mi nueva agencia."</p>
+          <div class="testimonial-user">
+            <div class="testimonial-avatar">S</div>
+            <div>
+              <div class="testimonial-name">Sofía R.</div>
+              <div class="testimonial-meta">Lima → Cancún</div>
+            </div>
+          </div>
+        </div>
+        <div class="testimonial">
+          <div class="stars">★★★★★</div>
+          <p class="testimonial-quote">"La alerta de precios me salvó: bajó el vuelo a Buenos Aires $200 de un día a otro y compré justo a tiempo."</p>
+          <div class="testimonial-user">
+            <div class="testimonial-avatar">A</div>
+            <div>
+              <div class="testimonial-name">Andrés P.</div>
+              <div class="testimonial-meta">Santiago → Buenos Aires</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Pricing ───── -->
+  <section class="section" id="precios">
+    <div class="container">
+      <div class="section-head">
+        <span class="t-eyebrow">Precio</span>
+        <h2 class="t-section">Simple. Transparente. Sin letra chica.</h2>
+        <p>Luanna es gratis. Ganamos una pequeña comisión cuando reservas — sale del proveedor, no de tu bolsillo.</p>
+      </div>
+      <div class="price-box">
+        <span class="price-tag">Gratis para siempre</span>
+        <div class="price-amount"><sup>$</sup>0<span class="per"> / siempre</span></div>
+        <p class="t-body" style="margin-bottom: 8px;">Tu agente de viajes personal, sin suscripción.</p>
+        <ul class="price-list">
+          <li>Búsqueda ilimitada de vuelos y hoteles</li>
+          <li>Paquetes todo incluido</li>
+          <li>Alertas de precio personalizadas</li>
+          <li>Recomendaciones locales</li>
+          <li>Soporte 24/7 en español</li>
+        </ul>
+        <a href="https://wa.me/15559144311" class="btn btn-primary btn-lg" target="_blank" rel="noopener" style="width: 100%;">
+          Empezar ahora
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Final CTA ───── -->
+  <section class="cta-banner">
+    <div class="container">
+      <h2>¿Listo para viajar<br>más por <span>menos</span>?</h2>
+      <p>Escríbele a Luanna ahora mismo y dile a dónde quieres ir.</p>
+      <a href="https://wa.me/15559144311" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+        </svg>
+        Hablar con Luanna
+      </a>
+    </div>
+  </section>
+
+  <!-- ───── Footer ───── -->
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <a href="/" class="logo">luanna<span>.</span></a>
+        <div class="footer-links">
+          <a href="#como-funciona">Cómo funciona</a>
+          <a href="#features">Características</a>
+          <a href="#precios">Precio</a>
+          <a href="/privacy">Privacidad</a>
+          <a href="/terms">Términos</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        © 2026 Luanna · Tu agente de viajes en WhatsApp
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
