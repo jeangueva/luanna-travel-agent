@@ -17,6 +17,8 @@ import {
   getPreferences,
   getRecentMessages,
   getUserWatchlist,
+  listPendingDeletionRequests,
+  processDeletionRequest,
   upsertPreferences,
   type Message,
   type Preferences,
@@ -46,6 +48,7 @@ export interface Env {
   TRAVELPAYOUTS_MARKER: string;
   WEBVIEW_SIGNING_KEY: string;
   LUANNA_MODEL?: string;
+  ADMIN_API_KEY?: string;
 }
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
@@ -445,6 +448,66 @@ async function handleApiWatchlist(
   return new Response("method not allowed", { status: 405 });
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+function checkAdminAuth(request: Request, env: Env): boolean {
+  if (!env.ADMIN_API_KEY) return false;
+  const auth = request.headers.get("Authorization");
+  if (!auth) return false;
+  const expected = `Bearer ${env.ADMIN_API_KEY}`;
+  return timingSafeEqual(auth, expected);
+}
+
+async function handleAdminListPending(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!checkAdminAuth(request, env)) {
+    return new Response("unauthorized", { status: 401 });
+  }
+  const url = new URL(request.url);
+  const daysParam = url.searchParams.get("older_than_days") ?? "7";
+  const parsed = parseInt(daysParam, 10);
+  const days = Number.isFinite(parsed)
+    ? Math.max(0, Math.min(365, parsed))
+    : 7;
+  const sql = getDb(env.DATABASE_URL);
+  const requests = await listPendingDeletionRequests(sql, days);
+  return Response.json({
+    older_than_days: days,
+    count: requests.length,
+    requests,
+  });
+}
+
+async function handleAdminProcessDeletion(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!checkAdminAuth(request, env)) {
+    return new Response("unauthorized", { status: 401 });
+  }
+  const body = (await request.json().catch(() => null)) as
+    | { request_id?: number }
+    | null;
+  if (!body || typeof body.request_id !== "number") {
+    return Response.json({ error: "missing request_id" }, { status: 400 });
+  }
+  const sql = getDb(env.DATABASE_URL);
+  const result = await processDeletionRequest(sql, body.request_id);
+  if (!result) {
+    return Response.json({ error: "not found" }, { status: 404 });
+  }
+  return Response.json({ ok: true, ...result });
+}
+
 async function handleApiDataDeletion(
   request: Request,
   env: Env,
@@ -528,6 +591,18 @@ export default {
       url.pathname === "/api/data-deletion"
     ) {
       return handleApiDataDeletion(request, env);
+    }
+    if (
+      request.method === "GET" &&
+      url.pathname === "/admin/data-deletion/pending"
+    ) {
+      return handleAdminListPending(request, env);
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/admin/data-deletion/process"
+    ) {
+      return handleAdminProcessDeletion(request, env);
     }
     return new Response("Not found", { status: 404 });
   },

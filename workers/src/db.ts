@@ -268,3 +268,67 @@ export async function createDataDeletionRequest(
   `) as { id: number }[];
   return rows[0];
 }
+
+export interface PendingDeletionRequest {
+  id: number;
+  phone: string;
+  email: string | null;
+  reason: string | null;
+  created_at: string;
+  age_days: number;
+}
+
+export async function listPendingDeletionRequests(
+  sql: Sql,
+  olderThanDays: number,
+): Promise<PendingDeletionRequest[]> {
+  return (await sql`
+    SELECT
+      id, phone, email, reason, created_at,
+      EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400 AS age_days
+    FROM data_deletion_requests
+    WHERE status = 'pending'
+      AND created_at < NOW() - (${olderThanDays} || ' days')::interval
+    ORDER BY created_at ASC
+  `) as PendingDeletionRequest[];
+}
+
+export interface DeletionResult {
+  request_id: number;
+  phone: string;
+  user_deleted: boolean;
+  already_processed: boolean;
+}
+
+export async function processDeletionRequest(
+  sql: Sql,
+  requestId: number,
+): Promise<DeletionResult | null> {
+  const reqRows = (await sql`
+    SELECT id, phone, status FROM data_deletion_requests WHERE id = ${requestId}
+  `) as { id: number; phone: string; status: string }[];
+  if (reqRows.length === 0) return null;
+  const req = reqRows[0];
+  if (req.status !== "pending") {
+    return {
+      request_id: req.id,
+      phone: req.phone,
+      user_deleted: false,
+      already_processed: true,
+    };
+  }
+  const delRows = (await sql`
+    DELETE FROM users WHERE phone = ${req.phone} RETURNING id
+  `) as { id: number }[];
+  await sql`
+    UPDATE data_deletion_requests
+    SET status = 'processed', processed_at = NOW()
+    WHERE id = ${requestId}
+  `;
+  return {
+    request_id: req.id,
+    phone: req.phone,
+    user_deleted: delRows.length > 0,
+    already_processed: false,
+  };
+}

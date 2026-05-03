@@ -20,5 +20,6 @@ crons = ["0 */6 * * *"]
 #   WEBVIEW_SIGNING_KEY    — HMAC key para tokens del webview (fallback)
 #   KAPSO_PREFS_FLOW_ID    — meta_flow_id del Flow de preferencias
 #   KAPSO_PREFS_FLOW_DRAFT — "1" para enviar el Flow en modo draft (preview, sin publicar)
+#   ADMIN_API_KEY          — bearer token para /admin/data-deletion/* (32+ chars)
 
 # Para desarrollo local, usar workers/.dev.vars (git-ignored)
