@@ -10,6 +10,7 @@ import {
 import {
   addWatchlistItem,
   appendMessage,
+  createDataDeletionRequest,
   deleteWatchlistItem,
   getDb,
   getOrCreateUser,
@@ -444,6 +445,33 @@ async function handleApiWatchlist(
   return new Response("method not allowed", { status: 405 });
 }
 
+async function handleApiDataDeletion(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as
+    | { phone?: string; email?: string; reason?: string }
+    | null;
+  if (!body || typeof body.phone !== "string") {
+    return Response.json({ error: "missing phone" }, { status: 400 });
+  }
+  const phone = body.phone.trim().replace(/[^\d+]/g, "");
+  if (phone.length < 8 || phone.length > 20) {
+    return Response.json({ error: "invalid phone" }, { status: 400 });
+  }
+  const email =
+    typeof body.email === "string" && body.email.trim()
+      ? body.email.trim().slice(0, 200)
+      : null;
+  const reason =
+    typeof body.reason === "string" && body.reason.trim()
+      ? body.reason.trim().slice(0, 1000)
+      : null;
+  const sql = getDb(env.DATABASE_URL);
+  const { id } = await createDataDeletionRequest(sql, { phone, email, reason });
+  return Response.json({ ok: true, id });
+}
+
 async function handleChat(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => null)) as
     | { message?: string }
@@ -494,6 +522,12 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/chat") {
       return handleChat(request, env);
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/data-deletion"
+    ) {
+      return handleApiDataDeletion(request, env);
     }
     return new Response("Not found", { status: 404 });
   },

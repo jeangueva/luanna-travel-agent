@@ -256,3 +256,15 @@ export async function markWatchlistChecked(
     `;
   }
 }
+
+export async function createDataDeletionRequest(
+  sql: Sql,
+  input: { phone: string; email?: string | null; reason?: string | null },
+): Promise<{ id: number }> {
+  const rows = (await sql`
+    INSERT INTO data_deletion_requests (phone, email, reason)
+    VALUES (${input.phone}, ${input.email ?? null}, ${input.reason ?? null})
+    RETURNING id
+  `) as { id: number }[];
+  return rows[0];
+}
