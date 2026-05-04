@@ -69,6 +69,7 @@ const TRAVELPAYOUTS_HOSTS = new Set([
   "aviasales.com",
   "search.hotellook.com",
   "hotellook.com",
+  "tp.media",
 ]);
 
 function sanitizeReply(text: string, baseUrl: string): string {

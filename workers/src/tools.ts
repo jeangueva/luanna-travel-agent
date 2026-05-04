@@ -291,14 +291,19 @@ function buildHotelSearchUrl(args: {
   adults: number;
   marker: string;
 }): string {
-  const u = new URL("https://search.hotellook.com/");
-  u.searchParams.set("destination", args.city);
-  u.searchParams.set("checkIn", args.checkin);
-  u.searchParams.set("checkOut", args.checkout);
-  u.searchParams.set("adults", String(args.adults));
-  u.searchParams.set("currency", "usd");
-  u.searchParams.set("marker", args.marker);
-  return u.toString();
+  const inner = new URL("https://search.hotellook.com/");
+  inner.searchParams.set("destination", args.city);
+  inner.searchParams.set("checkIn", args.checkin);
+  inner.searchParams.set("checkOut", args.checkout);
+  inner.searchParams.set("adults", String(args.adults));
+  inner.searchParams.set("currency", "usd");
+  const wrapped = new URL("https://tp.media/r");
+  wrapped.searchParams.set("marker", args.marker);
+  wrapped.searchParams.set("trs", "");
+  wrapped.searchParams.set("p", "4115");
+  wrapped.searchParams.set("u", inner.toString());
+  wrapped.searchParams.set("campaign_id", "101");
+  return wrapped.toString();
 }
 
 export function makeHotelSearchTool(env: TravelpayoutsEnv) {
