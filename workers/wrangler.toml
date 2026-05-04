@@ -3,13 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Custom domain bindings — uncomment after luanna.app is added as a zone
-# in this Cloudflare account (and DNS propagated). Until then deploys fail
-# with code 10082 "Can't infer zone from route".
-# routes = [
-#   { pattern = "luanna.app", custom_domain = true },
-#   { pattern = "www.luanna.app", custom_domain = true }
-# ]
+# Custom domain bindings (luanna.app zone in this Cloudflare account).
+routes = [
+  { pattern = "luanna.app", custom_domain = true },
+  { pattern = "www.luanna.app", custom_domain = true }
+]
 
 [assets]
 directory = "./public"
