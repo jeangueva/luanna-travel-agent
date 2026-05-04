@@ -28,6 +28,8 @@ import {
   makeAddFavoritePlacesTool,
   makeAddWatchlistTool,
   makeFlightSearchTool,
+  makeHotelSearchTool,
+  makePackageLinkTool,
   makePreferencesFlowTool,
   makePreferencesLinkTool,
   makeRemoveFavoritePlacesTool,
@@ -62,11 +64,21 @@ interface ReplyContext {
   phoneNumberId?: string;
 }
 
+const TRAVELPAYOUTS_HOSTS = new Set([
+  "www.aviasales.com",
+  "aviasales.com",
+  "search.hotellook.com",
+  "hotellook.com",
+]);
+
 function sanitizeReply(text: string, baseUrl: string): string {
   const allowedHost = new URL(baseUrl).host;
   return text.replace(/https?:\/\/[^\s)]+/g, (url) => {
     try {
-      return new URL(url).host === allowedHost ? url : "";
+      const host = new URL(url).host;
+      if (host === allowedHost) return url;
+      if (TRAVELPAYOUTS_HOSTS.has(host)) return url;
+      return "";
     } catch {
       return "";
     }
@@ -114,11 +126,14 @@ async function generateReply(
     ...ctx.history.map((m) => ({ role: m.role, content: m.content })),
     { role: "user" as const, content: userMessage },
   ];
+  const tpEnv = {
+    TRAVELPAYOUTS_TOKEN: env.TRAVELPAYOUTS_TOKEN,
+    TRAVELPAYOUTS_MARKER: env.TRAVELPAYOUTS_MARKER,
+  };
   const tools = {
-    search_flights: makeFlightSearchTool({
-      TRAVELPAYOUTS_TOKEN: env.TRAVELPAYOUTS_TOKEN,
-      TRAVELPAYOUTS_MARKER: env.TRAVELPAYOUTS_MARKER,
-    }),
+    search_flights: makeFlightSearchTool(tpEnv),
+    search_hotels: makeHotelSearchTool(tpEnv),
+    get_package_link: makePackageLinkTool(tpEnv),
     ...(flowEnabled
       ? {
           open_preferences_form: makePreferencesFlowTool({

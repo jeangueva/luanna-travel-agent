@@ -274,3 +274,164 @@ export function makeFlightSearchTool(env: TravelpayoutsEnv) {
     },
   });
 }
+
+interface HotellookCacheRow {
+  hotelId?: number;
+  hotelName?: string;
+  location?: { name?: string; country?: string };
+  priceFrom?: number;
+  priceAvg?: number;
+  stars?: number;
+}
+
+function buildHotelSearchUrl(args: {
+  city: string;
+  checkin: string;
+  checkout: string;
+  adults: number;
+  marker: string;
+}): string {
+  const u = new URL("https://search.hotellook.com/");
+  u.searchParams.set("destination", args.city);
+  u.searchParams.set("checkIn", args.checkin);
+  u.searchParams.set("checkOut", args.checkout);
+  u.searchParams.set("adults", String(args.adults));
+  u.searchParams.set("currency", "usd");
+  u.searchParams.set("marker", args.marker);
+  return u.toString();
+}
+
+export function makeHotelSearchTool(env: TravelpayoutsEnv) {
+  return tool({
+    description:
+      "Busca hoteles baratos en una ciudad. Devuelve hasta 5 opciones con precio promedio (USD) más un link de búsqueda con marker afiliado para que el usuario compare en Hotellook. " +
+      "El nombre de la ciudad debe ir en inglés o español ('Madrid', 'Cancun', 'Buenos Aires'). " +
+      "Las fechas son YYYY-MM-DD. Si el usuario no las da, pídele check-in y check-out exactos antes de llamar.",
+    inputSchema: z.object({
+      city: z.string().min(2).describe("Ciudad (ej: 'Madrid', 'Cancun')"),
+      checkin: z.string().describe("Check-in YYYY-MM-DD"),
+      checkout: z.string().describe("Check-out YYYY-MM-DD"),
+      adults: z
+        .number()
+        .int()
+        .min(1)
+        .max(8)
+        .default(2)
+        .describe("Número de huéspedes adultos"),
+    }),
+    execute: async ({ city, checkin, checkout, adults }) => {
+      const url = new URL("https://engine.hotellook.com/api/v2/cache.json");
+      url.searchParams.set("location", city);
+      url.searchParams.set("checkIn", checkin);
+      url.searchParams.set("checkOut", checkout);
+      url.searchParams.set("adults", String(adults));
+      url.searchParams.set("currency", "usd");
+      url.searchParams.set("limit", "10");
+      url.searchParams.set("token", env.TRAVELPAYOUTS_TOKEN);
+
+      const search_url = buildHotelSearchUrl({
+        city,
+        checkin,
+        checkout,
+        adults,
+        marker: env.TRAVELPAYOUTS_MARKER,
+      });
+
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        return { error: `hotellook ${res.status}`, hotels: [], search_url };
+      }
+      const json = (await res.json().catch(() => null)) as
+        | HotellookCacheRow[]
+        | null;
+      if (!Array.isArray(json)) {
+        return { hotels: [], search_url };
+      }
+      const hotels = json
+        .filter((h) => typeof h.priceFrom === "number" && h.priceFrom > 0)
+        .sort((a, b) => (a.priceFrom ?? 0) - (b.priceFrom ?? 0))
+        .slice(0, 5)
+        .map((h) => ({
+          name: h.hotelName ?? null,
+          stars: h.stars ?? null,
+          price_from_usd: h.priceFrom ?? null,
+          price_avg_usd: h.priceAvg ?? null,
+          location: h.location?.name ?? null,
+          country: h.location?.country ?? null,
+        }));
+      return { hotels, search_url };
+    },
+  });
+}
+
+export function makePackageLinkTool(env: TravelpayoutsEnv) {
+  return tool({
+    description:
+      "Devuelve links afiliados (con marker) para armar un paquete vuelo+hotel: uno para buscar el vuelo en Aviasales y otro para buscar hotel en Hotellook con las mismas fechas. " +
+      "No devuelve un precio total — solo URLs reales para que el usuario compare. " +
+      "Úsala cuando el usuario pida 'paquete', 'vuelo + hotel', 'todo incluido' o similar.",
+    inputSchema: z.object({
+      origin_iata: z
+        .string()
+        .length(3)
+        .describe("IATA origen, 3 letras (ej: LIM)"),
+      destination_iata: z
+        .string()
+        .length(3)
+        .describe("IATA destino, 3 letras (ej: CUN)"),
+      destination_city: z
+        .string()
+        .min(2)
+        .describe("Ciudad del destino para buscar hotel (ej: 'Cancun')"),
+      checkin: z
+        .string()
+        .describe("Fecha de salida / check-in YYYY-MM-DD"),
+      checkout: z
+        .string()
+        .describe("Fecha de regreso / check-out YYYY-MM-DD"),
+      adults: z
+        .number()
+        .int()
+        .min(1)
+        .max(8)
+        .default(2)
+        .describe("Número de viajeros adultos"),
+    }),
+    execute: async ({
+      origin_iata,
+      destination_iata,
+      destination_city,
+      checkin,
+      checkout,
+      adults,
+    }) => {
+      const toDDMM = (date: string): string | null => {
+        const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        return m ? `${m[3]}${m[2]}` : null;
+      };
+      const outDDMM = toDDMM(checkin);
+      const backDDMM = toDDMM(checkout);
+      const flightPath =
+        outDDMM && backDDMM
+          ? `${origin_iata.toUpperCase()}${outDDMM}${destination_iata.toUpperCase()}${backDDMM}${adults}`
+          : null;
+      const flight_url = flightPath
+        ? `https://www.aviasales.com/search/${flightPath}?marker=${env.TRAVELPAYOUTS_MARKER}`
+        : null;
+
+      const hotel_url = buildHotelSearchUrl({
+        city: destination_city,
+        checkin,
+        checkout,
+        adults,
+        marker: env.TRAVELPAYOUTS_MARKER,
+      });
+
+      return {
+        flight_search_url: flight_url,
+        hotel_search_url: hotel_url,
+        note: "Travelpayouts no devuelve precio total combinado; el usuario compara en cada link.",
+      };
+    },
+  });
+}
