@@ -552,19 +552,47 @@ async function handleApiDataDeletion(
 
 async function handleChat(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => null)) as
-    | { message?: string }
+    | { message?: string; session_id?: string }
     | null;
   const message = body?.message;
   if (typeof message !== "string" || message.trim() === "") {
     return Response.json({ error: "missing 'message'" }, { status: 400 });
   }
+  const rawSession = typeof body?.session_id === "string" ? body.session_id : "";
+  const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (!session_id) {
+    return Response.json({ error: "missing 'session_id'" }, { status: 400 });
+  }
+  const phone = `web:${session_id}`;
+  const sql = getDb(env.DATABASE_URL);
+  const user = await getOrCreateUser(sql, phone);
+  const history = await getRecentMessages(sql, user.id);
+  await appendMessage(sql, user.id, "user", message);
   const reply = await generateReply(env, message, {
-    userId: 0,
+    userId: user.id,
     baseUrl: new URL(request.url).origin,
-    history: [],
-    sql: getDb(env.DATABASE_URL),
+    history,
+    sql,
   });
+  if (reply.trim()) {
+    await appendMessage(sql, user.id, "assistant", reply);
+  }
   return Response.json({ reply });
+}
+
+async function handleChatReset(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as
+    | { session_id?: string }
+    | null;
+  const rawSession = typeof body?.session_id === "string" ? body.session_id : "";
+  const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (!session_id) {
+    return Response.json({ error: "missing 'session_id'" }, { status: 400 });
+  }
+  const phone = `web:${session_id}`;
+  const sql = getDb(env.DATABASE_URL);
+  await sql`DELETE FROM users WHERE phone = ${phone}`;
+  return Response.json({ ok: true });
 }
 
 export default {
@@ -598,8 +626,11 @@ export default {
     ) {
       return handleApiWatchlist(request, env);
     }
-    if (request.method === "POST" && url.pathname === "/chat") {
+    if (request.method === "POST" && url.pathname === "/api/chat") {
       return handleChat(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/api/chat/reset") {
+      return handleChatReset(request, env);
     }
     if (
       request.method === "POST" &&

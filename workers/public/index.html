@@ -603,6 +603,85 @@
       text-align: center;
     }
 
+    /* ─── Scroll-triggered animations ─── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s cubic-bezier(0.2, 0.8, 0.3, 1),
+                  transform 0.7s cubic-bezier(0.2, 0.8, 0.3, 1);
+      will-change: opacity, transform;
+    }
+    .reveal.in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .reveal-stagger > * {
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.6s cubic-bezier(0.2, 0.8, 0.3, 1),
+                  transform 0.6s cubic-bezier(0.2, 0.8, 0.3, 1);
+    }
+    .reveal-stagger.in > *:nth-child(1) { transition-delay: 0.05s; opacity: 1; transform: translateY(0); }
+    .reveal-stagger.in > *:nth-child(2) { transition-delay: 0.12s; opacity: 1; transform: translateY(0); }
+    .reveal-stagger.in > *:nth-child(3) { transition-delay: 0.19s; opacity: 1; transform: translateY(0); }
+    .reveal-stagger.in > *:nth-child(4) { transition-delay: 0.26s; opacity: 1; transform: translateY(0); }
+    .reveal-stagger.in > *:nth-child(5) { transition-delay: 0.33s; opacity: 1; transform: translateY(0); }
+    .reveal-stagger.in > *:nth-child(6) { transition-delay: 0.40s; opacity: 1; transform: translateY(0); }
+
+    /* Hero entrance (immediate, no scroll trigger) */
+    .hero-grid > * {
+      opacity: 0;
+      transform: translateY(20px);
+      animation: heroIn 0.8s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+    }
+    .hero-grid > *:nth-child(1) { animation-delay: 0.1s; }
+    .hero-grid > *:nth-child(2) { animation-delay: 0.25s; }
+    @keyframes heroIn {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Float badge gentle bob */
+    .float-badge {
+      animation: floatBob 3.5s ease-in-out infinite;
+    }
+    @keyframes floatBob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+
+    /* Hero badge dot pulse */
+    .hero-badge-dot { animation: dotPulse 1.8s ease-in-out infinite; }
+    @keyframes dotPulse {
+      0%, 100% { box-shadow: 0 0 0 4px rgba(37, 211, 102, 0.18); }
+      50% { box-shadow: 0 0 0 8px rgba(37, 211, 102, 0.05); }
+    }
+
+    /* Section eyebrow subtle accent */
+    .t-eyebrow {
+      position: relative;
+      padding-left: 28px;
+    }
+    .t-eyebrow::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 50%;
+      width: 18px;
+      height: 1.5px;
+      background: var(--rausch);
+      transform: translateY(-50%);
+    }
+
+    /* Respect reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .reveal, .reveal-stagger > * { opacity: 1; transform: none; }
+    }
+
     /* ─── Responsive ─── */
     @media (max-width: 950px) {
       .hero { padding: 56px 0 72px; }
@@ -638,6 +717,7 @@
           <a href="#como-funciona">Cómo funciona</a>
           <a href="#features">Características</a>
           <a href="#precios">Precio</a>
+          <a href="/chat">Probar en web</a>
         </div>
         <a href="https://wa.me/15559144311" class="btn btn-primary nav-cta" target="_blank" rel="noopener">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -715,12 +795,12 @@
   <!-- ───── How it works ───── -->
   <section class="section section-surface" id="como-funciona">
     <div class="container">
-      <div class="section-head">
+      <div class="section-head reveal">
         <span class="t-eyebrow">Cómo funciona</span>
         <h2 class="t-section">Tan fácil como mandar un mensaje.</h2>
         <p>Sin apps que descargar. Sin cuentas que crear. Solo escríbele a Luanna en WhatsApp.</p>
       </div>
-      <div class="steps">
+      <div class="steps reveal-stagger reveal">
         <div class="step">
           <div class="step-number">Paso 01</div>
           <div class="step-icon">💬</div>
@@ -746,11 +826,11 @@
   <!-- ───── Features ───── -->
   <section class="section" id="features">
     <div class="container">
-      <div class="section-head">
+      <div class="section-head reveal">
         <span class="t-eyebrow">Características</span>
         <h2 class="t-section">Todo lo que necesitas para viajar inteligente.</h2>
       </div>
-      <div class="features">
+      <div class="features reveal-stagger reveal">
         <div class="feature">
           <div class="feature-icon">✈️</div>
           <h3>Vuelos baratos</h3>
@@ -788,11 +868,11 @@
   <!-- ───── Testimonials ───── -->
   <section class="section section-surface">
     <div class="container">
-      <div class="section-head">
+      <div class="section-head reveal">
         <span class="t-eyebrow">Testimonios</span>
         <h2 class="t-section">Viajeros que ya ahorraron con Luanna.</h2>
       </div>
-      <div class="testimonials">
+      <div class="testimonials reveal-stagger reveal">
         <div class="testimonial">
           <div class="stars">★★★★★</div>
           <p class="testimonial-quote">"Le pedí un viaje a Madrid y en 2 minutos me mandó 4 opciones. Reservé la de $480 ida y vuelta. Increíble."</p>
@@ -833,12 +913,12 @@
   <!-- ───── Pricing ───── -->
   <section class="section" id="precios">
     <div class="container">
-      <div class="section-head">
+      <div class="section-head reveal">
         <span class="t-eyebrow">Precio</span>
         <h2 class="t-section">Simple. Transparente. Sin letra chica.</h2>
         <p>Luanna es gratis. Ganamos una pequeña comisión cuando reservas — sale del proveedor, no de tu bolsillo.</p>
       </div>
-      <div class="price-box">
+      <div class="price-box reveal">
         <span class="price-tag">Gratis para siempre</span>
         <div class="price-amount"><sup>$</sup>0<span class="per"> / siempre</span></div>
         <p class="t-body" style="margin-bottom: 8px;">Tu agente de viajes personal, sin suscripción.</p>
@@ -879,6 +959,7 @@
           <a href="#como-funciona">Cómo funciona</a>
           <a href="#features">Características</a>
           <a href="#precios">Precio</a>
+          <a href="/chat">Chat web</a>
           <a href="/privacy">Privacidad</a>
           <a href="/terms">Términos</a>
           <a href="/data-deletion">Eliminación de datos</a>
@@ -889,6 +970,24 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    (function () {
+      if (!('IntersectionObserver' in window)) {
+        document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
+        return;
+      }
+      const io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+    })();
+  </script>
 
 </body>
 </html>
