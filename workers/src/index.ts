@@ -51,6 +51,7 @@ export interface Env {
   WEBVIEW_SIGNING_KEY: string;
   LUANNA_MODEL?: string;
   ADMIN_API_KEY?: string;
+  ASSETS: Fetcher;
 }
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
@@ -604,6 +605,12 @@ export default {
   ): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.hostname === "www.luanna.app") {
+      const redirect = new URL(url.toString());
+      redirect.hostname = "luanna.app";
+      return Response.redirect(redirect.toString(), 301);
+    }
+
     if (request.method === "GET" && url.pathname === "/health") {
       return Response.json({ ok: true });
     }
@@ -651,7 +658,7 @@ export default {
     ) {
       return handleAdminProcessDeletion(request, env);
     }
-    return new Response("Not found", { status: 404 });
+    return env.ASSETS.fetch(request);
   },
   async scheduled(_event, env, ctx): Promise<void> {
     ctx.waitUntil(runWatchlistCron(env));

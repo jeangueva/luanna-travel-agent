@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff5f7"/>
+      <stop offset="100%" stop-color="#ffe4ea"/>
+    </linearGradient>
+    <radialGradient id="blob1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff385c" stop-opacity="0.55"/>
+      <stop offset="70%" stop-color="#ff385c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blob2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffaba3" stop-opacity="0.5"/>
+      <stop offset="70%" stop-color="#ffaba3" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="logoG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff385c"/>
+      <stop offset="100%" stop-color="#e00b41"/>
+    </linearGradient>
+    <linearGradient id="flightG" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ff385c" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#ff385c" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#ff385c" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="120" cy="100" r="320" fill="url(#blob1)"/>
+  <circle cx="1080" cy="520" r="300" fill="url(#blob2)"/>
+
+  <!-- Flight path -->
+  <path d="M 100 480 Q 600 80 1100 380"
+        stroke="url(#flightG)" stroke-width="3" stroke-dasharray="8 12"
+        fill="none"/>
+  <circle cx="100" cy="480" r="8" fill="#ff385c"/>
+  <circle cx="1100" cy="380" r="8" fill="#ff385c"/>
+
+  <!-- Logo bubble -->
+  <rect x="80" y="80" width="80" height="80" rx="18" fill="url(#logoG)"/>
+  <text x="120" y="138" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif"
+        font-size="48" font-weight="800" fill="#fff" letter-spacing="-1">L</text>
+
+  <!-- Wordmark -->
+  <text x="180" y="140"
+        font-family="-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif"
+        font-size="44" font-weight="700" fill="#222">luanna<tspan fill="#ff385c">.</tspan></text>
+
+  <!-- Headline -->
+  <text x="80" y="320"
+        font-family="-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif"
+        font-size="92" font-weight="700" fill="#222" letter-spacing="-2">Viaja más.</text>
+  <text x="80" y="420"
+        font-family="-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif"
+        font-size="92" font-weight="700" fill="#ff385c" letter-spacing="-2">Paga menos.</text>
+
+  <!-- Subtitle -->
+  <text x="80" y="490"
+        font-family="-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif"
+        font-size="28" font-weight="500" fill="#6a6a6a">Tu agente de viajes en WhatsApp</text>
+
+  <!-- WhatsApp pill -->
+  <rect x="80" y="540" width="320" height="56" rx="28" fill="#222"/>
+  <circle cx="116" cy="568" r="8" fill="#25d366"/>
+  <text x="140" y="576"
+        font-family="-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif"
+        font-size="20" font-weight="600" fill="#fff">luanna.app</text>
+</svg>
