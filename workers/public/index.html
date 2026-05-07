@@ -188,16 +188,99 @@
       padding: 80px 0 96px;
       position: relative;
       overflow: hidden;
+      isolation: isolate;
     }
-    .hero::before {
-      content: "";
+    .hero .container { position: relative; z-index: 1; }
+    .hero-bg {
       position: absolute;
-      top: -200px;
-      right: -200px;
-      width: 600px;
-      height: 600px;
-      background: radial-gradient(circle, rgba(255, 56, 92, 0.06) 0%, transparent 70%);
+      inset: 0;
       pointer-events: none;
+      z-index: 0;
+    }
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(64px);
+      opacity: 0.55;
+      will-change: transform;
+    }
+    .blob-a {
+      top: -160px;
+      right: -120px;
+      width: 520px;
+      height: 520px;
+      background: radial-gradient(circle, #ff385c 0%, rgba(255, 56, 92, 0) 70%);
+      animation: blobDrift 22s ease-in-out infinite;
+    }
+    .blob-b {
+      bottom: -120px;
+      left: -100px;
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, #ffaba3 0%, rgba(255, 171, 163, 0) 70%);
+      animation: blobDrift 28s ease-in-out -7s infinite reverse;
+    }
+    .blob-c {
+      top: 40%;
+      left: 38%;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, #ffd9e0 0%, rgba(255, 217, 224, 0) 70%);
+      animation: blobDrift 18s ease-in-out -3s infinite;
+    }
+    @keyframes blobDrift {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(40px, -28px) scale(1.06); }
+      66% { transform: translate(-30px, 28px) scale(0.94); }
+    }
+    .hero-bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        radial-gradient(rgba(255, 56, 92, 0.08) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: radial-gradient(ellipse 60% 60% at 50% 40%, #000 30%, transparent 75%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 40%, #000 30%, transparent 75%);
+      opacity: 0.45;
+    }
+    .hero-bg-flight {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+    }
+    .hero-bg-flight .path-line {
+      fill: none;
+      stroke: url(#flightGrad);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 10;
+      animation: dashSlide 24s linear infinite;
+    }
+    .hero-bg-flight .pin {
+      animation: pinPulse 2.4s ease-in-out infinite;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    .hero-bg-flight .pin-2 { animation-delay: 1.2s; }
+    .hero-bg-flight .plane {
+      animation: planeFly 16s linear infinite;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+    @keyframes dashSlide {
+      0% { stroke-dashoffset: 0; }
+      100% { stroke-dashoffset: -240; }
+    }
+    @keyframes pinPulse {
+      0%, 100% { transform: scale(1); opacity: 0.7; }
+      50% { transform: scale(1.4); opacity: 1; }
+    }
+    @keyframes planeFly {
+      0% { offset-distance: 0%; opacity: 0; }
+      8% { opacity: 1; }
+      92% { opacity: 1; }
+      100% { offset-distance: 100%; opacity: 0; }
     }
     .hero-grid {
       display: grid;
@@ -762,6 +845,28 @@
 
   <!-- ───── Hero ───── -->
   <section class="hero">
+    <div class="hero-bg" aria-hidden="true">
+      <div class="blob blob-a"></div>
+      <div class="blob blob-b"></div>
+      <div class="blob blob-c"></div>
+      <div class="hero-bg-grid"></div>
+      <svg class="hero-bg-flight" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <linearGradient id="flightGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#ff385c" stop-opacity="0"/>
+            <stop offset="50%" stop-color="#ff385c" stop-opacity="0.55"/>
+            <stop offset="100%" stop-color="#ff385c" stop-opacity="0"/>
+          </linearGradient>
+          <path id="flightPath" d="M 80 440 Q 600 80 1120 360"/>
+        </defs>
+        <use href="#flightPath" class="path-line"/>
+        <circle class="pin pin-1" cx="80" cy="440" r="5" fill="#ff385c"/>
+        <circle class="pin pin-2" cx="1120" cy="360" r="5" fill="#ff385c"/>
+        <g class="plane" style="offset-path: path('M 80 440 Q 600 80 1120 360'); offset-rotate: auto;">
+          <path d="M -10 0 L 12 -4 L 12 4 Z M -2 -2 L -2 2 L -10 4 L -10 -4 Z" fill="#ff385c"/>
+        </g>
+      </svg>
+    </div>
     <div class="container">
       <div class="hero-grid">
         <div>
