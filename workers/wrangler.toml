@@ -17,7 +17,10 @@ binding = "ASSETS"
 run_worker_first = true
 
 [triggers]
-crons = ["0 */6 * * *"]
+crons = [
+  "0 */6 * * *",  # watchlist checks every 6h
+  "0 14 * * *"    # daily offer push at 9am Lima (14:00 UTC)
+]
 
 # Secrets (set via `wrangler secret put <NAME>`):
 #   ANTHROPIC_API_KEY      — key de console.anthropic.com (no el Claude Pro de claude.ai)

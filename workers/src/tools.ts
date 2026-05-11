@@ -98,6 +98,26 @@ export interface TravelpayoutsEnv {
   TRAVELPAYOUTS_MARKER: string;
 }
 
+export function makeSaveUserNameTool(args: { sql: Sql; userId: number }) {
+  return tool({
+    description:
+      "Guarda el nombre del usuario cuando lo comparte. Llámala apenas el usuario diga 'soy X', 'me llamo X', o responda 'X' cuando le preguntes el nombre. Si solo dice 'hola' u otra cosa, NO la llames.",
+    inputSchema: z.object({
+      name: z
+        .string()
+        .min(1)
+        .max(80)
+        .describe("Nombre o apodo del usuario, máx 80 chars. Solo el primer nombre o apodo, no oraciones."),
+    }),
+    execute: async ({ name }) => {
+      const cleaned = name.trim().replace(/[\r\n\t]/g, " ").slice(0, 80);
+      if (!cleaned) return { saved: false };
+      await args.sql`UPDATE users SET name = ${cleaned} WHERE id = ${args.userId}`;
+      return { saved: true, name: cleaned };
+    },
+  });
+}
+
 export function makeAddWatchlistTool(args: { sql: Sql; userId: number }) {
   return tool({
     description:

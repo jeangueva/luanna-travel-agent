@@ -1,8 +1,11 @@
 import {
   getDb,
   getDueWatchlist,
+  getOfferEligibleUsers,
+  markUserOfferSent,
   markWatchlistChecked,
   type DueWatchlistRow,
+  type OfferEligibleUser,
 } from "./db";
 import { sendKapsoText } from "./kapso";
 
@@ -11,6 +14,97 @@ export interface CronEnv {
   KAPSO_API_KEY: string;
   TRAVELPAYOUTS_TOKEN: string;
   TRAVELPAYOUTS_MARKER: string;
+}
+
+// Common destination → IATA map for daily-offer flight search.
+// Keys are lowercased + diacritics-stripped. Only cities reachable as IATA
+// origin/destination are listed. Extend as more cities show up in user prefs.
+const CITY_TO_IATA: Record<string, { iata: string; pretty: string }> = {
+  "lima": { iata: "LIM", pretty: "Lima" },
+  "cusco": { iata: "CUZ", pretty: "Cusco" },
+  "arequipa": { iata: "AQP", pretty: "Arequipa" },
+  "madrid": { iata: "MAD", pretty: "Madrid" },
+  "barcelona": { iata: "BCN", pretty: "Barcelona" },
+  "paris": { iata: "CDG", pretty: "París" },
+  "londres": { iata: "LHR", pretty: "Londres" },
+  "london": { iata: "LHR", pretty: "Londres" },
+  "roma": { iata: "FCO", pretty: "Roma" },
+  "rome": { iata: "FCO", pretty: "Roma" },
+  "milan": { iata: "MXP", pretty: "Milán" },
+  "milán": { iata: "MXP", pretty: "Milán" },
+  "amsterdam": { iata: "AMS", pretty: "Amsterdam" },
+  "berlin": { iata: "BER", pretty: "Berlín" },
+  "berlín": { iata: "BER", pretty: "Berlín" },
+  "lisboa": { iata: "LIS", pretty: "Lisboa" },
+  "lisbon": { iata: "LIS", pretty: "Lisboa" },
+  "buenos aires": { iata: "EZE", pretty: "Buenos Aires" },
+  "santiago": { iata: "SCL", pretty: "Santiago" },
+  "bogota": { iata: "BOG", pretty: "Bogotá" },
+  "bogotá": { iata: "BOG", pretty: "Bogotá" },
+  "medellin": { iata: "MDE", pretty: "Medellín" },
+  "medellín": { iata: "MDE", pretty: "Medellín" },
+  "cartagena": { iata: "CTG", pretty: "Cartagena" },
+  "cancun": { iata: "CUN", pretty: "Cancún" },
+  "cancún": { iata: "CUN", pretty: "Cancún" },
+  "ciudad de mexico": { iata: "MEX", pretty: "CDMX" },
+  "cdmx": { iata: "MEX", pretty: "CDMX" },
+  "mexico": { iata: "MEX", pretty: "CDMX" },
+  "méxico": { iata: "MEX", pretty: "CDMX" },
+  "guadalajara": { iata: "GDL", pretty: "Guadalajara" },
+  "miami": { iata: "MIA", pretty: "Miami" },
+  "nueva york": { iata: "JFK", pretty: "Nueva York" },
+  "new york": { iata: "JFK", pretty: "Nueva York" },
+  "los angeles": { iata: "LAX", pretty: "Los Ángeles" },
+  "los ángeles": { iata: "LAX", pretty: "Los Ángeles" },
+  "san francisco": { iata: "SFO", pretty: "San Francisco" },
+  "orlando": { iata: "MCO", pretty: "Orlando" },
+  "rio de janeiro": { iata: "GIG", pretty: "Rio" },
+  "rio": { iata: "GIG", pretty: "Rio" },
+  "sao paulo": { iata: "GRU", pretty: "São Paulo" },
+  "são paulo": { iata: "GRU", pretty: "São Paulo" },
+  "quito": { iata: "UIO", pretty: "Quito" },
+  "panama": { iata: "PTY", pretty: "Panamá" },
+  "panamá": { iata: "PTY", pretty: "Panamá" },
+  "punta cana": { iata: "PUJ", pretty: "Punta Cana" },
+  "tokio": { iata: "HND", pretty: "Tokio" },
+  "tokyo": { iata: "HND", pretty: "Tokio" },
+};
+
+function normalizeCity(city: string): string {
+  return city
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+}
+
+function resolveOriginIata(origin: string): string | null {
+  // Allow "LIM" / "MAD" pass-through if 3 uppercase letters.
+  const trimmed = origin.trim();
+  if (/^[A-Z]{3}$/.test(trimmed)) return trimmed;
+  const norm = normalizeCity(origin);
+  // Match by normalized key — strip accents in CITY_TO_IATA keys too.
+  for (const [key, val] of Object.entries(CITY_TO_IATA)) {
+    if (normalizeCity(key) === norm) return val.iata;
+  }
+  return null;
+}
+
+interface ResolvedDestination {
+  iata: string;
+  pretty: string;
+  raw: string;
+}
+
+function resolveDestination(cities: string[]): ResolvedDestination | null {
+  for (const raw of cities) {
+    const norm = normalizeCity(raw);
+    const hit = CITY_TO_IATA[norm];
+    if (hit) {
+      return { iata: hit.iata, pretty: hit.pretty, raw };
+    }
+  }
+  return null;
 }
 
 interface CheapestFlight {
@@ -107,4 +201,66 @@ export async function runWatchlistCron(env: CronEnv): Promise<void> {
       console.error(`watchlist row ${row.id} failed`, err);
     }
   }
+}
+
+function formatOfferMessage(
+  user: OfferEligibleUser,
+  dest: ResolvedDestination,
+  flight: CheapestFlight,
+): string {
+  const name = user.name ? `, ${user.name}` : "";
+  const date = flight.departure_at.slice(0, 10);
+  const lines = [
+    `☀️ ¡Buenos días${name}! Oferta del día 🔥`,
+    `${user.origin}→${dest.iata} a ${dest.pretty} desde $${flight.price}`,
+    `${flight.airline} · sale ${date}`,
+  ];
+  if (flight.link) lines.push(flight.link);
+  lines.push("¿Te animas o te busco otra fecha? 😏");
+  return lines.join("\n");
+}
+
+async function processOfferUser(
+  env: CronEnv,
+  user: OfferEligibleUser,
+): Promise<"sent" | "skipped"> {
+  if (!user.phone_number_id || !user.origin) return "skipped";
+  const originIata = resolveOriginIata(user.origin);
+  if (!originIata) return "skipped";
+  const destination = resolveDestination(user.cities);
+  if (!destination) return "skipped";
+  if (originIata === destination.iata) return "skipped";
+
+  const flight = await findCheapest(env, originIata, destination.iata);
+  if (!flight) return "skipped";
+  if (user.budget_max && flight.price > user.budget_max) return "skipped";
+
+  await sendKapsoText({
+    apiKey: env.KAPSO_API_KEY,
+    phoneNumberId: user.phone_number_id,
+    to: user.phone,
+    body: formatOfferMessage(user, destination, flight),
+  });
+  const sql = getDb(env.DATABASE_URL);
+  await markUserOfferSent(sql, user.id);
+  return "sent";
+}
+
+export async function runDailyOffersCron(env: CronEnv): Promise<void> {
+  const sql = getDb(env.DATABASE_URL);
+  const eligible = await getOfferEligibleUsers(sql, 50);
+  console.log(`daily offers cron: ${eligible.length} eligible`);
+  let sent = 0;
+  let skipped = 0;
+  for (const user of eligible) {
+    try {
+      const result = await processOfferUser(env, user);
+      if (result === "sent") sent++;
+      else skipped++;
+    } catch (err) {
+      console.error(`offers cron user ${user.id} failed`, err);
+      skipped++;
+    }
+  }
+  console.log(`daily offers cron: sent=${sent} skipped=${skipped}`);
 }

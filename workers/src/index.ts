@@ -33,10 +33,11 @@ import {
   makePreferencesFlowTool,
   makePreferencesLinkTool,
   makeRemoveFavoritePlacesTool,
+  makeSaveUserNameTool,
 } from "./tools";
 import { createWebviewToken, verifyWebviewToken } from "./auth";
 import { renderPreferencesPage } from "./webview";
-import { runWatchlistCron } from "./cron";
+import { runDailyOffersCron, runWatchlistCron } from "./cron";
 
 export interface Env {
   ANTHROPIC_API_KEY: string;
@@ -63,6 +64,8 @@ interface ReplyContext {
   sql: ReturnType<typeof getDb>;
   to?: string;
   phoneNumberId?: string;
+  userName?: string | null;
+  isFirstContact?: boolean;
 }
 
 const TRAVELPAYOUTS_HOSTS = new Set([
@@ -90,6 +93,27 @@ function sanitizeReply(text: string, baseUrl: string): string {
 const PREFS_INTENT_RE =
   /\b(configura|configurar|preferencia|preferencias|gustos|perfil|prefer)\b/i;
 
+function buildFirstContactWelcome(prefsUrl: string | null): string {
+  const lines = [
+    "¡Hola! ✈️ Soy Luanna, tu agente de viajes en WhatsApp.",
+    "¿Cómo te llamas? 😊",
+    "",
+    "Te puedo ayudar con:",
+    "🔹 Vuelos baratos",
+    "🔹 Hoteles",
+    "🔹 Paquetes vuelo+hotel",
+    "🔹 Alertas cuando bajen precios",
+    "",
+  ];
+  if (prefsUrl) {
+    lines.push("Y si me cuentas tus gustos ahora, te recomiendo mejor 👇");
+    lines.push(prefsUrl);
+  } else {
+    lines.push("De paso, configura tus gustos con el botón de abajo para recomendarte mejor 👇");
+  }
+  return lines.join("\n");
+}
+
 async function generateReply(
   env: Env,
   userMessage: string,
@@ -100,6 +124,28 @@ async function generateReply(
     !!env.KAPSO_PREFS_FLOW_ID &&
     !!ctx.to &&
     !!ctx.phoneNumberId;
+
+  // First contact: deterministic welcome + preferences entry point. We don't
+  // trust the model to follow the exact welcome format every time, so build
+  // it ourselves before the conversation deepens.
+  if (ctx.isFirstContact && ctx.userId > 0) {
+    if (flowEnabled) {
+      await sendKapsoFlow({
+        apiKey: env.KAPSO_API_KEY,
+        phoneNumberId: ctx.phoneNumberId!,
+        to: ctx.to!,
+        flowId: env.KAPSO_PREFS_FLOW_ID!,
+        bodyText: "Configura tus preferencias para que te recomiende mejor 🎯",
+        cta: "Configurar",
+        screen: "PREFERENCES",
+        draft: env.KAPSO_PREFS_FLOW_DRAFT === "1",
+      });
+      return buildFirstContactWelcome(null);
+    }
+    const token = await createWebviewToken(ctx.userId, env.WEBVIEW_SIGNING_KEY);
+    const url = `${ctx.baseUrl}/webview/prefs?token=${encodeURIComponent(token)}`;
+    return buildFirstContactWelcome(url);
+  }
 
   if (PREFS_INTENT_RE.test(userMessage)) {
     if (flowEnabled) {
@@ -165,10 +211,18 @@ async function generateReply(
       sql: ctx.sql,
       userId: ctx.userId,
     }),
+    save_user_name: makeSaveUserNameTool({
+      sql: ctx.sql,
+      userId: ctx.userId,
+    }),
   };
   const { text } = await generateText({
     model,
-    system: buildLuannaSystemPrompt(new Date()),
+    system: buildLuannaSystemPrompt({
+      now: new Date(),
+      userName: ctx.userName ?? null,
+      isFirstContact: ctx.isFirstContact ?? false,
+    }),
     messages,
     tools,
     stopWhen: stepCountIs(5),
@@ -222,6 +276,7 @@ async function handleKapsoWebhook(
           data.phone_number_id,
         );
         const history = await getRecentMessages(sql, user.id);
+        const isFirstContact = history.length === 0;
         await appendMessage(sql, user.id, "user", userText);
         const reply = await generateReply(env, userText, {
           userId: user.id,
@@ -230,6 +285,8 @@ async function handleKapsoWebhook(
           sql,
           to: data.message.from,
           phoneNumberId: data.phone_number_id,
+          userName: user.name,
+          isFirstContact,
         });
         if (reply.trim()) {
           await appendMessage(sql, user.id, "assistant", reply);
@@ -569,12 +626,15 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   const sql = getDb(env.DATABASE_URL);
   const user = await getOrCreateUser(sql, phone);
   const history = await getRecentMessages(sql, user.id);
+  const isFirstContact = history.length === 0;
   await appendMessage(sql, user.id, "user", message);
   const reply = await generateReply(env, message, {
     userId: user.id,
     baseUrl: new URL(request.url).origin,
     history,
     sql,
+    userName: user.name,
+    isFirstContact,
   });
   if (reply.trim()) {
     await appendMessage(sql, user.id, "assistant", reply);
@@ -660,7 +720,12 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
-  async scheduled(_event, env, ctx): Promise<void> {
-    ctx.waitUntil(runWatchlistCron(env));
+  async scheduled(event, env, ctx): Promise<void> {
+    // Multiple cron expressions are dispatched here; route by event.cron.
+    if (event.cron === "0 14 * * *") {
+      ctx.waitUntil(runDailyOffersCron(env));
+    } else {
+      ctx.waitUntil(runWatchlistCron(env));
+    }
   },
 } satisfies ExportedHandler<Env>;

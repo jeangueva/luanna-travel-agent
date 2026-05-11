@@ -257,6 +257,49 @@ export async function markWatchlistChecked(
   }
 }
 
+export interface OfferEligibleUser {
+  id: number;
+  phone: string;
+  phone_number_id: string | null;
+  name: string | null;
+  origin: string | null;
+  countries: string[];
+  cities: string[];
+  budget_max: number | null;
+}
+
+export async function getOfferEligibleUsers(
+  sql: Sql,
+  limit = 50,
+): Promise<OfferEligibleUser[]> {
+  return (await sql`
+    SELECT
+      u.id, u.phone, u.phone_number_id, u.name,
+      p.origin, p.countries, p.cities, p.budget_max
+    FROM users u
+    JOIN preferences p ON p.user_id = u.id
+    WHERE u.phone_number_id IS NOT NULL
+      AND u.phone NOT LIKE 'web:%'
+      AND (u.last_offer_at IS NULL OR u.last_offer_at < NOW() - INTERVAL '20 hours')
+      AND p.origin IS NOT NULL
+      AND (
+        jsonb_array_length(COALESCE(p.cities, '[]'::jsonb)) > 0
+        OR jsonb_array_length(COALESCE(p.countries, '[]'::jsonb)) > 0
+      )
+      AND EXISTS (
+        SELECT 1 FROM messages m
+        WHERE m.user_id = u.id
+          AND m.created_at > NOW() - INTERVAL '23 hours'
+      )
+    ORDER BY u.last_offer_at NULLS FIRST
+    LIMIT ${limit}
+  `) as OfferEligibleUser[];
+}
+
+export async function markUserOfferSent(sql: Sql, userId: number): Promise<void> {
+  await sql`UPDATE users SET last_offer_at = NOW() WHERE id = ${userId}`;
+}
+
 export async function createDataDeletionRequest(
   sql: Sql,
   input: { phone: string; email?: string | null; reason?: string | null },
