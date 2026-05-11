@@ -1,4 +1,5 @@
 import {
+  cleanupRateLimitsAndWebhooks,
   getDb,
   getDueWatchlist,
   getOfferEligibleUsers,
@@ -244,6 +245,16 @@ async function processOfferUser(
   const sql = getDb(env.DATABASE_URL);
   await markUserOfferSent(sql, user.id);
   return "sent";
+}
+
+export async function runCleanupCron(env: CronEnv): Promise<void> {
+  const sql = getDb(env.DATABASE_URL);
+  try {
+    await cleanupRateLimitsAndWebhooks(sql);
+    console.log("cleanup cron: done");
+  } catch (err) {
+    console.error("cleanup cron failed", err);
+  }
 }
 
 export async function runDailyOffersCron(env: CronEnv): Promise<void> {

@@ -10,6 +10,7 @@ import {
 import {
   addWatchlistItem,
   appendMessage,
+  checkRateLimit,
   createDataDeletionRequest,
   deleteWatchlistItem,
   getDb,
@@ -19,10 +20,18 @@ import {
   getUserWatchlist,
   listPendingDeletionRequests,
   processDeletionRequest,
+  recordWebhookOrSkip,
   upsertPreferences,
   type Message,
   type Preferences,
+  type RateLimitResult,
 } from "./db";
+import {
+  CHAT_MESSAGE_MAX,
+  PREFS_ORIGIN_MAX,
+  clampBudget,
+  cleanStringArray,
+} from "./validators";
 import { buildLuannaSystemPrompt } from "./prompt";
 import {
   makeAddFavoritePlacesTool,
@@ -37,7 +46,7 @@ import {
 } from "./tools";
 import { createWebviewToken, verifyWebviewToken } from "./auth";
 import { renderPreferencesPage } from "./webview";
-import { runDailyOffersCron, runWatchlistCron } from "./cron";
+import { runCleanupCron, runDailyOffersCron, runWatchlistCron } from "./cron";
 
 export interface Env {
   ANTHROPIC_API_KEY: string;
@@ -264,6 +273,15 @@ async function handleKapsoWebhook(
   const userText = data.message.text?.body?.trim();
   if (!userText) return new Response("ignored", { status: 200 });
 
+  // Idempotency: each WhatsApp message has a globally-unique wamid. If Kapso
+  // retries this delivery (e.g. on a 5xx) we'd otherwise double-process.
+  const dedupeSql = getDb(env.DATABASE_URL);
+  const fresh = await recordWebhookOrSkip(dedupeSql, data.message.id);
+  if (!fresh) {
+    console.log("kapso webhook duplicate", data.message.id);
+    return new Response("duplicate", { status: 200 });
+  }
+
   const baseUrl = new URL(request.url).origin;
 
   ctx.waitUntil(
@@ -351,13 +369,13 @@ async function handleFlowSubmission(
     const prefs = {
       origin:
         typeof r.origin === "string" && r.origin.trim()
-          ? r.origin.trim()
+          ? r.origin.trim().slice(0, PREFS_ORIGIN_MAX)
           : null,
-      countries: parseCsvList(r.countries),
-      cities: parseCsvList(r.cities),
-      styles: parseCsvList(r.styles),
-      budget_min: parseNumber(r.budget_min),
-      budget_max: parseNumber(r.budget_max),
+      countries: cleanStringArray(parseCsvList(r.countries)),
+      cities: cleanStringArray(parseCsvList(r.cities)),
+      styles: cleanStringArray(parseCsvList(r.styles)),
+      budget_min: clampBudget(parseNumber(r.budget_min)),
+      budget_max: clampBudget(parseNumber(r.budget_max)),
       budget_currency: "USD",
     };
     await upsertPreferences(sql, user.id, prefs);
@@ -435,17 +453,27 @@ async function handleApiPrefs(request: Request, env: Env): Promise<Response> {
     if (!body)
       return Response.json({ error: "invalid json" }, { status: 400 });
     const cleaned: Preferences = {
-      origin: typeof body.origin === "string" && body.origin.trim() ? body.origin.trim() : null,
-      countries: Array.isArray(body.countries) ? body.countries.filter((x) => typeof x === "string") : [],
-      cities: Array.isArray(body.cities) ? body.cities.filter((x) => typeof x === "string") : [],
-      styles: Array.isArray(body.styles) ? body.styles.filter((x) => typeof x === "string") : [],
-      budget_min: typeof body.budget_min === "number" && body.budget_min >= 0 ? body.budget_min : null,
-      budget_max: typeof body.budget_max === "number" && body.budget_max >= 0 ? body.budget_max : null,
+      origin:
+        typeof body.origin === "string" && body.origin.trim()
+          ? body.origin.trim().slice(0, PREFS_ORIGIN_MAX)
+          : null,
+      countries: cleanStringArray(body.countries),
+      cities: cleanStringArray(body.cities),
+      styles: cleanStringArray(body.styles),
+      budget_min: clampBudget(body.budget_min),
+      budget_max: clampBudget(body.budget_max),
       budget_currency:
         typeof body.budget_currency === "string" && body.budget_currency.trim()
           ? body.budget_currency.trim().toUpperCase().slice(0, 3)
           : "USD",
     };
+    if (
+      cleaned.budget_min != null &&
+      cleaned.budget_max != null &&
+      cleaned.budget_min > cleaned.budget_max
+    ) {
+      return Response.json({ error: "budget_min > budget_max" }, { status: 400 });
+    }
     await upsertPreferences(sql, userId, cleaned);
     return Response.json({ ok: true });
   }
@@ -520,6 +548,20 @@ async function handleApiWatchlist(
   }
 
   return new Response("method not allowed", { status: 405 });
+}
+
+function getClientIp(request: Request): string {
+  return request.headers.get("cf-connecting-ip") ?? "unknown";
+}
+
+function rateLimitResponse(r: RateLimitResult, msg: string): Response {
+  return new Response(JSON.stringify({ error: msg }), {
+    status: 429,
+    headers: {
+      "Content-Type": "application/json",
+      "Retry-After": String(r.retry_after_seconds),
+    },
+  });
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -605,6 +647,9 @@ async function handleApiDataDeletion(
       ? body.reason.trim().slice(0, 1000)
       : null;
   const sql = getDb(env.DATABASE_URL);
+  const ip = getClientIp(request);
+  const rl = await checkRateLimit(sql, `deletion:${ip}`, 5, 3600);
+  if (!rl.allowed) return rateLimitResponse(rl, "too many requests");
   const { id } = await createDataDeletionRequest(sql, { phone, email, reason });
   return Response.json({ ok: true, id });
 }
@@ -617,13 +662,19 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   if (typeof message !== "string" || message.trim() === "") {
     return Response.json({ error: "missing 'message'" }, { status: 400 });
   }
+  if (message.length > CHAT_MESSAGE_MAX) {
+    return Response.json({ error: "message too long" }, { status: 413 });
+  }
   const rawSession = typeof body?.session_id === "string" ? body.session_id : "";
   const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
   if (!session_id) {
     return Response.json({ error: "missing 'session_id'" }, { status: 400 });
   }
-  const phone = `web:${session_id}`;
   const sql = getDb(env.DATABASE_URL);
+  const ip = getClientIp(request);
+  const rl = await checkRateLimit(sql, `chat:${ip}`, 20, 60);
+  if (!rl.allowed) return rateLimitResponse(rl, "too many requests");
+  const phone = `web:${session_id}`;
   const user = await getOrCreateUser(sql, phone);
   const history = await getRecentMessages(sql, user.id);
   const isFirstContact = history.length === 0;
@@ -724,6 +775,8 @@ export default {
     // Multiple cron expressions are dispatched here; route by event.cron.
     if (event.cron === "0 14 * * *") {
       ctx.waitUntil(runDailyOffersCron(env));
+    } else if (event.cron === "0 3 * * *") {
+      ctx.waitUntil(runCleanupCron(env));
     } else {
       ctx.waitUntil(runWatchlistCron(env));
     }

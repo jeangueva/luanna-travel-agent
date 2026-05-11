@@ -19,7 +19,8 @@ run_worker_first = true
 [triggers]
 crons = [
   "0 */6 * * *",  # watchlist checks every 6h
-  "0 14 * * *"    # daily offer push at 9am Lima (14:00 UTC)
+  "0 14 * * *",   # daily offer push at 9am Lima (14:00 UTC)
+  "0 3 * * *"     # cleanup rate_limits + processed_webhooks at 3am UTC
 ]
 
 # Secrets (set via `wrangler secret put <NAME>`):

@@ -360,18 +360,88 @@ export async function processDeletionRequest(
       already_processed: true,
     };
   }
-  const delRows = (await sql`
-    DELETE FROM users WHERE phone = ${req.phone} RETURNING id
-  `) as { id: number }[];
-  await sql`
-    UPDATE data_deletion_requests
-    SET status = 'processed', processed_at = NOW()
-    WHERE id = ${requestId}
-  `;
+  const rows = (await sql`
+    WITH del AS (
+      DELETE FROM users
+      WHERE phone = (
+        SELECT phone FROM data_deletion_requests
+        WHERE id = ${requestId} AND status = 'pending'
+      )
+      RETURNING id
+    ),
+    upd AS (
+      UPDATE data_deletion_requests
+      SET status = 'processed', processed_at = NOW()
+      WHERE id = ${requestId} AND status = 'pending'
+      RETURNING id
+    )
+    SELECT
+      (SELECT COUNT(*) FROM del)::int AS deleted_count,
+      (SELECT COUNT(*) FROM upd)::int AS updated_count
+  `) as Array<{ deleted_count: number; updated_count: number }>;
   return {
     request_id: req.id,
     phone: req.phone,
-    user_deleted: delRows.length > 0,
-    already_processed: false,
+    user_deleted: rows[0].deleted_count > 0,
+    already_processed: rows[0].updated_count === 0,
   };
+}
+
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  retry_after_seconds: number;
+}
+
+export async function checkRateLimit(
+  sql: Sql,
+  bucket: string,
+  max: number,
+  windowSeconds: number,
+): Promise<RateLimitResult> {
+  const rows = (await sql`
+    INSERT INTO rate_limits (bucket, window_start, count)
+    VALUES (${bucket}, NOW(), 1)
+    ON CONFLICT (bucket) DO UPDATE
+      SET window_start = CASE
+            WHEN rate_limits.window_start < NOW() - (${windowSeconds} || ' seconds')::interval
+              THEN NOW()
+            ELSE rate_limits.window_start
+          END,
+          count = CASE
+            WHEN rate_limits.window_start < NOW() - (${windowSeconds} || ' seconds')::interval
+              THEN 1
+            ELSE rate_limits.count + 1
+          END
+    RETURNING count, window_start
+  `) as Array<{ count: number; window_start: string }>;
+  const count = rows[0]?.count ?? 0;
+  const windowStartMs = rows[0]
+    ? new Date(rows[0].window_start).getTime()
+    : Date.now();
+  const expiresAtMs = windowStartMs + windowSeconds * 1000;
+  const retryAfter = Math.max(1, Math.ceil((expiresAtMs - Date.now()) / 1000));
+  return {
+    allowed: count <= max,
+    remaining: Math.max(0, max - count),
+    retry_after_seconds: retryAfter,
+  };
+}
+
+export async function recordWebhookOrSkip(
+  sql: Sql,
+  webhookId: string,
+): Promise<boolean> {
+  const rows = (await sql`
+    INSERT INTO processed_webhooks (webhook_id)
+    VALUES (${webhookId})
+    ON CONFLICT DO NOTHING
+    RETURNING webhook_id
+  `) as Array<{ webhook_id: string }>;
+  return rows.length === 1;
+}
+
+export async function cleanupRateLimitsAndWebhooks(sql: Sql): Promise<void> {
+  await sql`DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 hour'`;
+  await sql`DELETE FROM processed_webhooks WHERE created_at < NOW() - INTERVAL '30 days'`;
 }
