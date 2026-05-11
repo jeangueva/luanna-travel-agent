@@ -444,4 +444,67 @@ export async function recordWebhookOrSkip(
 export async function cleanupRateLimitsAndWebhooks(sql: Sql): Promise<void> {
   await sql`DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 hour'`;
   await sql`DELETE FROM processed_webhooks WHERE created_at < NOW() - INTERVAL '30 days'`;
+  await sql`DELETE FROM worker_errors WHERE occurred_at < NOW() - INTERVAL '30 days'`;
+}
+
+export async function recordError(
+  sql: Sql,
+  context: string,
+  err: unknown,
+  meta?: Record<string, unknown>,
+): Promise<void> {
+  // Recording errors must NEVER throw — a logging failure would mask the
+  // original error and could put the worker into a crash loop.
+  try {
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === "string"
+          ? err
+          : JSON.stringify(err);
+    const stack = err instanceof Error ? (err.stack ?? null) : null;
+    const metaJson = meta ? JSON.stringify(meta) : null;
+    await sql`
+      INSERT INTO worker_errors (context, message, stack, meta)
+      VALUES (
+        ${context.slice(0, 100)},
+        ${String(message).slice(0, 4000)},
+        ${stack ? stack.slice(0, 8000) : null},
+        ${metaJson}::jsonb
+      )
+    `;
+  } catch (logErr) {
+    console.error("recordError failed", logErr);
+  }
+}
+
+export interface WorkerErrorRow {
+  id: number;
+  occurred_at: string;
+  context: string;
+  message: string;
+  stack: string | null;
+  meta: Record<string, unknown> | null;
+}
+
+export async function listRecentErrors(
+  sql: Sql,
+  limit: number,
+  contextFilter: string | null,
+): Promise<WorkerErrorRow[]> {
+  if (contextFilter) {
+    return (await sql`
+      SELECT id, occurred_at, context, message, stack, meta
+      FROM worker_errors
+      WHERE context = ${contextFilter}
+      ORDER BY occurred_at DESC
+      LIMIT ${limit}
+    `) as WorkerErrorRow[];
+  }
+  return (await sql`
+    SELECT id, occurred_at, context, message, stack, meta
+    FROM worker_errors
+    ORDER BY occurred_at DESC
+    LIMIT ${limit}
+  `) as WorkerErrorRow[];
 }

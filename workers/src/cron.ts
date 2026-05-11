@@ -5,6 +5,7 @@ import {
   getOfferEligibleUsers,
   markUserOfferSent,
   markWatchlistChecked,
+  recordError,
   type DueWatchlistRow,
   type OfferEligibleUser,
 } from "./db";
@@ -200,6 +201,10 @@ export async function runWatchlistCron(env: CronEnv): Promise<void> {
       await processWatchlistRow(env, row);
     } catch (err) {
       console.error(`watchlist row ${row.id} failed`, err);
+      await recordError(sql, "cron:watchlist", err, {
+        watchlist_id: row.id,
+        user_id: row.user_id,
+      });
     }
   }
 }
@@ -254,6 +259,7 @@ export async function runCleanupCron(env: CronEnv): Promise<void> {
     console.log("cleanup cron: done");
   } catch (err) {
     console.error("cleanup cron failed", err);
+    await recordError(sql, "cron:cleanup", err);
   }
 }
 
@@ -271,6 +277,7 @@ export async function runDailyOffersCron(env: CronEnv): Promise<void> {
     } catch (err) {
       console.error(`offers cron user ${user.id} failed`, err);
       skipped++;
+      await recordError(sql, "cron:offers", err, { user_id: user.id });
     }
   }
   console.log(`daily offers cron: sent=${sent} skipped=${skipped}`);

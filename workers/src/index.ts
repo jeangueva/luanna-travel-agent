@@ -19,7 +19,9 @@ import {
   getRecentMessages,
   getUserWatchlist,
   listPendingDeletionRequests,
+  listRecentErrors,
   processDeletionRequest,
+  recordError,
   recordWebhookOrSkip,
   upsertPreferences,
   type Message,
@@ -317,6 +319,11 @@ async function handleKapsoWebhook(
         }
       } catch (err) {
         console.error("kapso handler error", err);
+        await recordError(getDb(env.DATABASE_URL), "webhook:kapso", err, {
+          from: data.message.from,
+          phone_number_id: data.phone_number_id,
+          message_id: data.message.id,
+        });
       }
     })(),
   );
@@ -390,6 +397,10 @@ async function handleFlowSubmission(
     });
   } catch (err) {
     console.error("flow submission error", err);
+    await recordError(getDb(env.DATABASE_URL), "webhook:flow", err, {
+      from: submission.from,
+      phone_number_id: submission.phoneNumberId,
+    });
   }
 }
 
@@ -603,6 +614,25 @@ async function handleAdminListPending(
   });
 }
 
+async function handleAdminErrorsRecent(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!checkAdminAuth(request, env)) {
+    return new Response("unauthorized", { status: 401 });
+  }
+  const url = new URL(request.url);
+  const limitParam = url.searchParams.get("limit") ?? "50";
+  const parsedLimit = parseInt(limitParam, 10);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.min(200, parsedLimit))
+    : 50;
+  const context = url.searchParams.get("context");
+  const sql = getDb(env.DATABASE_URL);
+  const errors = await listRecentErrors(sql, limit, context);
+  return Response.json({ limit, context, count: errors.length, errors });
+}
+
 async function handleAdminProcessDeletion(
   request: Request,
   env: Env,
@@ -708,77 +738,111 @@ async function handleChatReset(request: Request, env: Env): Promise<Response> {
   return Response.json({ ok: true });
 }
 
-export default {
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
+async function dispatchFetch(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  try {
+    return await routeFetch(request, env, ctx);
+  } catch (err) {
+    console.error("uncaught fetch error", err);
     const url = new URL(request.url);
+    await recordError(getDb(env.DATABASE_URL), "fetch:uncaught", err, {
+      path: url.pathname,
+      method: request.method,
+    });
+    return new Response("internal error", { status: 500 });
+  }
+}
 
-    if (url.hostname === "www.luanna.app") {
-      const redirect = new URL(url.toString());
-      redirect.hostname = "luanna.app";
-      return Response.redirect(redirect.toString(), 301);
-    }
+async function routeFetch(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const url = new URL(request.url);
 
-    if (request.method === "GET" && url.pathname === "/health") {
-      return Response.json({ ok: true });
+  if (url.hostname === "www.luanna.app") {
+    const redirect = new URL(url.toString());
+    redirect.hostname = "luanna.app";
+    return Response.redirect(redirect.toString(), 301);
+  }
+
+  if (request.method === "GET" && url.pathname === "/health") {
+    return Response.json({ ok: true });
+  }
+  if (request.method === "POST" && url.pathname === "/webhook/kapso") {
+    return handleKapsoWebhook(request, env, ctx);
+  }
+  if (request.method === "GET" && url.pathname === "/webview/prefs") {
+    return handleWebviewPrefs(request, env);
+  }
+  if (
+    (request.method === "GET" || request.method === "PUT") &&
+    url.pathname === "/api/prefs"
+  ) {
+    return handleApiPrefs(request, env);
+  }
+  if (
+    (request.method === "GET" ||
+      request.method === "POST" ||
+      request.method === "DELETE") &&
+    url.pathname === "/api/watchlist"
+  ) {
+    return handleApiWatchlist(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/chat") {
+    return handleChat(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/chat/reset") {
+    return handleChatReset(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/data-deletion") {
+    return handleApiDataDeletion(request, env);
+  }
+  if (
+    request.method === "GET" &&
+    url.pathname === "/admin/data-deletion/pending"
+  ) {
+    return handleAdminListPending(request, env);
+  }
+  if (
+    request.method === "POST" &&
+    url.pathname === "/admin/data-deletion/process"
+  ) {
+    return handleAdminProcessDeletion(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/admin/errors/recent") {
+    return handleAdminErrorsRecent(request, env);
+  }
+  return env.ASSETS.fetch(request);
+}
+
+async function dispatchScheduled(
+  event: ScheduledController,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<void> {
+  const cron = event.cron;
+  const run = async () => {
+    try {
+      if (cron === "0 14 * * *") {
+        await runDailyOffersCron(env);
+      } else if (cron === "0 3 * * *") {
+        await runCleanupCron(env);
+      } else {
+        await runWatchlistCron(env);
+      }
+    } catch (err) {
+      console.error(`scheduled ${cron} uncaught`, err);
+      await recordError(getDb(env.DATABASE_URL), "cron:uncaught", err, { cron });
     }
-    if (request.method === "POST" && url.pathname === "/webhook/kapso") {
-      return handleKapsoWebhook(request, env, ctx);
-    }
-    if (request.method === "GET" && url.pathname === "/webview/prefs") {
-      return handleWebviewPrefs(request, env);
-    }
-    if (
-      (request.method === "GET" || request.method === "PUT") &&
-      url.pathname === "/api/prefs"
-    ) {
-      return handleApiPrefs(request, env);
-    }
-    if (
-      (request.method === "GET" ||
-        request.method === "POST" ||
-        request.method === "DELETE") &&
-      url.pathname === "/api/watchlist"
-    ) {
-      return handleApiWatchlist(request, env);
-    }
-    if (request.method === "POST" && url.pathname === "/api/chat") {
-      return handleChat(request, env);
-    }
-    if (request.method === "POST" && url.pathname === "/api/chat/reset") {
-      return handleChatReset(request, env);
-    }
-    if (
-      request.method === "POST" &&
-      url.pathname === "/api/data-deletion"
-    ) {
-      return handleApiDataDeletion(request, env);
-    }
-    if (
-      request.method === "GET" &&
-      url.pathname === "/admin/data-deletion/pending"
-    ) {
-      return handleAdminListPending(request, env);
-    }
-    if (
-      request.method === "POST" &&
-      url.pathname === "/admin/data-deletion/process"
-    ) {
-      return handleAdminProcessDeletion(request, env);
-    }
-    return env.ASSETS.fetch(request);
-  },
-  async scheduled(event, env, ctx): Promise<void> {
-    // Multiple cron expressions are dispatched here; route by event.cron.
-    if (event.cron === "0 14 * * *") {
-      ctx.waitUntil(runDailyOffersCron(env));
-    } else if (event.cron === "0 3 * * *") {
-      ctx.waitUntil(runCleanupCron(env));
-    } else {
-      ctx.waitUntil(runWatchlistCron(env));
-    }
-  },
+  };
+  ctx.waitUntil(run());
+}
+
+export default {
+  fetch: dispatchFetch,
+  scheduled: dispatchScheduled,
 } satisfies ExportedHandler<Env>;
