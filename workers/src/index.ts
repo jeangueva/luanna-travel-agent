@@ -744,6 +744,30 @@ async function handleChatReset(request: Request, env: Env): Promise<Response> {
   return Response.json({ ok: true });
 }
 
+async function handleHealth(env: Env): Promise<Response> {
+  const started = Date.now();
+  try {
+    const sql = getDb(env.DATABASE_URL);
+    await sql`SELECT 1 AS ping`;
+    return Response.json({
+      ok: true,
+      db: "ok",
+      latency_ms: Date.now() - started,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return Response.json(
+      {
+        ok: false,
+        db: "unreachable",
+        latency_ms: Date.now() - started,
+        error: message.slice(0, 200),
+      },
+      { status: 503 },
+    );
+  }
+}
+
 async function dispatchFetch(
   request: Request,
   env: Env,
@@ -776,7 +800,7 @@ async function routeFetch(
   }
 
   if (request.method === "GET" && url.pathname === "/health") {
-    return Response.json({ ok: true });
+    return handleHealth(env);
   }
   if (request.method === "POST" && url.pathname === "/webhook/kapso") {
     return handleKapsoWebhook(request, env, ctx);
