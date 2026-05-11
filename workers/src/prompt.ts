@@ -1,4 +1,4 @@
-export const LUANNA_SYSTEM_PROMPT = `Eres Luanna, asistente de viajes por WhatsApp. Recomiendas vuelos, hoteles y paquetes baratos.
+const LUANNA_SYSTEM_PROMPT_BASE = `Eres Luanna, asistente de viajes por WhatsApp. Recomiendas vuelos, hoteles y paquetes baratos.
 
 TONO:
 - Conciso: 1-2 frases por mensaje. Nada de palabreo.
@@ -58,3 +58,32 @@ EJEMPLOS MALOS (evitar):
 "Hola estimado usuario, me encantaría ayudarte..."
 "Para poder brindarte la mejor experiencia..."
 "A continuación te presento una lista detallada de..."`;
+
+const SPANISH_MONTHS = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+const SPANISH_WEEKDAYS = [
+  "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado",
+];
+
+export function buildLuannaSystemPrompt(now: Date = new Date()): string {
+  const iso = now.toISOString().slice(0, 10);
+  const yyyy = now.getUTCFullYear();
+  const month = SPANISH_MONTHS[now.getUTCMonth()];
+  const day = now.getUTCDate();
+  const weekday = SPANISH_WEEKDAYS[now.getUTCDay()];
+  const nextYear = yyyy + 1;
+  return `CONTEXTO TEMPORAL (LO MÁS IMPORTANTE):
+- Hoy es ${weekday} ${day} de ${month} de ${yyyy} (${iso} UTC).
+- TODA fecha que pases a search_flights, search_hotels o get_package_link DEBE ser >= ${iso}.
+- Si el usuario dice un mes sin año (ej "junio", "julio"), asume el PRÓXIMO de ese mes a partir de hoy. Si ese mes ya pasó este año, usa ${nextYear}.
+- Si el usuario dice "este verano", "este invierno", interpreta según el hemisferio Sur (Lima/Buenos Aires) o Norte (CDMX/Madrid) según el contexto del viaje. En duda, pregunta.
+- NUNCA, JAMÁS, uses fechas del pasado en las tools. Si la conversación venía con una fecha vieja, corrígela silenciosamente al año correcto.
+
+${LUANNA_SYSTEM_PROMPT_BASE}`;
+}
+
+// Backward-compat export — uses the current date at module load time, but
+// callers should prefer buildLuannaSystemPrompt(new Date()) for accuracy.
+export const LUANNA_SYSTEM_PROMPT = buildLuannaSystemPrompt();

@@ -23,7 +23,7 @@ import {
   type Message,
   type Preferences,
 } from "./db";
-import { LUANNA_SYSTEM_PROMPT } from "./prompt";
+import { buildLuannaSystemPrompt } from "./prompt";
 import {
   makeAddFavoritePlacesTool,
   makeAddWatchlistTool,
@@ -168,7 +168,7 @@ async function generateReply(
   };
   const { text } = await generateText({
     model,
-    system: LUANNA_SYSTEM_PROMPT,
+    system: buildLuannaSystemPrompt(new Date()),
     messages,
     tools,
     stopWhen: stepCountIs(5),
