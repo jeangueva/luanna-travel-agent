@@ -487,6 +487,30 @@ export interface WorkerErrorRow {
   meta: Record<string, unknown> | null;
 }
 
+export interface ErrorGroupSummary {
+  context: string;
+  count: number;
+  latest_message: string;
+  latest_occurred_at: string;
+}
+
+export async function summarizeRecentErrors(
+  sql: Sql,
+  sinceMinutes: number,
+): Promise<ErrorGroupSummary[]> {
+  return (await sql`
+    SELECT
+      context,
+      COUNT(*)::int AS count,
+      (ARRAY_AGG(message ORDER BY occurred_at DESC))[1] AS latest_message,
+      MAX(occurred_at) AS latest_occurred_at
+    FROM worker_errors
+    WHERE occurred_at > NOW() - (${sinceMinutes} || ' minutes')::interval
+    GROUP BY context
+    ORDER BY count DESC
+  `) as ErrorGroupSummary[];
+}
+
 export async function listRecentErrors(
   sql: Sql,
   limit: number,

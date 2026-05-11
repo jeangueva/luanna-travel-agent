@@ -6,6 +6,7 @@ import {
   markUserOfferSent,
   markWatchlistChecked,
   recordError,
+  summarizeRecentErrors,
   type DueWatchlistRow,
   type OfferEligibleUser,
 } from "./db";
@@ -16,6 +17,7 @@ export interface CronEnv {
   KAPSO_API_KEY: string;
   TRAVELPAYOUTS_TOKEN: string;
   TRAVELPAYOUTS_MARKER: string;
+  ALERT_WEBHOOK_URL?: string;
 }
 
 // Common destination → IATA map for daily-offer flight search.
@@ -250,6 +252,56 @@ async function processOfferUser(
   const sql = getDb(env.DATABASE_URL);
   await markUserOfferSent(sql, user.id);
   return "sent";
+}
+
+export async function runErrorAlertCron(env: CronEnv): Promise<void> {
+  if (!env.ALERT_WEBHOOK_URL) return;
+  const sql = getDb(env.DATABASE_URL);
+  let groups;
+  try {
+    groups = await summarizeRecentErrors(sql, 60);
+  } catch (err) {
+    console.error("alert cron: summarize failed", err);
+    return;
+  }
+  if (groups.length === 0) {
+    console.log("alert cron: 0 errors in last 60min, skipping");
+    return;
+  }
+  const total = groups.reduce((acc, g) => acc + g.count, 0);
+  const top = groups.slice(0, 5);
+  const lines = [
+    `🚨 Luanna worker: ${total} error${total === 1 ? "" : "s"} en la última hora`,
+    "",
+    ...top.map(
+      (g) =>
+        `• ${g.context} (${g.count}) — ${g.latest_message.slice(0, 120)}`,
+    ),
+    "",
+    "Query: GET https://luanna.app/admin/errors/recent (Bearer ADMIN_API_KEY)",
+  ];
+  const text = lines.join("\n");
+  try {
+    const res = await fetch(env.ALERT_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Both keys for compat — Slack uses `text`, Discord uses `content`.
+      body: JSON.stringify({ text, content: text }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`alert webhook ${res.status}`, body.slice(0, 200));
+      await recordError(sql, "cron:alert", new Error(`webhook ${res.status}`), {
+        status: res.status,
+        body_preview: body.slice(0, 200),
+      });
+    } else {
+      console.log(`alert cron: posted digest for ${total} errors`);
+    }
+  } catch (err) {
+    console.error("alert webhook fetch error", err);
+    await recordError(sql, "cron:alert", err);
+  }
 }
 
 export async function runCleanupCron(env: CronEnv): Promise<void> {

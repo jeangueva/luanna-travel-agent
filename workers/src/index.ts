@@ -48,7 +48,12 @@ import {
 } from "./tools";
 import { createWebviewToken, verifyWebviewToken } from "./auth";
 import { renderPreferencesPage } from "./webview";
-import { runCleanupCron, runDailyOffersCron, runWatchlistCron } from "./cron";
+import {
+  runCleanupCron,
+  runDailyOffersCron,
+  runErrorAlertCron,
+  runWatchlistCron,
+} from "./cron";
 
 export interface Env {
   ANTHROPIC_API_KEY: string;
@@ -63,6 +68,7 @@ export interface Env {
   WEBVIEW_SIGNING_KEY: string;
   LUANNA_MODEL?: string;
   ADMIN_API_KEY?: string;
+  ALERT_WEBHOOK_URL?: string;
   ASSETS: Fetcher;
 }
 
@@ -831,6 +837,8 @@ async function dispatchScheduled(
         await runDailyOffersCron(env);
       } else if (cron === "0 3 * * *") {
         await runCleanupCron(env);
+      } else if (cron === "0 * * * *") {
+        await runErrorAlertCron(env);
       } else {
         await runWatchlistCron(env);
       }

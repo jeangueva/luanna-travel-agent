@@ -20,7 +20,8 @@ run_worker_first = true
 crons = [
   "0 */6 * * *",  # watchlist checks every 6h
   "0 14 * * *",   # daily offer push at 9am Lima (14:00 UTC)
-  "0 3 * * *"     # cleanup rate_limits + processed_webhooks at 3am UTC
+  "0 3 * * *",    # cleanup rate_limits + processed_webhooks at 3am UTC
+  "0 * * * *"     # error-alert digest every hour (no-op when ALERT_WEBHOOK_URL unset)
 ]
 
 # Secrets (set via `wrangler secret put <NAME>`):
@@ -35,5 +36,7 @@ crons = [
 #   KAPSO_PREFS_FLOW_ID    — meta_flow_id del Flow de preferencias
 #   KAPSO_PREFS_FLOW_DRAFT — "1" para enviar el Flow en modo draft (preview, sin publicar)
 #   ADMIN_API_KEY          — bearer token para /admin/data-deletion/* (32+ chars)
+#   ALERT_WEBHOOK_URL      — opcional. Slack/Discord/genérico. POST { text, content }.
+#                            Setear con `wrangler secret put ALERT_WEBHOOK_URL`.
 
 # Para desarrollo local, usar workers/.dev.vars (git-ignored)
