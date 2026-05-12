@@ -34,6 +34,7 @@ import {
   clampBudget,
   cleanStringArray,
 } from "./validators";
+import { distinctIdForUser, track, trackBatch } from "./posthog";
 import { buildLuannaSystemPrompt } from "./prompt";
 import {
   makeAddFavoritePlacesTool,
@@ -69,6 +70,8 @@ export interface Env {
   LUANNA_MODEL?: string;
   ADMIN_API_KEY?: string;
   ALERT_WEBHOOK_URL?: string;
+  POSTHOG_API_KEY?: string;
+  POSTHOG_HOST?: string;
   ASSETS: Fetcher;
 }
 
@@ -233,7 +236,7 @@ async function generateReply(
       userId: ctx.userId,
     }),
   };
-  const { text } = await generateText({
+  const result = await generateText({
     model,
     system: buildLuannaSystemPrompt({
       now: new Date(),
@@ -244,7 +247,67 @@ async function generateReply(
     tools,
     stopWhen: stepCountIs(5),
   });
-  return sanitizeReply(text, ctx.baseUrl).trim();
+  if (ctx.userId > 0) {
+    const toolEvents = collectToolEvents(result, ctx.userId);
+    if (toolEvents.length > 0) {
+      await trackBatch(env, toolEvents);
+    }
+  }
+  return sanitizeReply(result.text, ctx.baseUrl).trim();
+}
+
+interface ToolCallStep {
+  toolCalls?: Array<{
+    toolName?: string;
+    input?: unknown;
+    args?: unknown;
+  }>;
+}
+
+function collectToolEvents(
+  result: { steps?: ToolCallStep[] },
+  userId: number,
+): Array<{
+  event: string;
+  distinct_id: string;
+  properties?: Record<string, unknown>;
+}> {
+  const events: ReturnType<typeof collectToolEvents> = [];
+  for (const step of result.steps ?? []) {
+    for (const call of step.toolCalls ?? []) {
+      if (!call?.toolName) continue;
+      const args = (call.input ?? call.args ?? {}) as Record<string, unknown>;
+      events.push({
+        event: "tool_called",
+        distinct_id: distinctIdForUser(userId),
+        properties: {
+          tool_name: call.toolName,
+          ...sanitizeToolArgs(args),
+        },
+      });
+    }
+  }
+  return events;
+}
+
+function sanitizeToolArgs(args: Record<string, unknown>): Record<string, unknown> {
+  // Drop the user's free-text message body if present and trim string args
+  // so we don't ship raw PII or oversized strings into analytics.
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (typeof v === "string") {
+      out[k] = v.slice(0, 80);
+    } else if (typeof v === "number" || typeof v === "boolean" || v === null) {
+      out[k] = v;
+    } else if (Array.isArray(v)) {
+      out[k + "_count"] = v.length;
+    } else if (v && typeof v === "object") {
+      // skip nested objects
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
 }
 
 async function handleKapsoWebhook(
@@ -304,6 +367,24 @@ async function handleKapsoWebhook(
         const history = await getRecentMessages(sql, user.id);
         const isFirstContact = history.length === 0;
         await appendMessage(sql, user.id, "user", userText);
+        const distinctId = distinctIdForUser(user.id);
+        if (isFirstContact) {
+          await track(env, {
+            event: "user_signed_up",
+            distinct_id: distinctId,
+            properties: { source: "whatsapp" },
+          });
+        }
+        await track(env, {
+          event: "message_received",
+          distinct_id: distinctId,
+          properties: {
+            source: "whatsapp",
+            is_first_contact: isFirstContact,
+            has_name: !!user.name,
+            length: userText.length,
+          },
+        });
         const reply = await generateReply(env, userText, {
           userId: user.id,
           baseUrl,
@@ -392,6 +473,18 @@ async function handleFlowSubmission(
       budget_currency: "USD",
     };
     await upsertPreferences(sql, user.id, prefs);
+    await track(env, {
+      event: "preferences_saved",
+      distinct_id: distinctIdForUser(user.id),
+      properties: {
+        source: "whatsapp_flow",
+        has_origin: !!prefs.origin,
+        countries_count: prefs.countries.length,
+        cities_count: prefs.cities.length,
+        styles_count: prefs.styles.length,
+        has_budget: prefs.budget_min != null || prefs.budget_max != null,
+      },
+    });
     const summary = buildPrefsSummary(prefs);
     const ackText = `Listo, guardé tus preferencias ✓${summary ? `\n${summary}` : ""}`;
     await appendMessage(sql, user.id, "assistant", ackText);
@@ -492,6 +585,18 @@ async function handleApiPrefs(request: Request, env: Env): Promise<Response> {
       return Response.json({ error: "budget_min > budget_max" }, { status: 400 });
     }
     await upsertPreferences(sql, userId, cleaned);
+    await track(env, {
+      event: "preferences_saved",
+      distinct_id: distinctIdForUser(userId),
+      properties: {
+        source: "webview",
+        has_origin: !!cleaned.origin,
+        countries_count: cleaned.countries.length,
+        cities_count: cleaned.cities.length,
+        styles_count: cleaned.styles.length,
+        has_budget: cleaned.budget_min != null || cleaned.budget_max != null,
+      },
+    });
     return Response.json({ ok: true });
   }
 
@@ -715,6 +820,24 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   const history = await getRecentMessages(sql, user.id);
   const isFirstContact = history.length === 0;
   await appendMessage(sql, user.id, "user", message);
+  const distinctId = distinctIdForUser(user.id);
+  if (isFirstContact) {
+    await track(env, {
+      event: "user_signed_up",
+      distinct_id: distinctId,
+      properties: { source: "web" },
+    });
+  }
+  await track(env, {
+    event: "message_received",
+    distinct_id: distinctId,
+    properties: {
+      source: "web",
+      is_first_contact: isFirstContact,
+      has_name: !!user.name,
+      length: message.length,
+    },
+  });
   const reply = await generateReply(env, message, {
     userId: user.id,
     baseUrl: new URL(request.url).origin,

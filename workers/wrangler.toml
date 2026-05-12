@@ -38,5 +38,9 @@ crons = [
 #   ADMIN_API_KEY          — bearer token para /admin/data-deletion/* (32+ chars)
 #   ALERT_WEBHOOK_URL      — opcional. Slack/Discord/genérico. POST { text, content }.
 #                            Setear con `wrangler secret put ALERT_WEBHOOK_URL`.
+#   POSTHOG_API_KEY        — opcional. PROJECT_API_KEY de app.posthog.com.
+#                            Sin setear, los track() son no-ops silenciosos.
+#   POSTHOG_HOST           — opcional. Override del host (default us.i.posthog.com).
+#                            Usar https://eu.i.posthog.com si elegiste data center EU.
 
 # Para desarrollo local, usar workers/.dev.vars (git-ignored)

@@ -11,6 +11,7 @@ import {
   type OfferEligibleUser,
 } from "./db";
 import { sendKapsoText } from "./kapso";
+import { distinctIdForUser, track } from "./posthog";
 
 export interface CronEnv {
   DATABASE_URL: string;
@@ -18,6 +19,8 @@ export interface CronEnv {
   TRAVELPAYOUTS_TOKEN: string;
   TRAVELPAYOUTS_MARKER: string;
   ALERT_WEBHOOK_URL?: string;
+  POSTHOG_API_KEY?: string;
+  POSTHOG_HOST?: string;
 }
 
 // Common destination → IATA map for daily-offer flight search.
@@ -251,6 +254,17 @@ async function processOfferUser(
   });
   const sql = getDb(env.DATABASE_URL);
   await markUserOfferSent(sql, user.id);
+  await track(env, {
+    event: "daily_offer_sent",
+    distinct_id: distinctIdForUser(user.id),
+    properties: {
+      origin: user.origin,
+      destination_iata: destination.iata,
+      destination_pretty: destination.pretty,
+      price_usd: flight.price,
+      airline: flight.airline,
+    },
+  });
   return "sent";
 }
 
