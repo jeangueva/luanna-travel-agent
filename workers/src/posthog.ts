@@ -33,7 +33,7 @@ export async function track(
 ): Promise<void> {
   if (!env.POSTHOG_API_KEY) return;
   try {
-    const res = await fetch(`${host(env)}/i/v0/e/`, {
+    const res = await fetch(`${host(env)}/capture/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

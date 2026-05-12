@@ -725,6 +725,56 @@ async function handleAdminListPending(
   });
 }
 
+async function handleAdminPosthogPing(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!checkAdminAuth(request, env)) {
+    return new Response("unauthorized", { status: 401 });
+  }
+  if (!env.POSTHOG_API_KEY) {
+    return Response.json(
+      { ok: false, error: "POSTHOG_API_KEY not set" },
+      { status: 400 },
+    );
+  }
+  const targetHost = (env.POSTHOG_HOST ?? "https://us.i.posthog.com").replace(
+    /\/+$/,
+    "",
+  );
+  const url = `${targetHost}/capture/`;
+  const payload = {
+    api_key: env.POSTHOG_API_KEY,
+    event: "diagnostic_ping",
+    distinct_id: "admin_ping",
+    properties: { source: "admin_diagnostic" },
+    timestamp: new Date().toISOString(),
+  };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = (await res.text().catch(() => "")).slice(0, 1000);
+    return Response.json({
+      target: url,
+      key_prefix: env.POSTHOG_API_KEY.slice(0, 8),
+      status: res.status,
+      body,
+      ok: res.ok,
+    });
+  } catch (err) {
+    return Response.json(
+      {
+        target: url,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 },
+    );
+  }
+}
+
 async function handleAdminErrorsRecent(
   request: Request,
   env: Env,
@@ -968,6 +1018,9 @@ async function routeFetch(
   }
   if (request.method === "GET" && url.pathname === "/admin/errors/recent") {
     return handleAdminErrorsRecent(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/admin/posthog/ping") {
+    return handleAdminPosthogPing(request, env);
   }
   return env.ASSETS.fetch(request);
 }

@@ -41,7 +41,7 @@ describe("track", () => {
       { event: "message_received", distinct_id: "user_42" },
     );
     assert.equal(captured.length, 1);
-    assert.equal(captured[0].url, "https://us.i.posthog.com/i/v0/e/");
+    assert.equal(captured[0].url, "https://us.i.posthog.com/capture/");
     assert.equal(captured[0].init.method, "POST");
   });
 
@@ -50,7 +50,7 @@ describe("track", () => {
       { POSTHOG_API_KEY: "phc_test", POSTHOG_HOST: "https://eu.i.posthog.com/" },
       { event: "x", distinct_id: "y" },
     );
-    assert.equal(captured[0].url, "https://eu.i.posthog.com/i/v0/e/");
+    assert.equal(captured[0].url, "https://eu.i.posthog.com/capture/");
   });
 
   it("includes api_key, event, distinct_id, properties, and an ISO timestamp", async () => {
