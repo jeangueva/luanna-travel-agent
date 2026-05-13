@@ -268,6 +268,19 @@ export function renderPreferencesPage(token: string): string {
     transition: all .15s;
     width: 100%;
   }
+  .name-row {
+    display: flex; gap: 8px; align-items: stretch;
+  }
+  .name-row input.text { flex: 1; }
+  .name-save {
+    width: auto; flex-shrink: 0;
+    padding: 0 18px;
+  }
+  .name-save.saved {
+    background: rgba(0, 168, 126, 0.12);
+    color: #00a87e;
+  }
+  .name-save.saved:hover { background: rgba(0, 168, 126, 0.18); }
   .btn-primary { background: var(--rausch); color: #fff; }
   .btn-primary:hover:not(:disabled) { background: var(--rausch-dark); }
   .btn-primary:disabled { background: var(--text-3); cursor: not-allowed; opacity: .7; }
@@ -322,7 +335,13 @@ export function renderPreferencesPage(token: string): string {
       <h1 id="greet-title">Hola 👋</h1>
       <div class="field" style="margin-bottom:0">
         <label class="field-label" for="name-input">¿Cómo quieres que te llame?</label>
-        <input id="name-input" class="text" type="text" placeholder="Jean, María, Alex…" maxlength="80" autocomplete="off" />
+        <div class="name-row">
+          <input id="name-input" class="text" type="text" placeholder="Jean, María, Alex…" maxlength="80" autocomplete="off" />
+          <button class="btn btn-primary name-save" id="name-save" type="button" disabled>Guardar</button>
+        </div>
+        <div class="field-hint" id="name-hint" style="display:none">
+          ✓ Listo, Luanna ya no te volverá a preguntar el nombre.
+        </div>
       </div>
     </section>
 
@@ -442,9 +461,24 @@ export function renderPreferencesPage(token: string): string {
       const res = await fetch(url, init);
       if (!res.ok) {
         const body = await res.text().catch(function () { return ""; });
-        throw new Error(res.status + " " + path + ": " + body.slice(0, 200));
+        const err = new Error(res.status + " " + path + ": " + body.slice(0, 200));
+        err.status = res.status;
+        err.path = path;
+        err.body = body;
+        throw err;
       }
       return res.json();
+    }
+
+    function explainError(e) {
+      if (e && e.status === 401) {
+        return "⚠️ Tu link expiró. Vuelve al chat y pídele a Luanna que te lo mande de nuevo.";
+      }
+      if (e && e.status === 413) return "⚠️ Texto demasiado largo.";
+      if (e && e.status === 429) return "⚠️ Mucho movimiento, espera un momento e intenta otra vez.";
+      if (e && e.status === 400) return "⚠️ Datos inválidos. Revisa los campos.";
+      if (e && typeof e.status === "number") return "⚠️ Error " + e.status + ", reintentando…";
+      return "⚠️ Sin conexión. Verifica tu internet.";
     }
 
     async function searchPlaces(term, type) {
@@ -611,21 +645,52 @@ export function renderPreferencesPage(token: string): string {
             budget_currency: state.currency,
           }),
         });
-      } catch (e) { console.error(e); toast("⚠️ No se pudo guardar"); }
+      } catch (e) { console.error(e); toast(explainError(e)); }
+    }
+
+    let nameDirty = false;
+    function updateNameSaveBtn() {
+      const btn = document.getElementById("name-save");
+      const v = document.getElementById("name-input").value.trim();
+      const current = state.name || "";
+      nameDirty = v !== current;
+      btn.disabled = !nameDirty || v.length === 0;
+      btn.classList.remove("saved");
+      btn.textContent = "Guardar";
     }
 
     async function saveName() {
-      const v = document.getElementById("name-input").value.trim();
+      const inp = document.getElementById("name-input");
+      const btn = document.getElementById("name-save");
+      const v = inp.value.trim();
+      if (!v) return;
+      btn.disabled = true;
+      btn.textContent = "Guardando…";
       try {
         await api("/api/me", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: v || null }),
+          body: JSON.stringify({ name: v }),
         });
-        state.name = v || null;
+        state.name = v;
         updateGreeting();
+        nameDirty = false;
+        btn.classList.add("saved");
+        btn.textContent = "Guardado ✓";
+        document.getElementById("name-hint").style.display = "block";
         toast("Nombre actualizado ✅");
-      } catch (e) { console.error(e); toast("⚠️ No se pudo guardar el nombre"); }
+        setTimeout(function () {
+          if (!nameDirty) {
+            btn.classList.remove("saved");
+            btn.textContent = "Guardar";
+          }
+        }, 2200);
+      } catch (e) {
+        console.error(e);
+        toast(explainError(e));
+        btn.disabled = false;
+        btn.textContent = "Guardar";
+      }
     }
 
     function updateGreeting() {
@@ -660,7 +725,7 @@ export function renderPreferencesPage(token: string): string {
         await loadAlerts();
         toast("Alerta creada ✅");
       } catch (e) {
-        console.error(e); toast("⚠️ No se pudo crear");
+        console.error(e); toast(explainError(e));
       } finally {
         updateCreateBtnState();
       }
@@ -670,7 +735,7 @@ export function renderPreferencesPage(token: string): string {
         await api("/api/watchlist?id=" + id, { method: "DELETE" });
         await loadAlerts();
         toast("Alerta eliminada");
-      } catch (e) { console.error(e); toast("⚠️ No se pudo eliminar"); }
+      } catch (e) { console.error(e); toast(explainError(e)); }
     }
     function updateCreateBtnState() {
       const btn = document.getElementById("alert-create");
@@ -778,10 +843,23 @@ export function renderPreferencesPage(token: string): string {
         });
       });
 
-      document.getElementById("name-input").addEventListener("blur", saveName);
-      document.getElementById("name-input").addEventListener("keydown", function (e) {
-        if (e.key === "Enter") e.target.blur();
+      // Name: explicit save button, no blur-autosave. Dirty-tracking enables
+      // the button only when the input differs from what's persisted.
+      const nameInp = document.getElementById("name-input");
+      nameInp.addEventListener("input", updateNameSaveBtn);
+      nameInp.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (!document.getElementById("name-save").disabled) saveName();
+        }
       });
+      document.getElementById("name-save").addEventListener("click", saveName);
+      // Initialize button state once initial value is loaded
+      updateNameSaveBtn();
+      // Show "Luanna ya no te pregunta" hint if name was already loaded
+      if (state.name) {
+        document.getElementById("name-hint").style.display = "block";
+      }
 
       document.getElementById("currency-select").addEventListener("change", function (e) {
         state.currency = e.target.value;
