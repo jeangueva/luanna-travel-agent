@@ -163,9 +163,8 @@ async function findCheapest(
 function formatNotification(row: DueWatchlistRow, f: CheapestFlight): string {
   const date = f.departure_at.slice(0, 10);
   const lines = [
-    `🎉 Bajó el precio a ${row.destination}!`,
-    `${row.origin_iata}→${row.destination_iata} desde $${f.price} (tu límite: $${row.max_price})`,
-    `${f.airline} · sale ${date}`,
+    `✈️ Alerta de precios — ${row.origin_iata}→${row.destination_iata}`,
+    `Desde $${f.price} con ${f.airline} · sale ${date}`,
   ];
   if (f.link) lines.push(f.link);
   return lines.join("\n");
@@ -183,7 +182,12 @@ async function processWatchlistRow(
 
   const cheapest = await findCheapest(env, row.origin_iata, row.destination_iata);
 
-  if (!cheapest || cheapest.price > row.max_price) {
+  // Price is no longer collected on alert creation — the webview drops the
+  // field. Send the current cheapest price every frequency_days regardless
+  // of value. If max_price is set (legacy alerts created before this change)
+  // and the current price exceeds it, still notify (the user wanted a
+  // periodic check, not a threshold).
+  if (!cheapest) {
     await markWatchlistChecked(sql, row.id, false);
     return;
   }

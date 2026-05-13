@@ -539,6 +539,52 @@ async function handleWebviewPrefs(
   });
 }
 
+async function handleApiMe(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token");
+  if (!token)
+    return Response.json({ error: "missing token" }, { status: 400 });
+  const userId = await verifyWebviewToken(token, env.WEBVIEW_SIGNING_KEY);
+  if (!userId)
+    return Response.json(
+      { error: "invalid or expired token" },
+      { status: 401 },
+    );
+  const sql = getDb(env.DATABASE_URL);
+
+  if (request.method === "GET") {
+    const rows = (await sql`
+      SELECT name, phone FROM users WHERE id = ${userId}
+    `) as Array<{ name: string | null; phone: string }>;
+    if (rows.length === 0)
+      return Response.json({ error: "user not found" }, { status: 404 });
+    const row = rows[0];
+    // Hide internal `web:` and `whatsapp:` prefixes from the UI display
+    const displayPhone = row.phone.startsWith("web:")
+      ? null
+      : row.phone;
+    return Response.json({
+      name: row.name,
+      phone: displayPhone,
+    });
+  }
+
+  if (request.method === "PUT") {
+    const body = (await request.json().catch(() => null)) as
+      | { name?: string | null }
+      | null;
+    if (!body) return Response.json({ error: "invalid json" }, { status: 400 });
+    const cleanedName =
+      typeof body.name === "string" && body.name.trim()
+        ? body.name.trim().slice(0, 80)
+        : null;
+    await sql`UPDATE users SET name = ${cleanedName} WHERE id = ${userId}`;
+    return Response.json({ ok: true, name: cleanedName });
+  }
+
+  return new Response("method not allowed", { status: 405 });
+}
+
 async function handleApiPrefs(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
@@ -562,28 +608,26 @@ async function handleApiPrefs(request: Request, env: Env): Promise<Response> {
     const body = (await request.json().catch(() => null)) as Partial<Preferences> | null;
     if (!body)
       return Response.json({ error: "invalid json" }, { status: 400 });
+    // Simplified schema: origin + interests (stored in `countries`) + currency.
+    // `cities`, `styles`, and `budget_*` are kept in the DB schema but no
+    // longer surfaced — always written as empty/null from this path. The
+    // `countries` field now carries the unified interest tags (mix of
+    // countries and cities by name).
     const cleaned: Preferences = {
       origin:
         typeof body.origin === "string" && body.origin.trim()
           ? body.origin.trim().slice(0, PREFS_ORIGIN_MAX)
           : null,
       countries: cleanStringArray(body.countries),
-      cities: cleanStringArray(body.cities),
-      styles: cleanStringArray(body.styles),
-      budget_min: clampBudget(body.budget_min),
-      budget_max: clampBudget(body.budget_max),
+      cities: [],
+      styles: [],
+      budget_min: null,
+      budget_max: null,
       budget_currency:
         typeof body.budget_currency === "string" && body.budget_currency.trim()
           ? body.budget_currency.trim().toUpperCase().slice(0, 3)
           : "USD",
     };
-    if (
-      cleaned.budget_min != null &&
-      cleaned.budget_max != null &&
-      cleaned.budget_min > cleaned.budget_max
-    ) {
-      return Response.json({ error: "budget_min > budget_max" }, { status: 400 });
-    }
     await upsertPreferences(sql, userId, cleaned);
     await track(env, {
       event: "preferences_saved",
@@ -635,19 +679,33 @@ async function handleApiWatchlist(
     } | null;
     if (
       !body ||
-      typeof body.destination !== "string" ||
       typeof body.destination_iata !== "string" ||
-      typeof body.origin_iata !== "string" ||
-      typeof body.max_price_usd !== "number" ||
-      body.max_price_usd <= 0
+      typeof body.origin_iata !== "string"
     ) {
       return Response.json({ error: "invalid body" }, { status: 400 });
     }
+    const destIata = body.destination_iata.trim().toUpperCase().slice(0, 3);
+    const originIata = body.origin_iata.trim().toUpperCase().slice(0, 3);
+    if (destIata.length !== 3 || originIata.length !== 3) {
+      return Response.json({ error: "invalid IATA" }, { status: 400 });
+    }
+    // Price is no longer collected from the UI; store an effectively
+    // unlimited cap so the cron always alerts (the column is still
+    // NOT NULL in the schema). Destination name is optional now too —
+    // default to the IATA code if absent so the column stays populated.
+    const maxPrice =
+      typeof body.max_price_usd === "number" && body.max_price_usd > 0
+        ? Math.floor(body.max_price_usd)
+        : 999_999;
+    const destName =
+      typeof body.destination === "string" && body.destination.trim()
+        ? body.destination.trim().slice(0, 80)
+        : destIata;
     const { id } = await addWatchlistItem(sql, userId, {
-      destination: body.destination.trim(),
-      destination_iata: body.destination_iata.trim().toUpperCase().slice(0, 3),
-      origin_iata: body.origin_iata.trim().toUpperCase().slice(0, 3),
-      max_price: Math.floor(body.max_price_usd),
+      destination: destName,
+      destination_iata: destIata,
+      origin_iata: originIata,
+      max_price: maxPrice,
       currency: "USD",
       frequency_days:
         typeof body.frequency_days === "number" &&
@@ -980,6 +1038,12 @@ async function routeFetch(
   }
   if (request.method === "GET" && url.pathname === "/webview/prefs") {
     return handleWebviewPrefs(request, env);
+  }
+  if (
+    (request.method === "GET" || request.method === "PUT") &&
+    url.pathname === "/api/me"
+  ) {
+    return handleApiMe(request, env);
   }
   if (
     (request.method === "GET" || request.method === "PUT") &&

@@ -4,279 +4,808 @@ export function renderPreferencesPage(token: string): string {
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>Mis preferencias · Luanna</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<meta name="theme-color" content="#ff385c" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #0b1220; --card: #131c2e; --txt: #e8edf5; --muted: #8b97a8; --accent: #25d366; --border: #243049; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--txt); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 520px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 22px; margin: 8px 0 4px; }
-  p.sub { color: var(--muted); margin: 0 0 24px; }
-  fieldset { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 0 0 16px; }
-  legend { padding: 0 6px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
-  label { display: block; margin: 0 0 6px; font-size: 13px; color: var(--muted); }
-  input[type=text], input[type=number] {
-    width: 100%; background: #0a1322; color: var(--txt); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; font-size: 15px;
+  :root {
+    --rausch: #ff385c;
+    --rausch-dark: #e00b41;
+    --text: #222222;
+    --text-2: #6a6a6a;
+    --text-3: #929292;
+    --bg: #ffffff;
+    --surface: #f7f7f7;
+    --surface-2: #f2f2f2;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-strong: rgba(0, 0, 0, 0.18);
+    --shadow-card: rgba(0,0,0,.02) 0 0 0 1px, rgba(0,0,0,.04) 0 2px 6px, rgba(0,0,0,.1) 0 4px 8px;
+    --shadow-hover: rgba(0,0,0,.08) 0 4px 12px;
+    --r-btn: 8px;
+    --r-card: 20px;
+    --r-pill: 999px;
+    --font: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
-  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .styles { display: flex; flex-wrap: wrap; gap: 8px; }
-  .styles label {
-    display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
-    background: #0a1322; border: 1px solid var(--border); border-radius: 999px;
-    cursor: pointer; color: var(--txt); font-size: 14px;
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    font-weight: 500;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 32px;
   }
-  .styles input { accent-color: var(--accent); }
-  .help { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
-  button {
-    width: 100%; background: var(--accent); color: #062a14; border: 0;
-    border-radius: 10px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer;
-    margin-top: 8px;
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(255,255,255,.95);
+    backdrop-filter: saturate(180%) blur(10px);
+    border-bottom: 1px solid var(--border);
   }
-  button:disabled { opacity: .6; cursor: not-allowed; }
-  #status { text-align: center; color: var(--muted); margin: 12px 0 0; min-height: 20px; }
-  #status.ok { color: var(--accent); }
-  #status.err { color: #ff6b6b; }
+  .nav {
+    max-width: 720px; margin: 0 auto;
+    padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo {
+    font-size: 22px; font-weight: 700;
+    color: var(--rausch); letter-spacing: -0.5px;
+    text-decoration: none;
+  }
+  .logo span { color: var(--text); }
+  .phone-pill {
+    font-size: 12px; font-weight: 600;
+    color: var(--text-2);
+    background: var(--surface-2);
+    padding: 6px 10px;
+    border-radius: var(--r-pill);
+  }
+
+  main { max-width: 720px; margin: 0 auto; padding: 24px 20px 16px; }
+
+  .greet {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    padding: 20px;
+    box-shadow: var(--shadow-card);
+    margin-bottom: 20px;
+  }
+  .greet-label {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.4px; text-transform: uppercase;
+    color: var(--rausch);
+    margin-bottom: 6px;
+  }
+  .greet h1 {
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.4px; line-height: 1.2;
+    margin-bottom: 14px;
+  }
+
+  input.text,
+  select.text,
+  .tag-input input {
+    font-family: var(--font);
+    font-size: 15px; font-weight: 500;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-btn);
+    padding: 11px 13px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+    width: 100%;
+  }
+  input.text:focus,
+  select.text:focus {
+    border-color: var(--rausch);
+    box-shadow: 0 0 0 3px rgba(255, 56, 92, .12);
+  }
+
+  .tabs {
+    display: flex; gap: 6px;
+    background: var(--surface-2);
+    padding: 4px;
+    border-radius: var(--r-pill);
+    margin-bottom: 18px;
+  }
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px 14px;
+    border: none; background: transparent;
+    font-family: var(--font);
+    font-size: 14px; font-weight: 600;
+    color: var(--text-2);
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: background 0.18s, color 0.18s;
+  }
+  .tab.active {
+    background: var(--rausch);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(255,56,92,.25);
+  }
+
+  .panel { display: none; animation: fade .25s ease-out; }
+  .panel.active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .field { margin-bottom: 16px; }
+  .field-label {
+    display: block;
+    font-size: 13px; font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .field-hint {
+    font-size: 12px; color: var(--text-3);
+    margin-top: 4px;
+  }
+
+  .ac-wrap { position: relative; }
+  .ac-list {
+    position: absolute; left: 0; right: 0; top: 100%;
+    margin-top: 4px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+    max-height: 240px; overflow-y: auto;
+    z-index: 5;
+    display: none;
+  }
+  .ac-list.open { display: block; }
+  .ac-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    display: flex; align-items: baseline; gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ac-item:last-child { border-bottom: none; }
+  .ac-item:hover, .ac-item.active { background: var(--surface); }
+  .ac-item-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .ac-item-meta { font-size: 12px; color: var(--text-3); margin-left: auto; }
+
+  .tag-input {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-btn);
+    padding: 6px 8px;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    display: flex; flex-wrap: wrap; gap: 6px;
+    align-items: center;
+    min-height: 46px;
+  }
+  .tag-input:focus-within {
+    border-color: var(--rausch);
+    box-shadow: 0 0 0 3px rgba(255, 56, 92, .12);
+  }
+  .tag-input input {
+    border: none; outline: none; padding: 6px;
+    flex: 1; min-width: 100px;
+    font-size: 15px;
+  }
+  #interest-tags-inline { display: contents; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 8px 6px 12px;
+    background: rgba(255,56,92,.10);
+    color: var(--rausch);
+    font-size: 13px; font-weight: 600;
+    border-radius: var(--r-pill);
+    animation: chipIn .22s ease-out;
+  }
+  @keyframes chipIn { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+  .chip button {
+    border: none; background: rgba(255,56,92,.15);
+    color: var(--rausch);
+    width: 18px; height: 18px;
+    border-radius: 50%; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; line-height: 1;
+    transition: background .15s;
+  }
+  .chip button:hover { background: var(--rausch); color: #fff; }
+
+  .row-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
+    animation: chipIn .22s ease-out;
+  }
+  .row-card-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .row-title { font-size: 15px; font-weight: 700; color: var(--text); }
+  .row-sub { font-size: 12px; color: var(--text-2); }
+  .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .icon-btn {
+    width: 32px; height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text-2);
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .icon-btn:hover { color: var(--rausch); border-color: var(--rausch); }
+
+  .form-card {
+    background: var(--surface);
+    border-radius: var(--r-card);
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px;
+    padding: 12px 18px;
+    font-family: var(--font);
+    font-size: 14px; font-weight: 600;
+    border-radius: var(--r-btn);
+    border: none; cursor: pointer;
+    transition: all .15s;
+    width: 100%;
+  }
+  .btn-primary { background: var(--rausch); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--rausch-dark); }
+  .btn-primary:disabled { background: var(--text-3); cursor: not-allowed; opacity: .7; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px;
+    transform: translateX(-50%) translateY(60px);
+    background: var(--text); color: #fff;
+    font-size: 13px; font-weight: 600;
+    padding: 10px 16px;
+    border-radius: var(--r-pill);
+    box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    opacity: 0; transition: all .2s ease;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .empty {
+    text-align: center;
+    padding: 24px 16px;
+    color: var(--text-3);
+    font-size: 13px;
+  }
+
+  .section-title {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.32px; text-transform: uppercase;
+    color: var(--rausch);
+    margin: 22px 0 10px;
+  }
+
+  @media (max-width: 540px) {
+    .nav { padding: 12px 16px; }
+    main { padding: 18px 16px; }
+    .greet { padding: 16px; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>Mis preferencias</h1>
-  <p class="sub">Luanna usa esto para recomendarte mejor.</p>
-  <form id="form">
-    <fieldset>
-      <legend>Origen</legend>
-      <label for="origin">Ciudad desde donde viajas</label>
-      <input type="text" id="origin" name="origin" placeholder="Lima, Madrid, CDMX..." />
-    </fieldset>
 
-    <fieldset>
-      <legend>Destinos</legend>
-      <label for="countries">Países que te interesan</label>
-      <input type="text" id="countries" name="countries" placeholder="México, España, Portugal" />
-      <p class="help">Sepáralos con comas.</p>
-
-      <label for="cities" style="margin-top:12px">Ciudades específicas</label>
-      <input type="text" id="cities" name="cities" placeholder="CDMX, Barcelona, Lisboa" />
-    </fieldset>
-
-    <fieldset>
-      <legend>Presupuesto (por viaje)</legend>
-      <div class="row">
-        <div>
-          <label for="budget_min">Mínimo</label>
-          <input type="number" id="budget_min" name="budget_min" min="0" step="50" />
-        </div>
-        <div>
-          <label for="budget_max">Máximo</label>
-          <input type="number" id="budget_max" name="budget_max" min="0" step="50" />
-        </div>
-      </div>
-      <label for="budget_currency" style="margin-top:12px">Moneda</label>
-      <input type="text" id="budget_currency" name="budget_currency" maxlength="3" placeholder="USD" />
-    </fieldset>
-
-    <fieldset>
-      <legend>Estilo de viaje</legend>
-      <div class="styles" id="styles">
-        <label><input type="checkbox" value="aventura" /> Aventura</label>
-        <label><input type="checkbox" value="relax" /> Relax</label>
-        <label><input type="checkbox" value="cultura" /> Cultura</label>
-        <label><input type="checkbox" value="gastronomia" /> Gastronomía</label>
-        <label><input type="checkbox" value="naturaleza" /> Naturaleza</label>
-        <label><input type="checkbox" value="fiesta" /> Fiesta</label>
-      </div>
-    </fieldset>
-
-    <button type="submit" id="save">Guardar</button>
-    <div id="status"></div>
-  </form>
-
-  <h2 style="font-size:18px;margin:32px 0 12px">Mis alertas de precio</h2>
-  <p class="sub" style="margin-bottom:12px">Te aviso cuando un vuelo cuesta menos que tu límite.</p>
-
-  <ul id="watchlist" style="list-style:none;padding:0;margin:0 0 16px"></ul>
-
-  <fieldset>
-    <legend>Nueva alerta</legend>
-    <div class="row">
-      <div>
-        <label for="w_origin">Origen (IATA)</label>
-        <input type="text" id="w_origin" maxlength="3" placeholder="LIM" />
-      </div>
-      <div>
-        <label for="w_dest_iata">Destino (IATA)</label>
-        <input type="text" id="w_dest_iata" maxlength="3" placeholder="MAD" />
-      </div>
+  <header>
+    <div class="nav">
+      <a href="/" class="logo">luanna<span>.</span></a>
+      <span class="phone-pill" id="phone-display">—</span>
     </div>
-    <label for="w_dest" style="margin-top:12px">Nombre del destino</label>
-    <input type="text" id="w_dest" placeholder="Madrid" />
-    <div class="row" style="margin-top:12px">
-      <div>
-        <label for="w_max">Precio máx (USD)</label>
-        <input type="number" id="w_max" min="50" step="50" placeholder="600" />
+  </header>
+
+  <main>
+    <section class="greet">
+      <div class="greet-label">Tu perfil</div>
+      <h1 id="greet-title">Hola 👋</h1>
+      <div class="field" style="margin-bottom:0">
+        <label class="field-label" for="name-input">¿Cómo quieres que te llame?</label>
+        <input id="name-input" class="text" type="text" placeholder="Jean, María, Alex…" maxlength="80" autocomplete="off" />
       </div>
-      <div>
-        <label for="w_freq">Cada (días)</label>
-        <input type="number" id="w_freq" min="1" max="30" value="7" />
-      </div>
+    </section>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="prefs" role="tab" aria-selected="true">Mis preferencias</button>
+      <button class="tab" data-tab="alerts" role="tab" aria-selected="false">Alertas</button>
     </div>
-    <button type="button" id="w_add">Agregar alerta</button>
-    <div id="w_status"></div>
-  </fieldset>
-</main>
-<script>
-  const TOKEN = ${JSON.stringify(safeToken)};
-  const $ = (id) => document.getElementById(id);
-  const status = $("status");
 
-  function parseList(s) {
-    return s.split(",").map((x) => x.trim()).filter(Boolean);
-  }
-  function readStyles() {
-    return [...document.querySelectorAll("#styles input:checked")].map((el) => el.value);
-  }
-  function fillStyles(values) {
-    const set = new Set(values || []);
-    document.querySelectorAll("#styles input").forEach((el) => { el.checked = set.has(el.value); });
-  }
-  function setStatus(msg, kind) {
-    status.textContent = msg;
-    status.className = kind || "";
-  }
+    <section class="panel active" id="panel-prefs" role="tabpanel">
+      <div class="field">
+        <label class="field-label" for="origin-input">¿De dónde viajas?</label>
+        <div class="ac-wrap">
+          <input id="origin-input" class="text" type="text" placeholder="Lima, Madrid, Buenos Aires…" autocomplete="off" />
+          <div class="ac-list" id="origin-ac"></div>
+        </div>
+        <div class="field-hint">Buscamos en aeropuertos de todo el mundo.</div>
+      </div>
 
-  async function load() {
-    try {
-      const r = await fetch("/api/prefs?token=" + encodeURIComponent(TOKEN));
-      if (!r.ok) throw new Error(await r.text());
-      const p = await r.json();
-      $("origin").value = p.origin || "";
-      $("countries").value = (p.countries || []).join(", ");
-      $("cities").value = (p.cities || []).join(", ");
-      $("budget_min").value = p.budget_min ?? "";
-      $("budget_max").value = p.budget_max ?? "";
-      $("budget_currency").value = p.budget_currency || "USD";
-      fillStyles(p.styles);
-    } catch (e) {
-      setStatus("No pude cargar tus preferencias: " + e.message, "err");
+      <div class="field">
+        <label class="field-label" for="currency-select">Moneda</label>
+        <select id="currency-select" class="text"></select>
+        <div class="field-hint">Se ajusta automáticamente a tu país de origen.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="interest-input">Países o ciudades que te interesan</label>
+        <div class="tag-input ac-wrap" id="interest-wrap">
+          <div id="interest-tags-inline"></div>
+          <input id="interest-input" type="text" placeholder="Escribe un destino y elige de la lista…" autocomplete="off" />
+          <div class="ac-list" id="interest-ac"></div>
+        </div>
+        <div class="field-hint">Toca la X de cualquier destino para quitarlo.</div>
+      </div>
+
+      <div class="section-title" id="saved-prefs-label" style="display:none">Destinos guardados</div>
+      <div id="saved-prefs"></div>
+    </section>
+
+    <section class="panel" id="panel-alerts" role="tabpanel">
+      <div class="form-card">
+        <div class="field">
+          <label class="field-label" for="alert-origin">Origen</label>
+          <div class="ac-wrap">
+            <input id="alert-origin" class="text" type="text" placeholder="Ciudad de salida" autocomplete="off" />
+            <div class="ac-list" id="alert-origin-ac"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="alert-dest">Destino</label>
+          <div class="ac-wrap">
+            <input id="alert-dest" class="text" type="text" placeholder="¿A dónde quieres ir?" autocomplete="off" />
+            <div class="ac-list" id="alert-dest-ac"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="alert-freq">Frecuencia de aviso</label>
+          <select id="alert-freq" class="text">
+            <option value="3">Cada 3 días</option>
+            <option value="7" selected>Cada 7 días</option>
+            <option value="14">Cada 14 días</option>
+            <option value="30">Cada 30 días</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="alert-create" disabled>Crear alerta</button>
+      </div>
+
+      <div class="section-title" id="alerts-label" style="display:none">Alertas activas</div>
+      <div id="alerts-list"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const TOKEN = ${JSON.stringify(safeToken)};
+    const QS = "?token=" + encodeURIComponent(TOKEN);
+
+    let PLACES = { cities: [], countries: [], currencies: [] };
+
+    const state = {
+      name: null,
+      phone: null,
+      origin: null,
+      interests: [],
+      currency: "USD",
+      alerts: [],
+      alertOriginPick: null,
+      alertDestPick: null,
+    };
+
+    let toastTimer;
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.classList.remove("show"); }, 1800);
     }
-  }
 
-  $("form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    $("save").disabled = true;
-    setStatus("Guardando...");
-    try {
-      const body = {
-        origin: $("origin").value.trim() || null,
-        countries: parseList($("countries").value),
-        cities: parseList($("cities").value),
-        styles: readStyles(),
-        budget_min: $("budget_min").value ? Number($("budget_min").value) : null,
-        budget_max: $("budget_max").value ? Number($("budget_max").value) : null,
-        budget_currency: ($("budget_currency").value.trim() || "USD").toUpperCase(),
-      };
-      const r = await fetch("/api/prefs?token=" + encodeURIComponent(TOKEN), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"]/g, function (c) {
+        return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c];
       });
-      if (!r.ok) throw new Error(await r.text());
-      setStatus("Guardado ✓", "ok");
-    } catch (e) {
-      setStatus("Error: " + e.message, "err");
-    } finally {
-      $("save").disabled = false;
     }
-  });
 
-  load();
+    async function api(path, init) {
+      const sep = path.indexOf("?") >= 0 ? "&" : "?";
+      const url = path + sep + "token=" + encodeURIComponent(TOKEN);
+      const res = await fetch(url, init);
+      if (!res.ok) {
+        const body = await res.text().catch(function () { return ""; });
+        throw new Error(res.status + " " + path + ": " + body.slice(0, 200));
+      }
+      return res.json();
+    }
 
-  const wStatus = $("w_status");
-  function setWStatus(msg, kind) {
-    wStatus.textContent = msg;
-    wStatus.className = kind || "";
-  }
+    async function searchPlaces(term, type) {
+      const trimmed = term.trim();
+      if (trimmed.length < 2) return [];
+      const url = new URL("https://autocomplete.travelpayouts.com/places2");
+      url.searchParams.set("term", trimmed);
+      url.searchParams.set("locale", "es");
+      url.searchParams.append("types[]", type || "city");
+      try {
+        const res = await fetch(url.toString());
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data) ? data.slice(0, 8) : [];
+      } catch (e) { return []; }
+    }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-    }[c]));
-  }
+    function bindAutocomplete(inputEl, listEl, opts) {
+      let activeIdx = -1;
+      let results = [];
+      let timer;
 
-  async function loadWatchlist() {
-    try {
-      const r = await fetch("/api/watchlist?token=" + encodeURIComponent(TOKEN));
-      if (!r.ok) throw new Error(await r.text());
-      const { items } = await r.json();
-      const ul = $("watchlist");
-      if (!items.length) {
-        ul.innerHTML = '<li style="color:var(--muted);padding:12px 0">Aún no tienes alertas.</li>';
+      function renderList() {
+        if (results.length === 0) {
+          listEl.classList.remove("open");
+          listEl.innerHTML = "";
+          return;
+        }
+        listEl.innerHTML = results.map(function (r, i) {
+          const meta = (r.country_name || "") + (r.code ? " · " + r.code : "");
+          return '<div class="ac-item' + (i === activeIdx ? " active" : "") + '" data-idx="' + i + '">' +
+                 '<div class="ac-item-name">' + escapeHtml(r.name || "") + '</div>' +
+                 '<div class="ac-item-meta">' + escapeHtml(meta) + '</div>' +
+                 '</div>';
+        }).join("");
+        listEl.classList.add("open");
+      }
+
+      function pick(idx) {
+        const r = results[idx];
+        if (!r) return;
+        opts.onSelect(r, inputEl);
+        listEl.classList.remove("open");
+        results = []; activeIdx = -1;
+      }
+
+      async function refresh() {
+        const term = inputEl.value;
+        if (term.trim().length < 2) {
+          listEl.classList.remove("open");
+          listEl.innerHTML = "";
+          results = [];
+          return;
+        }
+        results = await searchPlaces(term, opts.type);
+        activeIdx = -1;
+        renderList();
+      }
+
+      inputEl.addEventListener("input", function () {
+        clearTimeout(timer);
+        timer = setTimeout(refresh, 180);
+      });
+      inputEl.addEventListener("blur", function () {
+        setTimeout(function () { listEl.classList.remove("open"); }, 150);
+      });
+      inputEl.addEventListener("focus", function () {
+        if (results.length > 0) listEl.classList.add("open");
+      });
+      inputEl.addEventListener("keydown", function (e) {
+        if (!listEl.classList.contains("open") || results.length === 0) return;
+        if (e.key === "ArrowDown") { e.preventDefault(); activeIdx = (activeIdx + 1) % results.length; renderList(); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); activeIdx = activeIdx <= 0 ? results.length - 1 : activeIdx - 1; renderList(); }
+        else if (e.key === "Enter") { e.preventDefault(); pick(activeIdx >= 0 ? activeIdx : 0); }
+        else if (e.key === "Escape") { listEl.classList.remove("open"); }
+      });
+      listEl.addEventListener("mousedown", function (e) {
+        const tgt = e.target.closest(".ac-item");
+        if (!tgt) return;
+        e.preventDefault();
+        pick(Number(tgt.dataset.idx));
+      });
+    }
+
+    function currencyFor(originName) {
+      if (!originName || !PLACES) return null;
+      const norm = originName.trim().toLowerCase();
+      const c = (PLACES.cities || []).find(function (c) { return c.name.toLowerCase() === norm; });
+      if (c) return c.currency;
+      const co = (PLACES.countries || []).find(function (c) { return c.name.toLowerCase() === norm; });
+      if (co) return co.currency;
+      return null;
+    }
+
+    function populateCurrencies() {
+      const sel = document.getElementById("currency-select");
+      sel.innerHTML = (PLACES.currencies || []).map(function (c) {
+        return '<option value="' + c.code + '">' + escapeHtml(c.label) + '</option>';
+      }).join("");
+      sel.value = state.currency || "USD";
+    }
+
+    function renderSavedPrefs() {
+      const container = document.getElementById("saved-prefs");
+      const label = document.getElementById("saved-prefs-label");
+      const items = state.interests;
+      if (items.length === 0) {
+        container.innerHTML = '<div class="empty">Sin destinos guardados todavía. Agrega tu primero arriba 👆</div>';
+        label.style.display = "none";
+      } else {
+        label.style.display = "block";
+        container.innerHTML = items.map(function (name) {
+          return '<div class="row-card"><div class="row-card-main">' +
+            '<div class="row-title">' + escapeHtml(name) + '</div>' +
+            '</div><div class="row-actions">' +
+            '<button class="icon-btn" data-remove="' + encodeURIComponent(name) + '" title="Quitar">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
+            '</button></div></div>';
+        }).join("");
+      }
+      // inline chips in input
+      const inline = document.getElementById("interest-tags-inline");
+      inline.innerHTML = items.map(function (name) {
+        return '<span class="chip">' + escapeHtml(name) +
+          '<button data-remove-chip="' + encodeURIComponent(name) + '" title="Quitar">×</button>' +
+          '</span>';
+      }).join("");
+    }
+
+    function renderAlerts() {
+      const container = document.getElementById("alerts-list");
+      const label = document.getElementById("alerts-label");
+      if (state.alerts.length === 0) {
+        container.innerHTML = '<div class="empty">Sin alertas activas. Crea tu primera con el formulario arriba 👆</div>';
+        label.style.display = "none";
         return;
       }
-      ul.innerHTML = items.map((it) => {
-        const route = (it.origin_iata || "?") + " → " + (it.destination_iata || "?");
-        const last = it.last_notified_at
-          ? "Notificado: " + new Date(it.last_notified_at).toLocaleDateString()
-          : "Sin notificaciones aún";
-        return '<li style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px">' +
-          '<div><div style="font-weight:600">' + escapeHtml(it.destination) + ' (' + escapeHtml(route) + ')</div>' +
-          '<div style="color:var(--muted);font-size:13px;margin-top:2px">Máx $' + it.max_price + ' · cada ' + it.frequency_days + ' días · ' + escapeHtml(last) + '</div></div>' +
-          '<button type="button" data-id="' + it.id + '" class="del" style="width:auto;background:transparent;color:#ff6b6b;border:1px solid var(--border);padding:8px 12px;font-size:13px;font-weight:500;margin:0">Quitar</button>' +
-          '</li>';
+      label.style.display = "block";
+      function freqLabel(d) { return d === 1 ? "diario" : "cada " + d + " días"; }
+      container.innerHTML = state.alerts.map(function (a) {
+        return '<div class="row-card"><div class="row-card-main">' +
+          '<div class="row-title">' + escapeHtml(a.origin_iata) + ' → ' + escapeHtml(a.destination_iata || a.destination) + '</div>' +
+          '<div class="row-sub">' + freqLabel(a.frequency_days) + '</div>' +
+          '</div><div class="row-actions">' +
+          '<button class="icon-btn" data-del-alert="' + a.id + '" title="Eliminar alerta">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>' +
+          '</button></div></div>';
       }).join("");
-      ul.querySelectorAll(".del").forEach((btn) => {
-        btn.addEventListener("click", () => removeWatch(btn.dataset.id));
+    }
+
+    let saveTimer;
+    function schedulePrefsSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(savePrefs, 350);
+    }
+    async function savePrefs() {
+      try {
+        await api("/api/prefs", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            origin: state.origin,
+            countries: state.interests,
+            budget_currency: state.currency,
+          }),
+        });
+      } catch (e) { console.error(e); toast("⚠️ No se pudo guardar"); }
+    }
+
+    async function saveName() {
+      const v = document.getElementById("name-input").value.trim();
+      try {
+        await api("/api/me", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: v || null }),
+        });
+        state.name = v || null;
+        updateGreeting();
+        toast("Nombre actualizado ✅");
+      } catch (e) { console.error(e); toast("⚠️ No se pudo guardar el nombre"); }
+    }
+
+    function updateGreeting() {
+      document.getElementById("greet-title").textContent =
+        state.name ? "Hola " + state.name + " 👋" : "Hola 👋";
+    }
+
+    async function loadAlerts() {
+      const data = await api("/api/watchlist", {});
+      state.alerts = data.items || [];
+      renderAlerts();
+    }
+    async function createAlert() {
+      if (!state.alertOriginPick || !state.alertDestPick) return;
+      const btn = document.getElementById("alert-create");
+      btn.disabled = true;
+      try {
+        await api("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            origin_iata: state.alertOriginPick.code,
+            destination_iata: state.alertDestPick.code,
+            destination: state.alertDestPick.name,
+            frequency_days: Number(document.getElementById("alert-freq").value),
+          }),
+        });
+        document.getElementById("alert-origin").value = "";
+        document.getElementById("alert-dest").value = "";
+        state.alertOriginPick = null;
+        state.alertDestPick = null;
+        await loadAlerts();
+        toast("Alerta creada ✅");
+      } catch (e) {
+        console.error(e); toast("⚠️ No se pudo crear");
+      } finally {
+        updateCreateBtnState();
+      }
+    }
+    async function deleteAlert(id) {
+      try {
+        await api("/api/watchlist?id=" + id, { method: "DELETE" });
+        await loadAlerts();
+        toast("Alerta eliminada");
+      } catch (e) { console.error(e); toast("⚠️ No se pudo eliminar"); }
+    }
+    function updateCreateBtnState() {
+      const btn = document.getElementById("alert-create");
+      btn.disabled = !(state.alertOriginPick && state.alertDestPick);
+    }
+
+    async function init() {
+      try { PLACES = await (await fetch("/places.json")).json(); }
+      catch (e) { console.error("places load failed", e); }
+
+      try {
+        const me = await api("/api/me", {});
+        state.name = me.name || null;
+        state.phone = me.phone || null;
+        document.getElementById("name-input").value = state.name || "";
+        document.getElementById("phone-display").textContent = state.phone || "Web";
+        updateGreeting();
+      } catch (e) { console.error("me load failed", e); }
+
+      try {
+        const p = await api("/api/prefs", {});
+        state.origin = p.origin || null;
+        state.interests = Array.isArray(p.countries) ? p.countries : [];
+        state.currency = p.budget_currency || "USD";
+        document.getElementById("origin-input").value = state.origin || "";
+      } catch (e) { console.error("prefs load failed", e); }
+
+      populateCurrencies();
+      renderSavedPrefs();
+
+      bindAutocomplete(
+        document.getElementById("origin-input"),
+        document.getElementById("origin-ac"),
+        {
+          type: "city",
+          onSelect: function (r, inp) {
+            const name = r.name;
+            inp.value = name;
+            state.origin = name;
+            const curr = currencyFor(name);
+            if (curr) {
+              state.currency = curr;
+              document.getElementById("currency-select").value = curr;
+            }
+            schedulePrefsSave();
+          },
+        }
+      );
+
+      bindAutocomplete(
+        document.getElementById("interest-input"),
+        document.getElementById("interest-ac"),
+        {
+          type: "city",
+          onSelect: function (r, inp) {
+            const name = r.name;
+            if (state.interests.indexOf(name) === -1) {
+              state.interests.push(name);
+              renderSavedPrefs();
+              schedulePrefsSave();
+            }
+            inp.value = "";
+          },
+        }
+      );
+
+      bindAutocomplete(
+        document.getElementById("alert-origin"),
+        document.getElementById("alert-origin-ac"),
+        {
+          type: "city",
+          onSelect: function (r, inp) {
+            inp.value = r.name;
+            state.alertOriginPick = r;
+            updateCreateBtnState();
+          },
+        }
+      );
+
+      bindAutocomplete(
+        document.getElementById("alert-dest"),
+        document.getElementById("alert-dest-ac"),
+        {
+          type: "city",
+          onSelect: function (r, inp) {
+            inp.value = r.name;
+            state.alertDestPick = r;
+            updateCreateBtnState();
+          },
+        }
+      );
+
+      try { await loadAlerts(); } catch (e) {}
+
+      document.querySelectorAll(".tab").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll(".tab").forEach(function (b) {
+            b.classList.toggle("active", b === btn);
+            b.setAttribute("aria-selected", b === btn ? "true" : "false");
+          });
+          const target = btn.dataset.tab;
+          document.querySelectorAll(".panel").forEach(function (p) {
+            p.classList.toggle("active", p.id === "panel-" + target);
+          });
+        });
       });
-    } catch (e) {
-      $("watchlist").innerHTML = '<li style="color:#ff6b6b">Error: ' + escapeHtml(e.message) + '</li>';
-    }
-  }
 
-  async function removeWatch(id) {
-    if (!confirm("¿Quitar esta alerta?")) return;
-    try {
-      const r = await fetch("/api/watchlist?token=" + encodeURIComponent(TOKEN) + "&id=" + id, { method: "DELETE" });
-      if (!r.ok) throw new Error(await r.text());
-      await loadWatchlist();
-    } catch (e) {
-      setWStatus("Error: " + e.message, "err");
-    }
-  }
-
-  $("w_add").addEventListener("click", async () => {
-    const origin_iata = $("w_origin").value.trim().toUpperCase();
-    const destination_iata = $("w_dest_iata").value.trim().toUpperCase();
-    const destination = $("w_dest").value.trim();
-    const max_price_usd = Number($("w_max").value);
-    const frequency_days = Number($("w_freq").value) || 7;
-    if (origin_iata.length !== 3 || destination_iata.length !== 3 || !destination || !max_price_usd) {
-      setWStatus("Completa los 4 campos (IATA 3 letras + destino + precio).", "err");
-      return;
-    }
-    setWStatus("Agregando...");
-    try {
-      const r = await fetch("/api/watchlist?token=" + encodeURIComponent(TOKEN), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ origin_iata, destination_iata, destination, max_price_usd, frequency_days }),
+      document.getElementById("name-input").addEventListener("blur", saveName);
+      document.getElementById("name-input").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") e.target.blur();
       });
-      if (!r.ok) throw new Error(await r.text());
-      $("w_origin").value = "";
-      $("w_dest_iata").value = "";
-      $("w_dest").value = "";
-      $("w_max").value = "";
-      setWStatus("Agregada ✓", "ok");
-      await loadWatchlist();
-    } catch (e) {
-      setWStatus("Error: " + e.message, "err");
-    }
-  });
 
-  loadWatchlist();
-</script>
+      document.getElementById("currency-select").addEventListener("change", function (e) {
+        state.currency = e.target.value;
+        schedulePrefsSave();
+      });
+
+      document.getElementById("origin-input").addEventListener("blur", function (e) {
+        if (!e.target.value.trim()) {
+          state.origin = null;
+          schedulePrefsSave();
+        }
+      });
+
+      document.body.addEventListener("click", function (e) {
+        const removeBtn = e.target.closest("[data-remove]");
+        if (removeBtn) {
+          const name = decodeURIComponent(removeBtn.dataset.remove);
+          state.interests = state.interests.filter(function (n) { return n !== name; });
+          renderSavedPrefs();
+          schedulePrefsSave();
+          return;
+        }
+        const chipBtn = e.target.closest("[data-remove-chip]");
+        if (chipBtn) {
+          const name = decodeURIComponent(chipBtn.dataset.removeChip);
+          state.interests = state.interests.filter(function (n) { return n !== name; });
+          renderSavedPrefs();
+          schedulePrefsSave();
+          return;
+        }
+        const delAlert = e.target.closest("[data-del-alert]");
+        if (delAlert) {
+          if (confirm("¿Eliminar esta alerta?")) deleteAlert(Number(delAlert.dataset.delAlert));
+          return;
+        }
+      });
+
+      document.getElementById("alert-create").addEventListener("click", createAlert);
+    }
+
+    init().catch(function (e) { console.error(e); toast("⚠️ Error inicializando"); });
+  </script>
 </body>
 </html>`;
 }
