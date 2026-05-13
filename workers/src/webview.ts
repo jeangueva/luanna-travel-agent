@@ -135,6 +135,16 @@ export function renderPreferencesPage(token: string): string {
 
   .panel { display: none; animation: fade .25s ease-out; }
   .panel.active { display: block; }
+  .tab-intro {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-2);
+    background: var(--surface);
+    border-left: 3px solid var(--rausch);
+    padding: 12px 14px;
+    border-radius: 0 10px 10px 0;
+    margin-bottom: 18px;
+  }
   @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
   .field { margin-bottom: 16px; }
@@ -322,6 +332,10 @@ export function renderPreferencesPage(token: string): string {
     </div>
 
     <section class="panel active" id="panel-prefs" role="tabpanel">
+      <p class="tab-intro">
+        Cuéntale a Luanna desde dónde viajas y los destinos que te interesan.
+        Así te recomienda vuelos y hoteles que realmente encajan contigo. ✨
+      </p>
       <div class="field">
         <label class="field-label" for="origin-input">¿De dónde viajas?</label>
         <div class="ac-wrap">
@@ -352,6 +366,10 @@ export function renderPreferencesPage(token: string): string {
     </section>
 
     <section class="panel" id="panel-alerts" role="tabpanel">
+      <p class="tab-intro">
+        Crea alertas para que Luanna te avise por WhatsApp cuando haya precios buenos
+        en las rutas que te interesan. Las revisa según la frecuencia que elijas. 🔔
+      </p>
       <div class="form-card">
         <div class="field">
           <label class="field-label" for="alert-origin">Origen</label>

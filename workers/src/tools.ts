@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { createWebviewToken } from "./auth";
-import { sendKapsoFlow } from "./kapso";
+import { sendKapsoCtaUrl, sendKapsoFlow } from "./kapso";
 import {
   addWatchlistItem,
   getPreferences,
@@ -177,6 +177,37 @@ export function makePreferencesLinkTool(args: {
       const token = await createWebviewToken(args.userId, args.signingKey);
       const url = `${args.baseUrl}/webview/prefs?token=${encodeURIComponent(token)}`;
       return { url };
+    },
+  });
+}
+
+export function makePreferencesCtaTool(args: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  userId: number;
+  baseUrl: string;
+  signingKey: string;
+}) {
+  return tool({
+    description:
+      "Envía un botón nativo de WhatsApp que abre el webview de preferencias dentro del chat (Chrome Custom Tabs en Android, in-app browser en iOS). " +
+      "Úsala cuando el usuario quiera configurar sus preferencias o alertas, o decir 'configura', 'mis preferencias', 'mis alertas', etc. " +
+      "Después de invocarla, responde con un mensaje breve indicando que toque el botón abajo.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const token = await createWebviewToken(args.userId, args.signingKey);
+      const url = `${args.baseUrl}/webview/prefs?token=${encodeURIComponent(token)}`;
+      await sendKapsoCtaUrl({
+        apiKey: args.apiKey,
+        phoneNumberId: args.phoneNumberId,
+        to: args.to,
+        bodyText: "Configura tus preferencias y alertas — el botón te abre el panel dentro de WhatsApp 🎯",
+        buttonText: "Abrir panel",
+        url,
+        footerText: "Solo tú puedes ver este link",
+      });
+      return { ok: true };
     },
   });
 }

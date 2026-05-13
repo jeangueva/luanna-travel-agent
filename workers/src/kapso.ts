@@ -135,6 +135,53 @@ export async function sendKapsoText(params: {
   }
 }
 
+export async function sendKapsoCtaUrl(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  bodyText: string;
+  buttonText: string;
+  url: string;
+  headerText?: string;
+  footerText?: string;
+}): Promise<void> {
+  const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
+  const interactive: Record<string, unknown> = {
+    type: "cta_url",
+    body: { text: params.bodyText.slice(0, 1024) },
+    action: {
+      name: "cta_url",
+      parameters: {
+        display_text: params.buttonText.slice(0, 20),
+        url: params.url,
+      },
+    },
+  };
+  if (params.headerText) {
+    interactive.header = { type: "text", text: params.headerText.slice(0, 60) };
+  }
+  if (params.footerText) {
+    interactive.footer = { text: params.footerText.slice(0, 60) };
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": params.apiKey,
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: params.to,
+      type: "interactive",
+      interactive,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Kapso CTA url send failed ${res.status}: ${text}`);
+  }
+}
+
 export async function sendKapsoFlow(params: {
   apiKey: string;
   phoneNumberId: string;

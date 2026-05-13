@@ -3,6 +3,7 @@ import { generateText, stepCountIs, type ModelMessage } from "ai";
 import {
   extractFlowSubmission,
   extractMessageReceived,
+  sendKapsoCtaUrl,
   sendKapsoFlow,
   sendKapsoText,
   verifyKapsoSignature,
@@ -42,6 +43,7 @@ import {
   makeFlightSearchTool,
   makeHotelSearchTool,
   makePackageLinkTool,
+  makePreferencesCtaTool,
   makePreferencesFlowTool,
   makePreferencesLinkTool,
   makeRemoveFavoritePlacesTool,
@@ -145,6 +147,8 @@ async function generateReply(
     !!ctx.to &&
     !!ctx.phoneNumberId;
 
+  const inWhatsApp = !!ctx.to && !!ctx.phoneNumberId;
+
   // First contact: deterministic welcome + preferences entry point. We don't
   // trust the model to follow the exact welcome format every time, so build
   // it ourselves before the conversation deepens.
@@ -164,6 +168,27 @@ async function generateReply(
     }
     const token = await createWebviewToken(ctx.userId, env.WEBVIEW_SIGNING_KEY);
     const url = `${ctx.baseUrl}/webview/prefs?token=${encodeURIComponent(token)}`;
+    // In WhatsApp, send the URL as a native CTA URL button (renders as a
+    // dedicated "Abrir panel" button below the message; the URL itself
+    // doesn't appear inline). On web/chat, return the URL inline so the
+    // chat UI renders it as a clickable link.
+    if (inWhatsApp) {
+      try {
+        await sendKapsoCtaUrl({
+          apiKey: env.KAPSO_API_KEY,
+          phoneNumberId: ctx.phoneNumberId!,
+          to: ctx.to!,
+          bodyText: "Configura tus preferencias y alertas — el botón te abre el panel dentro de WhatsApp 🎯",
+          buttonText: "Abrir panel",
+          url,
+          footerText: "Solo tú puedes ver este link",
+        });
+      } catch (err) {
+        console.error("first-contact CTA url failed, falling back to text", err);
+        return buildFirstContactWelcome(url);
+      }
+      return buildFirstContactWelcome(null);
+    }
     return buildFirstContactWelcome(url);
   }
 
@@ -184,6 +209,22 @@ async function generateReply(
     if (ctx.userId > 0) {
       const token = await createWebviewToken(ctx.userId, env.WEBVIEW_SIGNING_KEY);
       const url = `${ctx.baseUrl}/webview/prefs?token=${encodeURIComponent(token)}`;
+      if (inWhatsApp) {
+        try {
+          await sendKapsoCtaUrl({
+            apiKey: env.KAPSO_API_KEY,
+            phoneNumberId: ctx.phoneNumberId!,
+            to: ctx.to!,
+            bodyText: "Acá puedes editar tus preferencias y alertas 🎯",
+            buttonText: "Abrir panel",
+            url,
+            footerText: "Solo tú puedes ver este link",
+          });
+          return "Listo 👆";
+        } catch (err) {
+          console.error("prefs-intent CTA url failed, falling back to text", err);
+        }
+      }
       return `Configura tus gustos acá: ${url}`;
     }
   }
@@ -212,13 +253,24 @@ async function generateReply(
             draft: env.KAPSO_PREFS_FLOW_DRAFT === "1",
           }),
         }
-      : {
-          get_preferences_link: makePreferencesLinkTool({
-            userId: ctx.userId,
-            baseUrl: ctx.baseUrl,
-            signingKey: env.WEBVIEW_SIGNING_KEY,
+      : inWhatsApp
+        ? {
+            open_preferences_form: makePreferencesCtaTool({
+              apiKey: env.KAPSO_API_KEY,
+              phoneNumberId: ctx.phoneNumberId!,
+              to: ctx.to!,
+              userId: ctx.userId,
+              baseUrl: ctx.baseUrl,
+              signingKey: env.WEBVIEW_SIGNING_KEY,
+            }),
+          }
+        : {
+            get_preferences_link: makePreferencesLinkTool({
+              userId: ctx.userId,
+              baseUrl: ctx.baseUrl,
+              signingKey: env.WEBVIEW_SIGNING_KEY,
+            }),
           }),
-        }),
     add_watchlist: makeAddWatchlistTool({
       sql: ctx.sql,
       userId: ctx.userId,
