@@ -445,6 +445,150 @@ export async function cleanupRateLimitsAndWebhooks(sql: Sql): Promise<void> {
   await sql`DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 hour'`;
   await sql`DELETE FROM processed_webhooks WHERE created_at < NOW() - INTERVAL '30 days'`;
   await sql`DELETE FROM worker_errors WHERE occurred_at < NOW() - INTERVAL '30 days'`;
+  await sql`DELETE FROM click_redirects WHERE created_at < NOW() - INTERVAL '90 days' AND click_count = 0`;
+  await sql`DELETE FROM price_history WHERE observed_at < NOW() - INTERVAL '90 days'`;
+}
+
+// ─── Re-engagement nudges ─────────────────────────────────────────────────────
+
+export interface NudgeCandidate {
+  id: number;
+  phone: string;
+  phone_number_id: string | null;
+  name: string | null;
+  origin: string | null;
+  countries: string[];
+  last_message_at: string;
+  days_silent: number;
+}
+
+export async function findNudgeCandidates(
+  sql: Sql,
+  args: {
+    minSilentDays: number;
+    maxSilentDays: number;
+    minNudgeGapDays: number;
+    limit: number;
+  },
+): Promise<NudgeCandidate[]> {
+  return (await sql`
+    SELECT
+      u.id, u.phone, u.phone_number_id, u.name,
+      p.origin, p.countries,
+      MAX(m.created_at) AS last_message_at,
+      EXTRACT(EPOCH FROM (NOW() - MAX(m.created_at))) / 86400 AS days_silent
+    FROM users u
+    JOIN preferences p ON p.user_id = u.id
+    JOIN messages m ON m.user_id = u.id
+    WHERE u.phone_number_id IS NOT NULL
+      AND u.phone NOT LIKE 'web:%'
+      AND (u.last_nudge_at IS NULL OR u.last_nudge_at < NOW() - (${args.minNudgeGapDays} || ' days')::interval)
+      AND (
+        jsonb_array_length(COALESCE(p.countries, '[]'::jsonb)) > 0
+        OR p.origin IS NOT NULL
+      )
+    GROUP BY u.id, u.phone, u.phone_number_id, u.name, p.origin, p.countries
+    HAVING MAX(m.created_at) < NOW() - (${args.minSilentDays} || ' days')::interval
+       AND MAX(m.created_at) > NOW() - (${args.maxSilentDays} || ' days')::interval
+    ORDER BY MAX(m.created_at) ASC
+    LIMIT ${args.limit}
+  `) as NudgeCandidate[];
+}
+
+export async function markUserNudged(sql: Sql, userId: number): Promise<void> {
+  await sql`UPDATE users SET last_nudge_at = NOW() WHERE id = ${userId}`;
+}
+
+// ─── Click tracking ──────────────────────────────────────────────────────────
+
+export type ClickKind = "flight" | "hotel" | "package" | "offer" | "other";
+
+export async function createClickRedirect(
+  sql: Sql,
+  args: {
+    id: string;
+    userId: number | null;
+    originalUrl: string;
+    kind: ClickKind;
+  },
+): Promise<void> {
+  await sql`
+    INSERT INTO click_redirects (id, user_id, original_url, kind)
+    VALUES (${args.id}, ${args.userId}, ${args.originalUrl}, ${args.kind})
+  `;
+}
+
+export interface ClickRedirect {
+  id: string;
+  user_id: number | null;
+  original_url: string;
+  kind: ClickKind;
+  click_count: number;
+}
+
+export async function consumeClickRedirect(
+  sql: Sql,
+  id: string,
+): Promise<ClickRedirect | null> {
+  const rows = (await sql`
+    UPDATE click_redirects
+    SET click_count = click_count + 1, last_click_at = NOW()
+    WHERE id = ${id}
+    RETURNING id, user_id, original_url, kind, click_count
+  `) as ClickRedirect[];
+  return rows[0] ?? null;
+}
+
+// ─── Price history (drop detection) ──────────────────────────────────────────
+
+export type PriceSource = "watchlist_cron" | "tool_search" | "offer_cron";
+
+export async function recordPriceObservation(
+  sql: Sql,
+  args: {
+    originIata: string;
+    destinationIata: string;
+    priceUsd: number;
+    source: PriceSource;
+  },
+): Promise<void> {
+  await sql`
+    INSERT INTO price_history (origin_iata, destination_iata, price_usd, source)
+    VALUES (${args.originIata}, ${args.destinationIata}, ${args.priceUsd}, ${args.source})
+  `;
+}
+
+export interface PriceBaseline {
+  observations: number;
+  avg_price_usd: number;
+  min_price_usd: number;
+}
+
+export async function getPriceBaseline(
+  sql: Sql,
+  originIata: string,
+  destinationIata: string,
+  windowDays: number,
+): Promise<PriceBaseline | null> {
+  const rows = (await sql`
+    SELECT
+      COUNT(*)::int AS observations,
+      AVG(price_usd)::int AS avg_price_usd,
+      MIN(price_usd)::int AS min_price_usd
+    FROM price_history
+    WHERE origin_iata = ${originIata}
+      AND destination_iata = ${destinationIata}
+      AND observed_at > NOW() - (${windowDays} || ' days')::interval
+  `) as Array<{ observations: number; avg_price_usd: number | null; min_price_usd: number | null }>;
+  const r = rows[0];
+  if (!r || r.observations === 0 || r.avg_price_usd == null || r.min_price_usd == null) {
+    return null;
+  }
+  return {
+    observations: r.observations,
+    avg_price_usd: r.avg_price_usd,
+    min_price_usd: r.min_price_usd,
+  };
 }
 
 export async function recordError(

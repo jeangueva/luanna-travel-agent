@@ -4,10 +4,50 @@ import { createWebviewToken } from "./auth";
 import { sendKapsoCtaUrl, sendKapsoFlow } from "./kapso";
 import {
   addWatchlistItem,
+  createClickRedirect,
   getPreferences,
+  recordPriceObservation,
   upsertPreferences,
+  type ClickKind,
   type Sql,
 } from "./db";
+
+function genClickId(): string {
+  // URL-safe 8-char id from crypto-random bytes
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[b % 62])
+    .join("");
+}
+
+export interface ClickContext {
+  sql: Sql;
+  userId: number;
+  baseUrl: string;
+}
+
+export async function wrapClickUrl(
+  ctx: ClickContext | null,
+  kind: ClickKind,
+  originalUrl: string,
+): Promise<string> {
+  if (!ctx || ctx.userId <= 0 || !originalUrl) return originalUrl;
+  const id = genClickId();
+  try {
+    await createClickRedirect(ctx.sql, {
+      id,
+      userId: ctx.userId,
+      originalUrl,
+      kind,
+    });
+    return `${ctx.baseUrl}/r/${id}`;
+  } catch (err) {
+    // Click logging never breaks the user reply — fall back to the raw URL.
+    console.error("wrapClickUrl failed", err);
+    return originalUrl;
+  }
+}
 
 function dedupeCaseInsensitive(values: string[]): string[] {
   const seen = new Set<string>();
@@ -96,6 +136,40 @@ export function makeRemoveFavoritePlacesTool(args: {
 export interface TravelpayoutsEnv {
   TRAVELPAYOUTS_TOKEN: string;
   TRAVELPAYOUTS_MARKER: string;
+}
+
+export function makeSuggestItineraryTool() {
+  return tool({
+    description:
+      "Sugiere un plan de viaje resumido para un destino: qué hacer cada día, comida típica, transporte, presupuesto aproximado. " +
+      "Úsala cuando el usuario, después de ver vuelos/hoteles, pida 'qué hago en X', 'arma un plan', 'itinerario', 'qué hacer en X' o similar. " +
+      "Devuelve hints estructurados que tú debes formatear como respuesta corta de WhatsApp (3-6 líneas, emojis).",
+    inputSchema: z.object({
+      destination: z.string().min(2).describe("Ciudad destino, ej. 'Madrid'"),
+      days: z
+        .number()
+        .int()
+        .min(1)
+        .max(14)
+        .default(5)
+        .describe("Cuántos días dura el viaje"),
+      style: z
+        .enum(["relajado", "aventura", "cultural", "gastronomico", "mixto"])
+        .optional()
+        .describe("Estilo de viaje preferido (opcional)"),
+    }),
+    execute: async ({ destination, days, style }) => {
+      return {
+        destination,
+        days,
+        style: style ?? "mixto",
+        hint:
+          "Devuelve al usuario un plan ${days} días en ${destination} con bullets cortos (máx 1 línea por día), 1 tip de comida típica, 1 de transporte, y rango de presupuesto en USD. Mantén el tono cómplice y warm de Luanna. Usa emojis 🗺️ 🍝 🚇 💸.",
+        format_example:
+          "Día 1: barrio histórico + atardecer\\nDía 2: museo + parque\\n...\\n🍝 No te pierdas la X\\n🚇 Usa la app Y para metro\\n💸 Presupuesto: $A-$B/día",
+      };
+    },
+  });
 }
 
 export function makeSaveUserNameTool(args: { sql: Sql; userId: number }) {
@@ -256,7 +330,10 @@ interface TravelpayoutsFlight {
   link?: string;
 }
 
-export function makeFlightSearchTool(env: TravelpayoutsEnv) {
+export function makeFlightSearchTool(
+  env: TravelpayoutsEnv,
+  click?: ClickContext,
+) {
   return tool({
     description:
       "Busca vuelos baratos. Devuelve hasta 5 opciones ordenadas por precio (USD). " +
@@ -307,20 +384,39 @@ export function makeFlightSearchTool(env: TravelpayoutsEnv) {
         success?: boolean;
         data?: TravelpayoutsFlight[];
       };
-      const flights = (json.data ?? []).slice(0, 5).map((f) => ({
-        price_usd: f.price,
-        airline: f.airline,
-        flight_number: f.flight_number,
-        departure_at: f.departure_at,
-        return_at: f.return_at,
-        transfers: f.transfers,
-        return_transfers: f.return_transfers,
-        duration_minutes_outbound: f.duration_to,
-        duration_minutes_return: f.duration_back,
-        link: f.link
-          ? `https://www.aviasales.com${f.link}${f.link.includes("?") ? "&" : "?"}marker=${env.TRAVELPAYOUTS_MARKER}`
-          : null,
-      }));
+      const raw = (json.data ?? []).slice(0, 5);
+      // Record the cheapest observation for the route so the watchlist cron
+      // can detect actual price drops over time.
+      const cheapest = raw[0];
+      if (cheapest && click?.sql) {
+        try {
+          await recordPriceObservation(click.sql, {
+            originIata: origin.toUpperCase(),
+            destinationIata: destination.toUpperCase(),
+            priceUsd: cheapest.price,
+            source: "tool_search",
+          });
+        } catch (e) { /* never break the reply */ }
+      }
+      const flights = await Promise.all(
+        raw.map(async (f) => {
+          const longUrl = f.link
+            ? `https://www.aviasales.com${f.link}${f.link.includes("?") ? "&" : "?"}marker=${env.TRAVELPAYOUTS_MARKER}`
+            : null;
+          return {
+            price_usd: f.price,
+            airline: f.airline,
+            flight_number: f.flight_number,
+            departure_at: f.departure_at,
+            return_at: f.return_at,
+            transfers: f.transfers,
+            return_transfers: f.return_transfers,
+            duration_minutes_outbound: f.duration_to,
+            duration_minutes_return: f.duration_back,
+            link: longUrl ? await wrapClickUrl(click ?? null, "flight", longUrl) : null,
+          };
+        }),
+      );
       return { flights };
     },
   });
@@ -357,7 +453,10 @@ function buildHotelSearchUrl(args: {
   return wrapped.toString();
 }
 
-export function makeHotelSearchTool(env: TravelpayoutsEnv) {
+export function makeHotelSearchTool(
+  env: TravelpayoutsEnv,
+  click?: ClickContext,
+) {
   return tool({
     description:
       "Busca hoteles baratos en una ciudad. Devuelve hasta 5 opciones con precio promedio (USD) más un link de búsqueda con marker afiliado para que el usuario compare en Hotellook. " +
@@ -385,13 +484,14 @@ export function makeHotelSearchTool(env: TravelpayoutsEnv) {
       url.searchParams.set("limit", "10");
       url.searchParams.set("token", env.TRAVELPAYOUTS_TOKEN);
 
-      const search_url = buildHotelSearchUrl({
+      const longSearch = buildHotelSearchUrl({
         city,
         checkin,
         checkout,
         adults,
         marker: env.TRAVELPAYOUTS_MARKER,
       });
+      const search_url = await wrapClickUrl(click ?? null, "hotel", longSearch);
 
       const res = await fetch(url.toString());
       if (!res.ok) {
@@ -420,7 +520,10 @@ export function makeHotelSearchTool(env: TravelpayoutsEnv) {
   });
 }
 
-export function makePackageLinkTool(env: TravelpayoutsEnv) {
+export function makePackageLinkTool(
+  env: TravelpayoutsEnv,
+  click?: ClickContext,
+) {
   return tool({
     description:
       "Devuelve links afiliados (con marker) para armar un paquete vuelo+hotel: uno para buscar el vuelo en Aviasales y otro para buscar hotel en Hotellook con las mismas fechas. " +
@@ -471,21 +574,23 @@ export function makePackageLinkTool(env: TravelpayoutsEnv) {
         outDDMM && backDDMM
           ? `${origin_iata.toUpperCase()}${outDDMM}${destination_iata.toUpperCase()}${backDDMM}${adults}`
           : null;
-      const flight_url = flightPath
+      const longFlight = flightPath
         ? `https://www.aviasales.com/search/${flightPath}?marker=${env.TRAVELPAYOUTS_MARKER}`
         : null;
-
-      const hotel_url = buildHotelSearchUrl({
+      const longHotel = buildHotelSearchUrl({
         city: destination_city,
         checkin,
         checkout,
         adults,
         marker: env.TRAVELPAYOUTS_MARKER,
       });
-
+      const flight_search_url = longFlight
+        ? await wrapClickUrl(click ?? null, "package", longFlight)
+        : null;
+      const hotel_search_url = await wrapClickUrl(click ?? null, "package", longHotel);
       return {
-        flight_search_url: flight_url,
-        hotel_search_url: hotel_url,
+        flight_search_url,
+        hotel_search_url,
         note: "Travelpayouts no devuelve precio total combinado; el usuario compara en cada link.",
       };
     },

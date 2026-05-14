@@ -1,26 +1,39 @@
 import {
   cleanupRateLimitsAndWebhooks,
+  createClickRedirect,
+  findNudgeCandidates,
   getDb,
   getDueWatchlist,
   getOfferEligibleUsers,
+  getPriceBaseline,
+  markUserNudged,
   markUserOfferSent,
   markWatchlistChecked,
   recordError,
+  recordPriceObservation,
   summarizeRecentErrors,
   type DueWatchlistRow,
+  type NudgeCandidate,
   type OfferEligibleUser,
+  type Sql,
 } from "./db";
 import { sendKapsoText } from "./kapso";
 import { distinctIdForUser, track } from "./posthog";
+import { HOLIDAYS, holidaysWithinDays } from "./holidays";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { generateText } from "ai";
 
 export interface CronEnv {
   DATABASE_URL: string;
   KAPSO_API_KEY: string;
   TRAVELPAYOUTS_TOKEN: string;
   TRAVELPAYOUTS_MARKER: string;
+  ANTHROPIC_API_KEY?: string;
+  LUANNA_MODEL?: string;
   ALERT_WEBHOOK_URL?: string;
   POSTHOG_API_KEY?: string;
   POSTHOG_HOST?: string;
+  PUBLIC_BASE_URL?: string;
 }
 
 // Common destination → IATA map for daily-offer flight search.
@@ -160,11 +173,30 @@ async function findCheapest(
   };
 }
 
-function formatNotification(row: DueWatchlistRow, f: CheapestFlight): string {
+function formatDropNotification(
+  row: DueWatchlistRow,
+  f: CheapestFlight,
+  baseline: { avg: number; pct_below: number },
+): string {
   const date = f.departure_at.slice(0, 10);
   const lines = [
-    `✈️ Alerta de precios — ${row.origin_iata}→${row.destination_iata}`,
-    `Desde $${f.price} con ${f.airline} · sale ${date}`,
+    `🔥 ¡Bajó el precio! ${row.origin_iata}→${row.destination_iata}`,
+    `Desde $${f.price} ahora (promedio reciente $${baseline.avg}, ${baseline.pct_below}% menos)`,
+    `${f.airline} · sale ${date}`,
+  ];
+  if (f.link) lines.push(f.link);
+  return lines.join("\n");
+}
+
+function formatFirstAlertNotification(
+  row: DueWatchlistRow,
+  f: CheapestFlight,
+): string {
+  const date = f.departure_at.slice(0, 10);
+  const lines = [
+    `✈️ Tu alerta ${row.origin_iata}→${row.destination_iata} está activa`,
+    `Precio actual: $${f.price} con ${f.airline} · sale ${date}`,
+    `Te aviso si baja en próximos chequeos.`,
   ];
   if (f.link) lines.push(f.link);
   return lines.join("\n");
@@ -181,13 +213,54 @@ async function processWatchlistRow(
   }
 
   const cheapest = await findCheapest(env, row.origin_iata, row.destination_iata);
-
-  // Price is no longer collected on alert creation — the webview drops the
-  // field. Send the current cheapest price every frequency_days regardless
-  // of value. If max_price is set (legacy alerts created before this change)
-  // and the current price exceeds it, still notify (the user wanted a
-  // periodic check, not a threshold).
   if (!cheapest) {
+    await markWatchlistChecked(sql, row.id, false);
+    return;
+  }
+
+  // Always record the observation for future baseline comparisons.
+  try {
+    await recordPriceObservation(sql, {
+      originIata: row.origin_iata,
+      destinationIata: row.destination_iata,
+      priceUsd: cheapest.price,
+      source: "watchlist_cron",
+    });
+  } catch (_) { /* never fail on logging */ }
+
+  // Compare against the 30-day baseline. If we have <=2 observations yet,
+  // treat it as the "first" alert so the user sees their watchlist working.
+  // Otherwise, only notify when the current price is at least 10% below the
+  // recent average (the "real drop" semantics).
+  const baseline = await getPriceBaseline(
+    sql,
+    row.origin_iata,
+    row.destination_iata,
+    30,
+  );
+
+  let body: string;
+  let shouldSend: boolean;
+  if (!baseline || baseline.observations <= 2) {
+    body = formatFirstAlertNotification(row, cheapest);
+    shouldSend = true;
+  } else {
+    const pctBelow = Math.round(
+      ((baseline.avg_price_usd - cheapest.price) / baseline.avg_price_usd) * 100,
+    );
+    if (pctBelow >= 10) {
+      body = formatDropNotification(row, cheapest, {
+        avg: baseline.avg_price_usd,
+        pct_below: pctBelow,
+      });
+      shouldSend = true;
+    } else {
+      shouldSend = false;
+      body = "";
+    }
+  }
+
+  if (!shouldSend) {
     await markWatchlistChecked(sql, row.id, false);
     return;
   }
@@ -196,7 +269,7 @@ async function processWatchlistRow(
     apiKey: env.KAPSO_API_KEY,
     phoneNumberId: row.phone_number_id,
     to: row.phone,
-    body: formatNotification(row, cheapest),
+    body,
   });
   await markWatchlistChecked(sql, row.id, true);
 }
@@ -351,4 +424,171 @@ export async function runDailyOffersCron(env: CronEnv): Promise<void> {
     }
   }
   console.log(`daily offers cron: sent=${sent} skipped=${skipped}`);
+}
+
+// ─── Re-engagement cron ───────────────────────────────────────────────────────
+
+const DEFAULT_NUDGE_MODEL = "claude-haiku-4-5";
+
+async function generateNudgeText(
+  env: CronEnv,
+  user: NudgeCandidate,
+): Promise<string> {
+  // Fallback if no Anthropic key — small templated nudge.
+  if (!env.ANTHROPIC_API_KEY) {
+    const dest = user.countries[0] ?? "tu próximo viaje";
+    const greet = user.name ? `Hey ${user.name}` : "Hey";
+    return `${greet}! 👋 ¿Sigue en pie ${dest}? Si quieres puedo chequearte precios ahora mismo ✈️`;
+  }
+  const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const model = anthropic(env.LUANNA_MODEL ?? DEFAULT_NUDGE_MODEL);
+  const interests = user.countries.slice(0, 4).join(", ") || "viajar";
+  const ctx =
+    `Usuario: ${user.name ?? "sin nombre"}\n` +
+    `Origen: ${user.origin ?? "?"}\n` +
+    `Intereses guardados: ${interests}\n` +
+    `Días sin escribir: ${Math.round(user.days_silent)}\n`;
+  const system =
+    "Eres Luanna, agente de viajes por WhatsApp. Genera UN solo mensaje breve (40-180 chars, 1-2 frases, " +
+    "1-2 emojis), cálido y no pushy, para que el usuario silencioso vuelva a hablarte. " +
+    "Si tienes nombre, úsalo. Si tienes destinos guardados, menciona uno casualmente. " +
+    "Nunca prometas precios concretos. Nunca incluyas links. Responde solo el texto del mensaje, sin comillas.";
+  try {
+    const { text } = await generateText({
+      model,
+      system,
+      prompt: ctx,
+    });
+    const cleaned = text.replace(/^["']|["']$/g, "").trim();
+    if (cleaned.length < 10 || cleaned.length > 280) {
+      const dest = user.countries[0] ?? "tu próximo viaje";
+      const greet = user.name ? `Hey ${user.name}` : "Hey";
+      return `${greet}! 👋 ¿Sigue en pie ${dest}? ✈️`;
+    }
+    return cleaned;
+  } catch (_) {
+    const dest = user.countries[0] ?? "tu próximo viaje";
+    const greet = user.name ? `Hey ${user.name}` : "Hey";
+    return `${greet}! 👋 ¿Sigue en pie ${dest}? ✈️`;
+  }
+}
+
+async function processNudge(
+  env: CronEnv,
+  user: NudgeCandidate,
+  reason: "silent" | "holiday",
+  extra?: string,
+): Promise<"sent" | "skipped"> {
+  if (!user.phone_number_id) return "skipped";
+  const sql = getDb(env.DATABASE_URL);
+  const body = extra ? `${extra}\n${await generateNudgeText(env, user)}` : await generateNudgeText(env, user);
+  await sendKapsoText({
+    apiKey: env.KAPSO_API_KEY,
+    phoneNumberId: user.phone_number_id,
+    to: user.phone,
+    body,
+  });
+  await markUserNudged(sql, user.id);
+  await track(env, {
+    event: "nudge_sent",
+    distinct_id: distinctIdForUser(user.id),
+    properties: {
+      reason,
+      days_silent: Math.round(user.days_silent),
+      has_origin: !!user.origin,
+      interests_count: user.countries.length,
+    },
+  });
+  return "sent";
+}
+
+export async function runReEngagementCron(env: CronEnv): Promise<void> {
+  // First pass: seasonal holiday-driven nudges (broader candidate pool,
+  // doesn't require silence). last_nudge_at gate ensures we don't double-push.
+  await runSeasonalCron(env);
+  const sql = getDb(env.DATABASE_URL);
+  // Second pass: standard re-engagement for users silent 7-30 days.
+  // Anyone seasonal already nudged above is filtered out by the gap check.
+  const candidates = await findNudgeCandidates(sql, {
+    minSilentDays: 7,
+    maxSilentDays: 30,
+    minNudgeGapDays: 14,
+    limit: 10,
+  });
+  console.log(`re-engagement cron: ${candidates.length} candidates`);
+  let sent = 0;
+  let skipped = 0;
+  for (const user of candidates) {
+    try {
+      const r = await processNudge(env, user, "silent");
+      if (r === "sent") sent++;
+      else skipped++;
+    } catch (err) {
+      console.error(`re-engagement user ${user.id} failed`, err);
+      skipped++;
+      await recordError(sql, "cron:nudge", err, { user_id: user.id });
+    }
+  }
+  console.log(`re-engagement cron: sent=${sent} skipped=${skipped}`);
+}
+
+// ─── Seasonal pushes (holidays in user's country) ────────────────────────────
+
+const CITY_TO_COUNTRY: Record<string, string> = {
+  "lima": "PE", "cusco": "PE", "arequipa": "PE",
+  "buenos aires": "AR",
+  "santiago": "CL",
+  "bogota": "CO", "bogotá": "CO", "medellin": "CO", "medellín": "CO", "cartagena": "CO",
+  "cancun": "MX", "cancún": "MX", "ciudad de mexico": "MX", "cdmx": "MX", "mexico": "MX", "méxico": "MX", "guadalajara": "MX",
+  "miami": "US", "nueva york": "US", "new york": "US", "los angeles": "US", "los ángeles": "US", "san francisco": "US", "orlando": "US",
+  "madrid": "ES", "barcelona": "ES",
+};
+
+function countryFor(originCity: string | null): string | null {
+  if (!originCity) return null;
+  return CITY_TO_COUNTRY[originCity.trim().toLowerCase()] ?? null;
+}
+
+export async function runSeasonalCron(env: CronEnv): Promise<void> {
+  const sql = getDb(env.DATABASE_URL);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Only push if a holiday from the user's country falls within 7-21 days.
+  // That hits the booking window when prices still respond and the user can
+  // act, without spamming weeks in advance.
+  const candidates = await findNudgeCandidates(sql, {
+    minSilentDays: 0,           // unlike re-engagement, we don't require silence
+    maxSilentDays: 365,
+    minNudgeGapDays: 14,
+    limit: 25,
+  });
+  console.log(`seasonal cron: ${candidates.length} candidates`);
+  let sent = 0;
+  let skipped = 0;
+  for (const user of candidates) {
+    try {
+      const country = countryFor(user.origin);
+      if (!country) { skipped++; continue; }
+      const upcoming = holidaysWithinDays(country, today, 21).filter((h) => {
+        const days = Math.round(
+          (new Date(h.date).getTime() - new Date(today).getTime()) / 86400000,
+        );
+        return days >= 7 && days <= 21;
+      });
+      if (upcoming.length === 0) { skipped++; continue; }
+      const h = upcoming[0];
+      const dest = user.countries[0] ?? null;
+      const teaser = dest
+        ? `🇵🇪 Se viene ${h.name} en ${h.date.slice(8, 10)}/${h.date.slice(5, 7)} — fin de semana largo perfecto para ${dest}.`
+        : `🇵🇪 Se viene ${h.name} en ${h.date.slice(8, 10)}/${h.date.slice(5, 7)} — buen momento para una escapada corta.`;
+      const r = await processNudge(env, user, "holiday", teaser);
+      if (r === "sent") sent++;
+      else skipped++;
+    } catch (err) {
+      console.error(`seasonal user ${user.id} failed`, err);
+      skipped++;
+      await recordError(sql, "cron:seasonal", err, { user_id: user.id });
+    }
+  }
+  console.log(`seasonal cron: sent=${sent} skipped=${skipped}`);
 }

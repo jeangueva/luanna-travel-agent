@@ -12,6 +12,7 @@ import {
   addWatchlistItem,
   appendMessage,
   checkRateLimit,
+  consumeClickRedirect,
   createDataDeletionRequest,
   deleteWatchlistItem,
   getDb,
@@ -48,6 +49,7 @@ import {
   makePreferencesLinkTool,
   makeRemoveFavoritePlacesTool,
   makeSaveUserNameTool,
+  makeSuggestItineraryTool,
 } from "./tools";
 import { createWebviewToken, verifyWebviewToken } from "./auth";
 import { renderPreferencesPage } from "./webview";
@@ -55,6 +57,7 @@ import {
   runCleanupCron,
   runDailyOffersCron,
   runErrorAlertCron,
+  runReEngagementCron,
   runWatchlistCron,
 } from "./cron";
 
@@ -239,10 +242,14 @@ async function generateReply(
     TRAVELPAYOUTS_TOKEN: env.TRAVELPAYOUTS_TOKEN,
     TRAVELPAYOUTS_MARKER: env.TRAVELPAYOUTS_MARKER,
   };
+  const clickCtx = ctx.userId > 0
+    ? { sql: ctx.sql, userId: ctx.userId, baseUrl: ctx.baseUrl }
+    : undefined;
   const tools = {
-    search_flights: makeFlightSearchTool(tpEnv),
-    search_hotels: makeHotelSearchTool(tpEnv),
-    get_package_link: makePackageLinkTool(tpEnv),
+    search_flights: makeFlightSearchTool(tpEnv, clickCtx),
+    search_hotels: makeHotelSearchTool(tpEnv, clickCtx),
+    get_package_link: makePackageLinkTool(tpEnv, clickCtx),
+    suggest_itinerary: makeSuggestItineraryTool(),
     ...(flowEnabled
       ? {
           open_preferences_form: makePreferencesFlowTool({
@@ -1027,6 +1034,28 @@ async function handleChatReset(request: Request, env: Env): Promise<Response> {
   return Response.json({ ok: true });
 }
 
+async function handleClickRedirect(url: URL, env: Env): Promise<Response> {
+  const id = url.pathname.slice(3).replace(/[^A-Za-z0-9_-]/g, "");
+  if (!id || id.length < 4 || id.length > 32) {
+    return new Response("not found", { status: 404 });
+  }
+  const sql = getDb(env.DATABASE_URL);
+  try {
+    const row = await consumeClickRedirect(sql, id);
+    if (!row) return new Response("not found", { status: 404 });
+    void track(env, {
+      event: "link_clicked",
+      distinct_id: row.user_id ? distinctIdForUser(row.user_id) : "anon",
+      properties: { kind: row.kind, redirect_id: id },
+    });
+    return Response.redirect(row.original_url, 302);
+  } catch (err) {
+    console.error("click redirect failed", err);
+    await recordError(sql, "fetch:click_redirect", err, { id });
+    return new Response("server error", { status: 500 });
+  }
+}
+
 async function handleHealth(env: Env): Promise<Response> {
   const started = Date.now();
   try {
@@ -1084,6 +1113,9 @@ async function routeFetch(
 
   if (request.method === "GET" && url.pathname === "/health") {
     return handleHealth(env);
+  }
+  if (request.method === "GET" && url.pathname.startsWith("/r/")) {
+    return handleClickRedirect(url, env);
   }
   if (request.method === "POST" && url.pathname === "/webhook/kapso") {
     return handleKapsoWebhook(request, env, ctx);
@@ -1155,6 +1187,8 @@ async function dispatchScheduled(
         await runCleanupCron(env);
       } else if (cron === "0 * * * *") {
         await runErrorAlertCron(env);
+      } else if (cron === "0 15 * * 1,3,5") {
+        await runReEngagementCron(env);
       } else {
         await runWatchlistCron(env);
       }
