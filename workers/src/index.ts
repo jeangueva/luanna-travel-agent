@@ -1,7 +1,9 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText, stepCountIs, type ModelMessage } from "ai";
 import {
+  downloadKapsoMedia,
   extractFlowSubmission,
+  extractMediaMessage,
   extractMessageReceived,
   sendKapsoCtaUrl,
   sendKapsoFlow,
@@ -9,12 +11,19 @@ import {
   verifyKapsoSignature,
 } from "./kapso";
 import {
+  identifyDestinationFromImage,
+  transcribeAudio,
+} from "./multimodal";
+import {
   addWatchlistItem,
   appendMessage,
   checkRateLimit,
   consumeClickRedirect,
+  countReferralsFor,
   createDataDeletionRequest,
   deleteWatchlistItem,
+  ensureReferralCode,
+  findReferrerByCode,
   getDb,
   getOrCreateUser,
   getPreferences,
@@ -25,6 +34,7 @@ import {
   processDeletionRequest,
   recordError,
   recordWebhookOrSkip,
+  setReferredBy,
   upsertPreferences,
   type Message,
   type Preferences,
@@ -78,6 +88,7 @@ export interface Env {
   POSTHOG_API_KEY?: string;
   POSTHOG_HOST?: string;
   ASSETS: Fetcher;
+  AI?: { run: (model: string, input: unknown) => Promise<unknown> };
 }
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
@@ -397,19 +408,34 @@ async function handleKapsoWebhook(
     return new Response("ok", { status: 200 });
   }
 
+  // Resolve the incoming message into a unified shape (text, image-as-text,
+  // or audio-transcript-as-text). Heavy multimodal work (vision + Whisper)
+  // happens INSIDE ctx.waitUntil so we still ack the webhook in <500ms.
   const data = extractMessageReceived(payload);
-  if (!data) return new Response("ignored", { status: 200 });
+  const media = data ? null : extractMediaMessage(payload);
 
-  const userText = data.message.text?.body?.trim();
-  if (!userText) return new Response("ignored", { status: 200 });
+  if (!data && !media) {
+    return new Response("ignored", { status: 200 });
+  }
 
-  // Idempotency: each WhatsApp message has a globally-unique wamid. If Kapso
-  // retries this delivery (e.g. on a 5xx) we'd otherwise double-process.
+  const message_id = data ? data.message.id : media!.message_id;
+  const from = data ? data.message.from : media!.from;
+  const phone_number_id = data
+    ? data.phone_number_id
+    : media!.phone_number_id;
+
+  // Idempotency by wamid — Kapso retries a delivery on 5xx, and we don't
+  // want to double-process. Applies equally to text and media.
   const dedupeSql = getDb(env.DATABASE_URL);
-  const fresh = await recordWebhookOrSkip(dedupeSql, data.message.id);
+  const fresh = await recordWebhookOrSkip(dedupeSql, message_id);
   if (!fresh) {
-    console.log("kapso webhook duplicate", data.message.id);
+    console.log("kapso webhook duplicate", message_id);
     return new Response("duplicate", { status: 200 });
+  }
+
+  const userText = data ? data.message.text?.body?.trim() : null;
+  if (data && !userText) {
+    return new Response("ignored", { status: 200 });
   }
 
   const baseUrl = new URL(request.url).origin;
@@ -418,15 +444,137 @@ async function handleKapsoWebhook(
     (async () => {
       try {
         const sql = getDb(env.DATABASE_URL);
-        const user = await getOrCreateUser(
-          sql,
-          data.message.from,
-          data.phone_number_id,
-        );
+        const user = await getOrCreateUser(sql, from, phone_number_id);
+        await ensureReferralCode(sql, user.id).catch(() => {});
         const history = await getRecentMessages(sql, user.id);
         const isFirstContact = history.length === 0;
-        await appendMessage(sql, user.id, "user", userText);
         const distinctId = distinctIdForUser(user.id);
+
+        // ── Resolve incoming text (text / image / audio) ────────────────
+        let resolvedText: string | null = null;
+        let sourceKind: "text" | "image" | "audio" = "text";
+
+        if (data && userText) {
+          resolvedText = userText;
+          sourceKind = "text";
+        } else if (media) {
+          if (media.kind === "image") {
+            sourceKind = "image";
+            try {
+              const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id);
+              const ident = await identifyDestinationFromImage(
+                env,
+                blob.bytes,
+                blob.mimeType,
+                media.caption,
+              );
+              await track(env, {
+                event: "image_identified",
+                distinct_id: distinctId,
+                properties: { unknown: ident.unknown, summary_length: ident.summary.length },
+              });
+              if (ident.unknown) {
+                const fallback = "Recibí tu foto 🤔 pero no logré identificar dónde es. ¿Me cuentas qué lugar es?";
+                await appendMessage(sql, user.id, "user", `[foto recibida]${media.caption ? ` "${media.caption}"` : ""}`);
+                await appendMessage(sql, user.id, "assistant", fallback);
+                await sendKapsoText({
+                  apiKey: env.KAPSO_API_KEY,
+                  phoneNumberId: phone_number_id,
+                  to: from,
+                  body: fallback,
+                });
+                return;
+              }
+              resolvedText =
+                `[El usuario mandó una foto. Identifiqué el lugar como: ${ident.summary}.` +
+                (media.caption ? ` Caption del usuario: "${media.caption}".` : "") +
+                ` Tu trabajo: confirmar entusiasmada el destino, preguntarle si quiere que busques vuelos/hotel/paquete desde su origen, e impulsar la conversación. NO le digas que "identificaste una foto" textualmente — habla como si supieras del lugar.]`;
+            } catch (err) {
+              console.error("image processing failed", err);
+              await recordError(sql, "webhook:image", err, {
+                user_id: user.id,
+                media_id: media.media_id,
+              });
+              const fallback = "Recibí tu foto pero tuve un problema procesándola 😬 ¿Me cuentas qué lugar es?";
+              await appendMessage(sql, user.id, "assistant", fallback);
+              await sendKapsoText({
+                apiKey: env.KAPSO_API_KEY,
+                phoneNumberId: phone_number_id,
+                to: from,
+                body: fallback,
+              });
+              return;
+            }
+          } else if (media.kind === "audio") {
+            sourceKind = "audio";
+            try {
+              const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id);
+              const transcript = await transcribeAudio(env, blob.bytes);
+              await track(env, {
+                event: "audio_transcribed",
+                distinct_id: distinctId,
+                properties: {
+                  text_length: transcript.text.length,
+                  duration_seconds: transcript.duration_seconds ?? null,
+                },
+              });
+              if (!transcript.text || transcript.text.length < 2) {
+                const fallback = "No te escuché bien 😅 ¿Lo intentas otra vez o me lo escribes?";
+                await appendMessage(sql, user.id, "user", "[audio inaudible]");
+                await appendMessage(sql, user.id, "assistant", fallback);
+                await sendKapsoText({
+                  apiKey: env.KAPSO_API_KEY,
+                  phoneNumberId: phone_number_id,
+                  to: from,
+                  body: fallback,
+                });
+                return;
+              }
+              resolvedText = transcript.text;
+            } catch (err) {
+              console.error("audio processing failed", err);
+              await recordError(sql, "webhook:audio", err, {
+                user_id: user.id,
+                media_id: media.media_id,
+              });
+              const fallback = "Recibí tu audio pero tuve un problema escuchándolo 😬 ¿Lo intentas otra vez o me escribes?";
+              await appendMessage(sql, user.id, "assistant", fallback);
+              await sendKapsoText({
+                apiKey: env.KAPSO_API_KEY,
+                phoneNumberId: phone_number_id,
+                to: from,
+                body: fallback,
+              });
+              return;
+            }
+          }
+        }
+
+        if (!resolvedText) return;
+
+        // ── Referral linking on first contact ──────────────────────────
+        if (isFirstContact) {
+          const refMatch = resolvedText.match(/(?:^|\s)ref:([A-Za-z0-9]{4,20})\b/i);
+          if (refMatch) {
+            try {
+              const ref = await findReferrerByCode(sql, refMatch[1]);
+              if (ref && ref.referrer_id !== user.id) {
+                const linked = await setReferredBy(sql, user.id, ref.referrer_id);
+                if (linked) {
+                  await track(env, {
+                    event: "referred_signup",
+                    distinct_id: distinctId,
+                    properties: { referrer_id: ref.referrer_id, code: refMatch[1] },
+                  });
+                }
+              }
+            } catch (e) { /* never break the reply */ }
+            resolvedText = resolvedText.replace(/(?:^|\s)ref:[A-Za-z0-9]{4,20}\b/i, "").trim();
+            if (!resolvedText) resolvedText = "Hola";
+          }
+        }
+
+        // ── Standard pipeline ──────────────────────────────────────────
         if (isFirstContact) {
           await track(env, {
             event: "user_signed_up",
@@ -439,18 +587,20 @@ async function handleKapsoWebhook(
           distinct_id: distinctId,
           properties: {
             source: "whatsapp",
+            source_kind: sourceKind,
             is_first_contact: isFirstContact,
             has_name: !!user.name,
-            length: userText.length,
+            length: resolvedText.length,
           },
         });
-        const reply = await generateReply(env, userText, {
+        await appendMessage(sql, user.id, "user", resolvedText);
+        const reply = await generateReply(env, resolvedText, {
           userId: user.id,
           baseUrl,
           history,
           sql,
-          to: data.message.from,
-          phoneNumberId: data.phone_number_id,
+          to: from,
+          phoneNumberId: phone_number_id,
           userName: user.name,
           isFirstContact,
         });
@@ -458,17 +608,17 @@ async function handleKapsoWebhook(
           await appendMessage(sql, user.id, "assistant", reply);
           await sendKapsoText({
             apiKey: env.KAPSO_API_KEY,
-            phoneNumberId: data.phone_number_id,
-            to: data.message.from,
+            phoneNumberId: phone_number_id,
+            to: from,
             body: reply,
           });
         }
       } catch (err) {
         console.error("kapso handler error", err);
         await recordError(getDb(env.DATABASE_URL), "webhook:kapso", err, {
-          from: data.message.from,
-          phone_number_id: data.phone_number_id,
-          message_id: data.message.id,
+          from,
+          phone_number_id,
+          message_id,
         });
       }
     })(),
@@ -618,13 +768,14 @@ async function handleApiMe(request: Request, env: Env): Promise<Response> {
     if (rows.length === 0)
       return Response.json({ error: "user not found" }, { status: 404 });
     const row = rows[0];
-    // Hide internal `web:` and `whatsapp:` prefixes from the UI display
-    const displayPhone = row.phone.startsWith("web:")
-      ? null
-      : row.phone;
+    const displayPhone = row.phone.startsWith("web:") ? null : row.phone;
+    const referralCode = await ensureReferralCode(sql, userId).catch(() => null);
+    const referralCount = referralCode ? await countReferralsFor(sql, userId).catch(() => 0) : 0;
     return Response.json({
       name: row.name,
       phone: displayPhone,
+      referral_code: referralCode,
+      referral_count: referralCount,
     });
   }
 
@@ -964,7 +1115,7 @@ async function handleApiDataDeletion(
 
 async function handleChat(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => null)) as
-    | { message?: string; session_id?: string }
+    | { message?: string; session_id?: string; ref?: string }
     | null;
   const message = body?.message;
   if (typeof message !== "string" || message.trim() === "") {
@@ -984,9 +1135,44 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   if (!rl.allowed) return rateLimitResponse(rl, "too many requests");
   const phone = `web:${session_id}`;
   const user = await getOrCreateUser(sql, phone);
+  await ensureReferralCode(sql, user.id).catch(() => {});
   const history = await getRecentMessages(sql, user.id);
   const isFirstContact = history.length === 0;
-  await appendMessage(sql, user.id, "user", message);
+  let userMessage = message;
+
+  // Referral linking for web users: ?ref= param surfaces here as body.ref
+  // on the first message of a new session. We also tolerate ref: prefixes
+  // inline in the message itself.
+  if (isFirstContact) {
+    let refCode: string | null = null;
+    if (typeof body?.ref === "string" && /^[A-Za-z0-9]{4,20}$/.test(body.ref)) {
+      refCode = body.ref;
+    } else {
+      const m = userMessage.match(/(?:^|\s)ref:([A-Za-z0-9]{4,20})\b/i);
+      if (m) {
+        refCode = m[1];
+        userMessage = userMessage.replace(/(?:^|\s)ref:[A-Za-z0-9]{4,20}\b/i, "").trim();
+        if (!userMessage) userMessage = "Hola";
+      }
+    }
+    if (refCode) {
+      try {
+        const ref = await findReferrerByCode(sql, refCode);
+        if (ref && ref.referrer_id !== user.id) {
+          const linked = await setReferredBy(sql, user.id, ref.referrer_id);
+          if (linked) {
+            await track(env, {
+              event: "referred_signup",
+              distinct_id: distinctIdForUser(user.id),
+              properties: { referrer_id: ref.referrer_id, code: refCode, source: "web" },
+            });
+          }
+        }
+      } catch (_) { /* never break the reply */ }
+    }
+  }
+
+  await appendMessage(sql, user.id, "user", userMessage);
   const distinctId = distinctIdForUser(user.id);
   if (isFirstContact) {
     await track(env, {
@@ -1002,10 +1188,10 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
       source: "web",
       is_first_contact: isFirstContact,
       has_name: !!user.name,
-      length: message.length,
+      length: userMessage.length,
     },
   });
-  const reply = await generateReply(env, message, {
+  const reply = await generateReply(env, userMessage, {
     userId: user.id,
     baseUrl: new URL(request.url).origin,
     history,

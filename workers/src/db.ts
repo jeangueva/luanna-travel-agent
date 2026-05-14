@@ -499,6 +499,99 @@ export async function markUserNudged(sql: Sql, userId: number): Promise<void> {
   await sql`UPDATE users SET last_nudge_at = NOW() WHERE id = ${userId}`;
 }
 
+// ─── Referrals ───────────────────────────────────────────────────────────────
+
+function makeReferralCode(): string {
+  // 6-char URL-safe alphanumeric, ~57 bits of entropy. Postgres UNIQUE keeps
+  // us safe from collisions.
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[b % 62])
+    .join("");
+}
+
+export async function ensureReferralCode(
+  sql: Sql,
+  userId: number,
+): Promise<string> {
+  const existing = (await sql`
+    SELECT referral_code FROM users WHERE id = ${userId}
+  `) as Array<{ referral_code: string | null }>;
+  if (existing[0]?.referral_code) return existing[0].referral_code;
+  // Retry a few times in case of UNIQUE collision (vanishingly rare).
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = makeReferralCode();
+    try {
+      const upd = (await sql`
+        UPDATE users
+        SET referral_code = ${code}
+        WHERE id = ${userId} AND referral_code IS NULL
+        RETURNING referral_code
+      `) as Array<{ referral_code: string }>;
+      if (upd[0]?.referral_code) return upd[0].referral_code;
+      // Someone else set it between our SELECT and UPDATE — refetch.
+      const re = (await sql`
+        SELECT referral_code FROM users WHERE id = ${userId}
+      `) as Array<{ referral_code: string | null }>;
+      if (re[0]?.referral_code) return re[0].referral_code;
+    } catch {
+      // unique conflict — try another code
+    }
+  }
+  throw new Error("could not allocate referral_code");
+}
+
+export interface ReferralLookup {
+  referrer_id: number;
+  referrer_name: string | null;
+  referrer_code: string;
+}
+
+export async function findReferrerByCode(
+  sql: Sql,
+  code: string,
+): Promise<ReferralLookup | null> {
+  const rows = (await sql`
+    SELECT id, name, referral_code FROM users
+    WHERE referral_code = ${code}
+    LIMIT 1
+  `) as Array<{ id: number; name: string | null; referral_code: string }>;
+  if (rows.length === 0) return null;
+  return {
+    referrer_id: Number(rows[0].id),
+    referrer_name: rows[0].name,
+    referrer_code: rows[0].referral_code,
+  };
+}
+
+export async function setReferredBy(
+  sql: Sql,
+  userId: number,
+  referrerId: number,
+): Promise<boolean> {
+  if (userId === referrerId) return false;
+  const rows = (await sql`
+    UPDATE users
+    SET referred_by_user_id = ${referrerId}
+    WHERE id = ${userId} AND referred_by_user_id IS NULL
+    RETURNING id
+  `) as Array<{ id: number }>;
+  return rows.length === 1;
+}
+
+export async function countReferralsFor(
+  sql: Sql,
+  userId: number,
+): Promise<number> {
+  const rows = (await sql`
+    SELECT COUNT(*)::int AS n
+    FROM users
+    WHERE referred_by_user_id = ${userId}
+  `) as Array<{ n: number }>;
+  return rows[0]?.n ?? 0;
+}
+
 // ─── Click tracking ──────────────────────────────────────────────────────────
 
 export type ClickKind = "flight" | "hotel" | "package" | "offer" | "other";

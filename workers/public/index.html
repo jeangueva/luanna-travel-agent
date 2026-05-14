@@ -1153,6 +1153,48 @@
       }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
       document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
     })();
+
+    // Referral: read ?ref=<code>, persist in localStorage (24h), and inject
+    // "ref:<code>" as the pre-filled text in every WhatsApp CTA on the page
+    // so the first message to Luanna includes the link.
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var fromUrl = (params.get('ref') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
+      var stored = null;
+      try {
+        var raw = localStorage.getItem('luanna_ref');
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.code && parsed.exp && parsed.exp > Date.now()) {
+            stored = parsed.code;
+          }
+        }
+      } catch (e) {}
+      var code = fromUrl || stored;
+      if (fromUrl) {
+        try {
+          localStorage.setItem('luanna_ref', JSON.stringify({
+            code: fromUrl,
+            exp: Date.now() + 24 * 60 * 60 * 1000,
+          }));
+        } catch (e) {}
+      }
+      if (!code) return;
+      document.querySelectorAll('a[href^="https://wa.me/"]').forEach(function (a) {
+        try {
+          var u = new URL(a.href);
+          var existing = u.searchParams.get('text') || '';
+          if (existing.indexOf('ref:') === -1) {
+            u.searchParams.set('text', ('ref:' + code + (existing ? ' ' + existing : '')).slice(0, 280));
+          }
+          a.href = u.toString();
+        } catch (e) {}
+      });
+      // Also tag any /chat link so the web chat picks up the ref code.
+      document.querySelectorAll('a[href="/chat"]').forEach(function (a) {
+        a.href = '/chat?ref=' + encodeURIComponent(code);
+      });
+    })();
   </script>
 
 </body>

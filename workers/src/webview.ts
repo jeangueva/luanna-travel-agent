@@ -268,6 +268,23 @@ export function renderPreferencesPage(token: string): string {
     transition: all .15s;
     width: 100%;
   }
+  .referral-card {
+    background: var(--surface);
+    border-radius: var(--r-card);
+    padding: 16px;
+    margin-bottom: 18px;
+  }
+  .referral-blurb {
+    font-size: 13px;
+    color: var(--text-2);
+    margin-bottom: 12px;
+    line-height: 1.45;
+  }
+  .referral-row {
+    display: flex; gap: 8px; align-items: stretch;
+  }
+  .referral-row input.text { flex: 1; font-size: 13px; }
+  .referral-row .btn { width: auto; padding: 0 16px; }
   .name-row {
     display: flex; gap: 8px; align-items: stretch;
   }
@@ -382,6 +399,19 @@ export function renderPreferencesPage(token: string): string {
 
       <div class="section-title" id="saved-prefs-label" style="display:none">Destinos guardados</div>
       <div id="saved-prefs"></div>
+
+      <div class="section-title" id="referral-label" style="display:none">Invita a alguien</div>
+      <div class="referral-card" id="referral-card" style="display:none">
+        <p class="referral-blurb">
+          Compártele Luanna a un amigo con este link. Cuando se suscriba,
+          ambos seguimos haciendo a esta agente más inteligente 🙌
+        </p>
+        <div class="referral-row">
+          <input id="referral-url" class="text" readonly />
+          <button class="btn btn-primary" id="referral-copy" type="button">Copiar</button>
+        </div>
+        <p class="field-hint" id="referral-count" style="margin-top:8px"></p>
+      </div>
     </section>
 
     <section class="panel" id="panel-alerts" role="tabpanel">
@@ -753,6 +783,30 @@ export function renderPreferencesPage(token: string): string {
         document.getElementById("name-input").value = state.name || "";
         document.getElementById("phone-display").textContent = state.phone || "Web";
         updateGreeting();
+        if (me.referral_code) {
+          const refUrl = "https://luanna.app/?ref=" + encodeURIComponent(me.referral_code);
+          document.getElementById("referral-url").value = refUrl;
+          const count = Number(me.referral_count || 0);
+          document.getElementById("referral-count").textContent =
+            count === 0
+              ? "Aún nadie se sumó con tu link."
+              : count === 1
+                ? "1 persona se sumó con tu link 🎉"
+                : count + " personas se sumaron con tu link 🎉";
+          document.getElementById("referral-label").style.display = "block";
+          document.getElementById("referral-card").style.display = "block";
+          document.getElementById("referral-copy").addEventListener("click", async function () {
+            const inp = document.getElementById("referral-url");
+            inp.select();
+            try {
+              await navigator.clipboard.writeText(refUrl);
+              toast("Link copiado ✅");
+            } catch (e) {
+              document.execCommand && document.execCommand("copy");
+              toast("Link copiado ✅");
+            }
+          });
+        }
       } catch (e) { console.error("me load failed", e); }
 
       try {

@@ -4,6 +4,9 @@ export interface KapsoMessage {
   type: string;
   from: string;
   text?: { body?: string };
+  image?: { id: string; mime_type?: string; caption?: string; sha256?: string };
+  audio?: { id: string; mime_type?: string; voice?: boolean };
+  voice?: { id: string; mime_type?: string };
   interactive?: {
     type?: string;
     nfm_reply?: {
@@ -52,6 +55,78 @@ export interface FlowSubmission {
   from: string;
   phoneNumberId: string;
   responseJson: Record<string, unknown>;
+}
+
+export interface MediaMessage {
+  message_id: string;
+  from: string;
+  phone_number_id: string;
+  kind: "image" | "audio";
+  media_id: string;
+  mime_type: string | null;
+  caption: string | null;
+}
+
+export function extractMediaMessage(body: unknown): MediaMessage | null {
+  const data = unwrapEnvelope(body);
+  if (!data) return null;
+  const t = data.message.type;
+  if (t === "image" && data.message.image?.id) {
+    return {
+      message_id: data.message.id,
+      from: data.message.from,
+      phone_number_id: data.phone_number_id,
+      kind: "image",
+      media_id: data.message.image.id,
+      mime_type: data.message.image.mime_type ?? null,
+      caption: data.message.image.caption ?? null,
+    };
+  }
+  if ((t === "audio" || t === "voice") && (data.message.audio?.id || data.message.voice?.id)) {
+    const media = data.message.audio ?? data.message.voice!;
+    return {
+      message_id: data.message.id,
+      from: data.message.from,
+      phone_number_id: data.phone_number_id,
+      kind: "audio",
+      media_id: media.id,
+      mime_type: media.mime_type ?? null,
+      caption: null,
+    };
+  }
+  return null;
+}
+
+export async function downloadKapsoMedia(
+  apiKey: string,
+  mediaId: string,
+): Promise<{ bytes: ArrayBuffer; mimeType: string }> {
+  // Step 1: ask Meta (via Kapso proxy) for the temporary download URL.
+  const metaRes = await fetch(
+    `https://api.kapso.ai/meta/whatsapp/v24.0/${mediaId}`,
+    { headers: { "X-API-Key": apiKey } },
+  );
+  if (!metaRes.ok) {
+    const t = await metaRes.text().catch(() => "");
+    throw new Error(`Kapso media meta ${metaRes.status}: ${t.slice(0, 200)}`);
+  }
+  const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
+  if (!meta.url) {
+    throw new Error("Kapso media: missing url in response");
+  }
+  // Step 2: download the bytes. Meta's signed URLs expire ~5 min; fetch
+  // immediately. Forward the API key in case Kapso proxies the download too.
+  const blobRes = await fetch(meta.url, {
+    headers: { "X-API-Key": apiKey },
+  });
+  if (!blobRes.ok) {
+    const t = await blobRes.text().catch(() => "");
+    throw new Error(`Kapso media blob ${blobRes.status}: ${t.slice(0, 200)}`);
+  }
+  return {
+    bytes: await blobRes.arrayBuffer(),
+    mimeType: meta.mime_type ?? blobRes.headers.get("content-type") ?? "application/octet-stream",
+  };
 }
 
 export function extractFlowSubmission(body: unknown): FlowSubmission | null {
