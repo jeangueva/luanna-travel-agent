@@ -1013,23 +1013,13 @@ function getCookie(request: Request, name: string): string | null {
 
 async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
   if (!env.ADMIN_API_KEY) return false;
-  // Bearer (CLI / fetch) path — preferred for /admin/*.json endpoints
+  // Bearer (CLI / fetch). Basic auth is INTENTIONALLY rejected here so the
+  // browser-native popup we used to ship before the cookie flow can no longer
+  // keep an old session alive after the user clicks "Salir" — old Basic
+  // creds cached by the browser get ignored.
   const auth = request.headers.get("Authorization");
-  if (auth) {
-    if (auth.startsWith("Bearer ")) {
-      return timingSafeEqual(auth, `Bearer ${env.ADMIN_API_KEY}`);
-    }
-    if (auth.startsWith("Basic ")) {
-      try {
-        const decoded = atob(auth.slice(6).trim());
-        const colon = decoded.indexOf(":");
-        if (colon < 0) return false;
-        const password = decoded.slice(colon + 1);
-        return timingSafeEqual(password, env.ADMIN_API_KEY);
-      } catch {
-        return false;
-      }
-    }
+  if (auth && auth.startsWith("Bearer ")) {
+    return timingSafeEqual(auth, `Bearer ${env.ADMIN_API_KEY}`);
   }
   // Cookie path — set by /admin/login when password matches
   const cookie = getCookie(request, ADMIN_COOKIE_NAME);
