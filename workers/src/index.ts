@@ -24,6 +24,7 @@ import {
   deleteWatchlistItem,
   ensureReferralCode,
   findReferrerByCode,
+  getDashboardStats,
   getDb,
   getOrCreateUser,
   getPreferences,
@@ -40,6 +41,7 @@ import {
   type Preferences,
   type RateLimitResult,
 } from "./db";
+import { renderAdminDashboardPage } from "./admin";
 import {
   CHAT_MESSAGE_MAX,
   PREFS_ORIGIN_MAX,
@@ -967,8 +969,69 @@ function checkAdminAuth(request: Request, env: Env): boolean {
   if (!env.ADMIN_API_KEY) return false;
   const auth = request.headers.get("Authorization");
   if (!auth) return false;
-  const expected = `Bearer ${env.ADMIN_API_KEY}`;
-  return timingSafeEqual(auth, expected);
+  // Bearer (CLI / fetch) path
+  if (auth.startsWith("Bearer ")) {
+    return timingSafeEqual(auth, `Bearer ${env.ADMIN_API_KEY}`);
+  }
+  // Basic (browser) path: any username + ADMIN_API_KEY as password
+  if (auth.startsWith("Basic ")) {
+    try {
+      const decoded = atob(auth.slice(6).trim());
+      const colon = decoded.indexOf(":");
+      if (colon < 0) return false;
+      const password = decoded.slice(colon + 1);
+      return timingSafeEqual(password, env.ADMIN_API_KEY);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function basicAuthChallenge(): Response {
+  return new Response("Authentication required", {
+    status: 401,
+    headers: {
+      "WWW-Authenticate": 'Basic realm="luanna-admin", charset="UTF-8"',
+    },
+  });
+}
+
+async function handleAdminDashboardPage(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!checkAdminAuth(request, env)) return basicAuthChallenge();
+  return new Response(renderAdminDashboardPage(), {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+async function handleAdminDashboardJson(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!checkAdminAuth(request, env)) return basicAuthChallenge();
+  const sql = getDb(env.DATABASE_URL);
+  try {
+    const stats = await getDashboardStats(sql);
+    return new Response(JSON.stringify(stats), {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    console.error("admin dashboard query failed", err);
+    await recordError(sql, "admin:dashboard", err);
+    return Response.json(
+      { error: err instanceof Error ? err.message : "dashboard error" },
+      { status: 500 },
+    );
+  }
 }
 
 async function handleAdminListPending(
@@ -1352,6 +1415,18 @@ async function routeFetch(
   }
   if (request.method === "GET" && url.pathname === "/admin/errors/recent") {
     return handleAdminErrorsRecent(request, env);
+  }
+  if (
+    request.method === "GET" &&
+    (url.pathname === "/admin" || url.pathname === "/admin/")
+  ) {
+    return handleAdminDashboardPage(request, env);
+  }
+  if (
+    request.method === "GET" &&
+    url.pathname === "/admin/dashboard.json"
+  ) {
+    return handleAdminDashboardJson(request, env);
   }
   if (request.method === "GET" && url.pathname === "/admin/posthog/ping") {
     return handleAdminPosthogPing(request, env);

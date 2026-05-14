@@ -592,6 +592,177 @@ export async function countReferralsFor(
   return rows[0]?.n ?? 0;
 }
 
+// ─── Admin dashboard ─────────────────────────────────────────────────────────
+
+export interface DashboardStats {
+  today: {
+    signups: number;
+    messages: number;
+    clicks: number;
+    errors: number;
+    nudges_sent: number;
+    offers_sent: number;
+  };
+  totals: {
+    users: number;
+    active_alerts: number;
+    pending_deletions: number;
+    total_clicks_30d: number;
+    total_referrals: number;
+  };
+  trend_7d: Array<{ date: string; signups: number; messages: number }>;
+  errors_by_context_24h: Array<{ context: string; count: number }>;
+  recent_errors: Array<{
+    id: number;
+    occurred_at: string;
+    context: string;
+    message: string;
+  }>;
+  clicks_by_kind_7d: Array<{ kind: string; count: number }>;
+  top_referrers: Array<{
+    user_id: number;
+    name: string | null;
+    phone: string;
+    invites: number;
+  }>;
+  recent_users: Array<{
+    id: number;
+    name: string | null;
+    phone: string;
+    created_at: string;
+    last_message_at: string | null;
+    message_count: number;
+  }>;
+}
+
+export async function getDashboardStats(sql: Sql): Promise<DashboardStats> {
+  // We issue several light queries in parallel — Neon serverless multiplexes
+  // these over the connection so total latency is dominated by the slowest.
+  const [
+    todaySignups,
+    todayMessages,
+    todayClicks,
+    todayErrors,
+    todayNudges,
+    todayOffers,
+    totalUsers,
+    activeAlerts,
+    pendingDeletions,
+    totalClicks30d,
+    totalReferrals,
+    trend7d,
+    errorsByContext,
+    recentErrors,
+    clicksByKind,
+    topReferrers,
+    recentUsers,
+  ] = await Promise.all([
+    sql`SELECT COUNT(*)::int AS n FROM users WHERE created_at >= DATE_TRUNC('day', NOW())`,
+    sql`SELECT COUNT(*)::int AS n FROM messages WHERE role = 'user' AND created_at >= DATE_TRUNC('day', NOW())`,
+    sql`SELECT COALESCE(SUM(click_count), 0)::int AS n FROM click_redirects WHERE last_click_at >= DATE_TRUNC('day', NOW())`,
+    sql`SELECT COUNT(*)::int AS n FROM worker_errors WHERE occurred_at >= DATE_TRUNC('day', NOW())`,
+    sql`SELECT COUNT(*)::int AS n FROM users WHERE last_nudge_at >= DATE_TRUNC('day', NOW())`,
+    sql`SELECT COUNT(*)::int AS n FROM users WHERE last_offer_at >= DATE_TRUNC('day', NOW())`,
+    sql`SELECT COUNT(*)::int AS n FROM users WHERE phone NOT LIKE 'web:%'`,
+    sql`SELECT COUNT(*)::int AS n FROM watchlist WHERE active = TRUE`,
+    sql`SELECT COUNT(*)::int AS n FROM data_deletion_requests WHERE status = 'pending'`,
+    sql`SELECT COALESCE(SUM(click_count), 0)::int AS n FROM click_redirects WHERE created_at >= NOW() - INTERVAL '30 days'`,
+    sql`SELECT COUNT(*)::int AS n FROM users WHERE referred_by_user_id IS NOT NULL`,
+    sql`
+      WITH days AS (
+        SELECT generate_series(
+          DATE_TRUNC('day', NOW() - INTERVAL '6 days'),
+          DATE_TRUNC('day', NOW()),
+          INTERVAL '1 day'
+        )::date AS day
+      )
+      SELECT
+        d.day::text AS date,
+        COUNT(DISTINCT u.id)::int AS signups,
+        COUNT(m.id)::int AS messages
+      FROM days d
+      LEFT JOIN users u ON DATE_TRUNC('day', u.created_at) = d.day
+      LEFT JOIN messages m ON DATE_TRUNC('day', m.created_at) = d.day AND m.role = 'user'
+      GROUP BY d.day
+      ORDER BY d.day
+    `,
+    sql`
+      SELECT context, COUNT(*)::int AS count
+      FROM worker_errors
+      WHERE occurred_at >= NOW() - INTERVAL '24 hours'
+      GROUP BY context
+      ORDER BY count DESC
+      LIMIT 10
+    `,
+    sql`
+      SELECT id, occurred_at, context, LEFT(message, 200) AS message
+      FROM worker_errors
+      ORDER BY occurred_at DESC
+      LIMIT 20
+    `,
+    sql`
+      SELECT kind, COALESCE(SUM(click_count), 0)::int AS count
+      FROM click_redirects
+      WHERE last_click_at >= NOW() - INTERVAL '7 days'
+      GROUP BY kind
+      ORDER BY count DESC
+    `,
+    sql`
+      SELECT u.id AS user_id, u.name, u.phone, COUNT(r.id)::int AS invites
+      FROM users u
+      JOIN users r ON r.referred_by_user_id = u.id
+      GROUP BY u.id, u.name, u.phone
+      ORDER BY invites DESC
+      LIMIT 5
+    `,
+    sql`
+      SELECT
+        u.id, u.name, u.phone, u.created_at,
+        MAX(m.created_at) AS last_message_at,
+        COUNT(m.id)::int AS message_count
+      FROM users u
+      LEFT JOIN messages m ON m.user_id = u.id
+      WHERE u.phone NOT LIKE 'web:%'
+      GROUP BY u.id, u.name, u.phone, u.created_at
+      ORDER BY u.created_at DESC
+      LIMIT 10
+    `,
+  ]);
+
+  return {
+    today: {
+      signups: (todaySignups as Array<{ n: number }>)[0]?.n ?? 0,
+      messages: (todayMessages as Array<{ n: number }>)[0]?.n ?? 0,
+      clicks: (todayClicks as Array<{ n: number }>)[0]?.n ?? 0,
+      errors: (todayErrors as Array<{ n: number }>)[0]?.n ?? 0,
+      nudges_sent: (todayNudges as Array<{ n: number }>)[0]?.n ?? 0,
+      offers_sent: (todayOffers as Array<{ n: number }>)[0]?.n ?? 0,
+    },
+    totals: {
+      users: (totalUsers as Array<{ n: number }>)[0]?.n ?? 0,
+      active_alerts: (activeAlerts as Array<{ n: number }>)[0]?.n ?? 0,
+      pending_deletions: (pendingDeletions as Array<{ n: number }>)[0]?.n ?? 0,
+      total_clicks_30d: (totalClicks30d as Array<{ n: number }>)[0]?.n ?? 0,
+      total_referrals: (totalReferrals as Array<{ n: number }>)[0]?.n ?? 0,
+    },
+    trend_7d: trend7d as DashboardStats["trend_7d"],
+    errors_by_context_24h: errorsByContext as DashboardStats["errors_by_context_24h"],
+    recent_errors: (recentErrors as DashboardStats["recent_errors"]).map((e) => ({
+      ...e,
+      id: Number(e.id),
+    })),
+    clicks_by_kind_7d: clicksByKind as DashboardStats["clicks_by_kind_7d"],
+    top_referrers: (topReferrers as DashboardStats["top_referrers"]).map((r) => ({
+      ...r,
+      user_id: Number(r.user_id),
+    })),
+    recent_users: (recentUsers as DashboardStats["recent_users"]).map((u) => ({
+      ...u,
+      id: Number(u.id),
+    })),
+  };
+}
+
 // ─── Click tracking ──────────────────────────────────────────────────────────
 
 export type ClickKind = "flight" | "hotel" | "package" | "offer" | "other";
