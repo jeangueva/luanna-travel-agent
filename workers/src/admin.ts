@@ -426,10 +426,6 @@ export function renderAdminDashboardPage(): string {
         <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12 12 4l9 8M5 10v10h4v-6h6v6h4V10"/></svg></span>
         <span class="nav-label">Overview</span>
       </button></li>
-      <li><button class="nav-item" data-section="trends">
-        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg></span>
-        <span class="nav-label">Trends</span>
-      </button></li>
       <li><button class="nav-item" data-section="errors">
         <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></span>
         <span class="nav-label">Errores</span>
@@ -437,10 +433,6 @@ export function renderAdminDashboardPage(): string {
       <li><button class="nav-item" data-section="users">
         <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><circle cx="17" cy="6" r="3"/><path d="m22 21-1-2a3 3 0 0 0-3-2"/></svg></span>
         <span class="nav-label">Usuarios</span>
-      </button></li>
-      <li><button class="nav-item" data-section="links">
-        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>
-        <span class="nav-label">Quick links</span>
       </button></li>
     </ul>
 
@@ -474,11 +466,10 @@ export function renderAdminDashboardPage(): string {
       <section class="panel active" data-section="overview">
         <h2>Hoy</h2>
         <div class="kpi-grid" id="kpi-today"></div>
+
         <h2>Totales</h2>
         <div class="kpi-grid" id="kpi-totals"></div>
-      </section>
 
-      <section class="panel" data-section="trends">
         <h2>Últimos 7 días</h2>
         <div class="twocol">
           <div class="card">
@@ -496,6 +487,28 @@ export function renderAdminDashboardPage(): string {
               <tbody></tbody>
             </table>
           </div>
+        </div>
+
+        <h2>Quick links</h2>
+        <div class="links-grid">
+          <a class="link-tile" href="https://us.posthog.com/dashboards" target="_blank" rel="noopener">
+            <div class="lt-title">PostHog</div><div class="lt-sub">Eventos + dashboards</div>
+          </a>
+          <a class="link-tile" href="https://dashboard.uptimerobot.com/monitors" target="_blank" rel="noopener">
+            <div class="lt-title">UptimeRobot</div><div class="lt-sub">Synthetic monitor</div>
+          </a>
+          <a class="link-tile" href="https://dash.cloudflare.com" target="_blank" rel="noopener">
+            <div class="lt-title">Cloudflare</div><div class="lt-sub">Worker + DNS + secrets</div>
+          </a>
+          <a class="link-tile" href="/admin/errors/recent" target="_blank" rel="noopener">
+            <div class="lt-title">JSON errores</div><div class="lt-sub">/admin/errors/recent</div>
+          </a>
+          <a class="link-tile" href="/admin/data-deletion/pending" target="_blank" rel="noopener">
+            <div class="lt-title">Deletions pendientes</div><div class="lt-sub">/admin/data-deletion/pending</div>
+          </a>
+          <a class="link-tile" href="/health" target="_blank" rel="noopener">
+            <div class="lt-title">Health</div><div class="lt-sub">/health (DB ping)</div>
+          </a>
         </div>
       </section>
 
@@ -540,29 +553,6 @@ export function renderAdminDashboardPage(): string {
         </div>
       </section>
 
-      <section class="panel" data-section="links">
-        <h2>Quick links</h2>
-        <div class="links-grid">
-          <a class="link-tile" href="https://us.posthog.com/dashboards" target="_blank" rel="noopener">
-            <div class="lt-title">PostHog</div><div class="lt-sub">Eventos + dashboards</div>
-          </a>
-          <a class="link-tile" href="https://dashboard.uptimerobot.com/monitors" target="_blank" rel="noopener">
-            <div class="lt-title">UptimeRobot</div><div class="lt-sub">Synthetic monitor</div>
-          </a>
-          <a class="link-tile" href="https://dash.cloudflare.com" target="_blank" rel="noopener">
-            <div class="lt-title">Cloudflare</div><div class="lt-sub">Worker + DNS + secrets</div>
-          </a>
-          <a class="link-tile" href="/admin/errors/recent" target="_blank" rel="noopener">
-            <div class="lt-title">JSON errores</div><div class="lt-sub">/admin/errors/recent</div>
-          </a>
-          <a class="link-tile" href="/admin/data-deletion/pending" target="_blank" rel="noopener">
-            <div class="lt-title">Deletions pendientes</div><div class="lt-sub">/admin/data-deletion/pending</div>
-          </a>
-          <a class="link-tile" href="/health" target="_blank" rel="noopener">
-            <div class="lt-title">Health</div><div class="lt-sub">/health (DB ping)</div>
-          </a>
-        </div>
-      </section>
     </main>
   </div>
 
@@ -617,16 +607,16 @@ export function renderAdminDashboardPage(): string {
     }
 
     // ── Sidebar nav ──
-    const titles = { overview: "Overview", trends: "Trends", errors: "Errores", users: "Usuarios", links: "Quick links" };
+    const titles = { overview: "Overview", errors: "Errores", users: "Usuarios" };
     function activateSection(name) {
+      if (!titles[name]) name = "overview";
       document.querySelectorAll('.nav-item[data-section]').forEach(b => {
         b.classList.toggle('active', b.dataset.section === name);
       });
       document.querySelectorAll('.panel').forEach(p => {
         p.classList.toggle('active', p.dataset.section === name);
       });
-      const t = titles[name] || "Overview";
-      document.getElementById('topbar-title').textContent = t;
+      document.getElementById('topbar-title').textContent = titles[name];
       try { localStorage.setItem('luanna_admin_section', name); } catch (e) {}
       // close menu on mobile after navigation
       document.body.classList.remove('menu-open');
