@@ -1,3 +1,148 @@
+export function renderAdminLoginPage(error: boolean): string {
+  return `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Luanna — admin login</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --rausch: #ff385c;
+    --rausch-dark: #e00b41;
+    --text: #222;
+    --text-2: #6a6a6a;
+    --text-3: #929292;
+    --bg: #fafafa;
+    --card: #fff;
+    --surface: #f2f2f2;
+    --border: rgba(0,0,0,.08);
+    --border-strong: rgba(0,0,0,.18);
+    --red: #dc2626;
+    --shadow: rgba(0,0,0,.02) 0 0 0 1px, rgba(0,0,0,.04) 0 2px 6px, rgba(0,0,0,.10) 0 4px 8px;
+    --font: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    font-weight: 500;
+    color: var(--text);
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 28px 26px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: var(--shadow);
+  }
+  .logo {
+    font-size: 26px; font-weight: 700;
+    color: var(--rausch); letter-spacing: -0.5px;
+    margin-bottom: 4px;
+  }
+  .logo span { color: var(--text); }
+  .sub {
+    font-size: 12px; font-weight: 700;
+    color: var(--text-3);
+    letter-spacing: 0.3px; text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.4px; line-height: 1.2;
+    margin-bottom: 6px;
+  }
+  p.lead {
+    font-size: 14px; color: var(--text-2);
+    margin-bottom: 22px;
+  }
+  label {
+    display: block;
+    font-size: 13px; font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  input.text {
+    width: 100%;
+    font-family: var(--font);
+    font-size: 15px; font-weight: 500;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    padding: 12px 14px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+  }
+  input.text:focus {
+    border-color: var(--rausch);
+    box-shadow: 0 0 0 3px rgba(255,56,92,.12);
+  }
+  button.btn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 12px 18px;
+    background: var(--rausch);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-family: var(--font);
+    font-size: 15px; font-weight: 700;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  button.btn:hover { background: var(--rausch-dark); }
+  button.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .err {
+    background: rgba(220, 38, 38, 0.08);
+    color: var(--red);
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+  }
+  .footer-hint {
+    font-size: 11px; color: var(--text-3);
+    text-align: center; margin-top: 18px;
+    line-height: 1.45;
+  }
+  .footer-hint code {
+    background: var(--surface);
+    padding: 1px 6px; border-radius: 4px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+  <form class="card" method="POST" action="/admin/login" autocomplete="off">
+    <div class="logo">luanna<span>.</span></div>
+    <div class="sub">Admin access</div>
+    <h1>Iniciar sesión</h1>
+    <p class="lead">Esta área es solo para el operador. Ingresa tu ADMIN_API_KEY para continuar.</p>
+    ${error ? '<div class="err">Contraseña incorrecta. Verificá la key y volvé a intentar.</div>' : ""}
+    <label for="password">Contraseña</label>
+    <input id="password" name="password" type="password" class="text" autofocus required minlength="8" />
+    <button type="submit" class="btn">Entrar</button>
+    <p class="footer-hint">
+      La key vive como secret de Cloudflare (<code>ADMIN_API_KEY</code>). Si la perdiste, regenerala con
+      <code>wrangler secret put ADMIN_API_KEY</code>.
+    </p>
+  </form>
+</body>
+</html>`;
+}
+
 export function renderAdminDashboardPage(): string {
   return `<!doctype html>
 <html lang="es">
@@ -26,7 +171,8 @@ export function renderAdminDashboardPage(): string {
     --shadow: rgba(0,0,0,.02) 0 0 0 1px, rgba(0,0,0,.04) 0 2px 6px, rgba(0,0,0,.08) 0 4px 8px;
     --font: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; min-width: 0; }
+  html, body { width: 100%; overflow-x: hidden; }
   body {
     font-family: var(--font);
     font-weight: 500;
@@ -72,7 +218,18 @@ export function renderAdminDashboardPage(): string {
   }
   .refresh:hover { color: var(--rausch); border-color: var(--rausch); }
 
-  main { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 20px; width: 100%; }
+  @media (max-width: 540px) {
+    main { padding: 18px 14px; }
+    .nav { padding: 0 14px; }
+  }
+  @media (max-width: 380px) {
+    main { padding: 16px 12px; }
+    .nav { padding: 0 12px; }
+    .nav .logo { font-size: 18px; }
+    .badge { font-size: 10px; padding: 3px 8px; }
+    .refresh { padding: 5px 10px; font-size: 11px; }
+  }
   h2 {
     font-size: 13px; font-weight: 700;
     letter-spacing: 0.32px; text-transform: uppercase;
@@ -83,8 +240,16 @@ export function renderAdminDashboardPage(): string {
 
   .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 12px;
+  }
+  @media (max-width: 380px) {
+    .kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .kpi { padding: 12px 14px; }
+    .kpi-value { font-size: 24px; }
   }
   .kpi {
     background: var(--card);
@@ -121,6 +286,10 @@ export function renderAdminDashboardPage(): string {
     border-radius: 16px;
     padding: 18px;
     box-shadow: var(--shadow);
+    overflow-x: auto;
+  }
+  @media (max-width: 380px) {
+    .card { padding: 14px; border-radius: 14px; }
   }
   .card h3 {
     font-size: 14px; font-weight: 700;
@@ -128,7 +297,11 @@ export function renderAdminDashboardPage(): string {
     margin-bottom: 14px;
   }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
+  @media (max-width: 380px) {
+    table { font-size: 12px; }
+    th, td { padding: 6px 4px; }
+  }
   th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--border); }
   th { font-size: 11px; font-weight: 700; color: var(--text-3); letter-spacing: 0.16px; text-transform: uppercase; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -205,9 +378,12 @@ export function renderAdminDashboardPage(): string {
   <header>
     <div class="nav">
       <a href="/" class="logo">luanna<span>.</span> <span style="color:var(--text-3); font-weight:500">admin</span></a>
-      <div style="display:flex; gap:10px; align-items:center;">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
         <span class="badge" id="updated-badge">cargando…</span>
         <button class="refresh" id="refresh-btn">↻ Refrescar</button>
+        <form method="POST" action="/admin/logout" style="margin:0;">
+          <button class="refresh" type="submit" title="Cerrar sesión">↩ Salir</button>
+        </form>
       </div>
     </div>
   </header>
@@ -341,6 +517,7 @@ export function renderAdminDashboardPage(): string {
     async function load() {
       try {
         const res = await fetch('/admin/dashboard.json', { credentials: 'include' });
+        if (res.status === 401) { window.location.href = '/admin/login'; return; }
         if (!res.ok) throw new Error(res.status + ' ' + (await res.text()).slice(0, 200));
         const data = await res.json();
         document.getElementById('loading').style.display = 'none';

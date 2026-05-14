@@ -41,7 +41,7 @@ import {
   type Preferences,
   type RateLimitResult,
 } from "./db";
-import { renderAdminDashboardPage } from "./admin";
+import { renderAdminDashboardPage, renderAdminLoginPage } from "./admin";
 import {
   CHAT_MESSAGE_MAX,
   PREFS_ORIGIN_MAX,
@@ -965,34 +965,148 @@ function timingSafeEqual(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
-function checkAdminAuth(request: Request, env: Env): boolean {
+const ADMIN_COOKIE_NAME = "luanna_admin_session";
+const ADMIN_SESSION_TTL_SECONDS = 24 * 60 * 60;
+
+async function signAdminCookie(env: Env, expUnix: number): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(env.ADMIN_API_KEY!),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    enc.encode(`admin:${expUnix}`),
+  );
+  const bytes = new Uint8Array(mac);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  const sigB64 = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${expUnix}.${sigB64}`;
+}
+
+async function verifyAdminCookie(env: Env, value: string): Promise<boolean> {
   if (!env.ADMIN_API_KEY) return false;
-  const auth = request.headers.get("Authorization");
-  if (!auth) return false;
-  // Bearer (CLI / fetch) path
-  if (auth.startsWith("Bearer ")) {
-    return timingSafeEqual(auth, `Bearer ${env.ADMIN_API_KEY}`);
+  const m = value.match(/^(\d+)\.([\w-]+)$/);
+  if (!m) return false;
+  const expUnix = Number(m[1]);
+  if (!Number.isFinite(expUnix) || expUnix < Math.floor(Date.now() / 1000)) {
+    return false;
   }
-  // Basic (browser) path: any username + ADMIN_API_KEY as password
-  if (auth.startsWith("Basic ")) {
-    try {
-      const decoded = atob(auth.slice(6).trim());
-      const colon = decoded.indexOf(":");
-      if (colon < 0) return false;
-      const password = decoded.slice(colon + 1);
-      return timingSafeEqual(password, env.ADMIN_API_KEY);
-    } catch {
-      return false;
+  const expected = await signAdminCookie(env, expUnix);
+  return timingSafeEqual(expected, value);
+}
+
+function getCookie(request: Request, name: string): string | null {
+  const header = request.headers.get("Cookie");
+  if (!header) return null;
+  for (const pair of header.split(";")) {
+    const [k, ...rest] = pair.trim().split("=");
+    if (k === name) return rest.join("=");
+  }
+  return null;
+}
+
+async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
+  if (!env.ADMIN_API_KEY) return false;
+  // Bearer (CLI / fetch) path — preferred for /admin/*.json endpoints
+  const auth = request.headers.get("Authorization");
+  if (auth) {
+    if (auth.startsWith("Bearer ")) {
+      return timingSafeEqual(auth, `Bearer ${env.ADMIN_API_KEY}`);
+    }
+    if (auth.startsWith("Basic ")) {
+      try {
+        const decoded = atob(auth.slice(6).trim());
+        const colon = decoded.indexOf(":");
+        if (colon < 0) return false;
+        const password = decoded.slice(colon + 1);
+        return timingSafeEqual(password, env.ADMIN_API_KEY);
+      } catch {
+        return false;
+      }
     }
   }
+  // Cookie path — set by /admin/login when password matches
+  const cookie = getCookie(request, ADMIN_COOKIE_NAME);
+  if (cookie) return await verifyAdminCookie(env, cookie);
   return false;
 }
 
-function basicAuthChallenge(): Response {
-  return new Response("Authentication required", {
-    status: 401,
+function redirectToLogin(): Response {
+  return new Response(null, {
+    status: 302,
+    headers: { Location: "/admin/login" },
+  });
+}
+
+async function handleAdminLoginPage(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  // If already authenticated, skip the form and bounce to the dashboard.
+  if (await checkAdminAuth(request, env)) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/admin/" },
+    });
+  }
+  const url = new URL(request.url);
+  const error = url.searchParams.get("error") === "1";
+  return new Response(renderAdminLoginPage(error), {
     headers: {
-      "WWW-Authenticate": 'Basic realm="luanna-admin", charset="UTF-8"',
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+async function handleAdminLoginSubmit(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!env.ADMIN_API_KEY) {
+    return new Response("admin not configured", { status: 503 });
+  }
+  let password = "";
+  const contentType = request.headers.get("Content-Type") ?? "";
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    const body = await request.text();
+    const params = new URLSearchParams(body);
+    password = params.get("password") ?? "";
+  } else if (contentType.includes("application/json")) {
+    const body = (await request.json().catch(() => null)) as
+      | { password?: string }
+      | null;
+    password = body?.password ?? "";
+  }
+  if (!password || !timingSafeEqual(password, env.ADMIN_API_KEY)) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/admin/login?error=1" },
+    });
+  }
+  const expUnix = Math.floor(Date.now() / 1000) + ADMIN_SESSION_TTL_SECONDS;
+  const token = await signAdminCookie(env, expUnix);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: "/admin/",
+      "Set-Cookie": `${ADMIN_COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Strict; Path=/admin; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
+    },
+  });
+}
+
+async function handleAdminLogout(): Promise<Response> {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: "/admin/login",
+      "Set-Cookie": `${ADMIN_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Strict; Path=/admin; Max-Age=0`,
     },
   });
 }
@@ -1001,7 +1115,7 @@ async function handleAdminDashboardPage(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  if (!checkAdminAuth(request, env)) return basicAuthChallenge();
+  if (!(await checkAdminAuth(request, env))) return redirectToLogin();
   return new Response(renderAdminDashboardPage(), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
@@ -1014,7 +1128,12 @@ async function handleAdminDashboardJson(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  if (!checkAdminAuth(request, env)) return basicAuthChallenge();
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const sql = getDb(env.DATABASE_URL);
   try {
     const stats = await getDashboardStats(sql);
@@ -1038,7 +1157,7 @@ async function handleAdminListPending(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  if (!checkAdminAuth(request, env)) {
+  if (!(await checkAdminAuth(request, env))) {
     return new Response("unauthorized", { status: 401 });
   }
   const url = new URL(request.url);
@@ -1060,7 +1179,7 @@ async function handleAdminPosthogPing(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  if (!checkAdminAuth(request, env)) {
+  if (!(await checkAdminAuth(request, env))) {
     return new Response("unauthorized", { status: 401 });
   }
   if (!env.POSTHOG_API_KEY) {
@@ -1110,7 +1229,7 @@ async function handleAdminErrorsRecent(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  if (!checkAdminAuth(request, env)) {
+  if (!(await checkAdminAuth(request, env))) {
     return new Response("unauthorized", { status: 401 });
   }
   const url = new URL(request.url);
@@ -1129,7 +1248,7 @@ async function handleAdminProcessDeletion(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  if (!checkAdminAuth(request, env)) {
+  if (!(await checkAdminAuth(request, env))) {
     return new Response("unauthorized", { status: 401 });
   }
   const body = (await request.json().catch(() => null)) as
@@ -1421,6 +1540,15 @@ async function routeFetch(
     (url.pathname === "/admin" || url.pathname === "/admin/")
   ) {
     return handleAdminDashboardPage(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/admin/login") {
+    return handleAdminLoginPage(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/admin/login") {
+    return handleAdminLoginSubmit(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/admin/logout") {
+    return handleAdminLogout();
   }
   if (
     request.method === "GET" &&
