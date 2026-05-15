@@ -375,6 +375,61 @@
       color: var(--text-3);
       cursor: not-allowed;
     }
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--text-2);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s, transform 0.15s;
+    }
+    .icon-btn:hover:not(:disabled) {
+      background: var(--surface-2);
+      color: var(--text);
+    }
+    .icon-btn:active:not(:disabled) { transform: scale(0.94); }
+    .icon-btn:disabled { color: var(--text-3); cursor: not-allowed; }
+    .icon-btn.recording {
+      background: rgba(255, 56, 92, 0.12);
+      color: var(--rausch);
+      animation: micPulse 1.4s ease-in-out infinite;
+    }
+    @keyframes micPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 56, 92, 0.35); }
+      50% { box-shadow: 0 0 0 8px rgba(255, 56, 92, 0); }
+    }
+    .rec-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: rgba(255, 56, 92, 0.10);
+      color: var(--rausch);
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-right: 6px;
+      flex-shrink: 0;
+    }
+    .rec-pill .rec-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--rausch);
+      animation: micPulse 1.4s ease-in-out infinite;
+    }
+    .msg img.msg-image {
+      max-width: 240px;
+      max-height: 240px;
+      border-radius: 12px;
+      display: block;
+    }
     .input-hint {
       font-size: 11px;
       color: var(--text-3);
@@ -468,12 +523,32 @@
 
     <div class="input-bar">
       <div class="input-wrap">
+        <input type="file" id="image-input" accept="image/*" hidden>
+        <button class="icon-btn" id="attach-btn" type="button" aria-label="Adjuntar foto" title="Adjuntar foto">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+        </button>
+        <span class="rec-pill" id="rec-pill" style="display:none">
+          <span class="rec-dot"></span>
+          <span id="rec-timer">0:00</span>
+        </span>
         <textarea
           id="input"
           placeholder="Escríbele a Luanna..."
           rows="1"
           autocomplete="off"
         ></textarea>
+        <button class="icon-btn" id="mic-btn" type="button" aria-label="Grabar nota de voz" title="Grabar nota de voz">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
         <button class="send-btn" id="send-btn" aria-label="Enviar mensaje">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="22" y1="2" x2="11" y2="13"/>
@@ -590,35 +665,94 @@
         input.style.height = Math.min(input.scrollHeight, 160) + 'px';
       }
 
-      async function send(text) {
-        if (busy || !text.trim()) return;
+      function appendImageBubble(role, dataUrl, caption) {
+        if (welcome && welcome.parentNode) welcome.remove();
+        const row = document.createElement('div');
+        row.className = 'msg-row ' + role;
+        if (role === 'ai') {
+          const avatar = document.createElement('div');
+          avatar.className = 'msg-avatar';
+          avatar.textContent = 'L';
+          row.appendChild(avatar);
+        }
+        const bubble = document.createElement('div');
+        bubble.className = 'msg';
+        const img = document.createElement('img');
+        img.className = 'msg-image';
+        img.src = dataUrl;
+        bubble.appendChild(img);
+        if (caption && caption.trim()) {
+          const cap = document.createElement('div');
+          cap.style.marginTop = '6px';
+          cap.innerHTML = renderText(caption);
+          bubble.appendChild(cap);
+        }
+        row.appendChild(bubble);
+        messages.appendChild(row);
+        scrollToBottom();
+      }
+
+      async function send(opts) {
+        // opts can be a string (text only) or { text, image, audio }
+        if (typeof opts === 'string') opts = { text: opts };
+        const text = (opts.text || '').trim();
+        const image = opts.image || null;
+        const audio = opts.audio || null;
+        if (busy) return;
+        if (!text && !image && !audio) return;
         busy = true;
         sendBtn.disabled = true;
+        attachBtn.disabled = true;
+        micBtn.disabled = true;
 
-        appendMessage('user', text);
+        if (image) {
+          const url = URL.createObjectURL(image);
+          appendImageBubble('user', url, text);
+        } else if (audio) {
+          appendMessage('user', '🎤 Nota de voz enviada…');
+        } else {
+          appendMessage('user', text);
+        }
         input.value = '';
         autoresize();
         appendTyping();
 
         try {
-          const payload = {
-            message: text,
-            session_id: getOrCreateSession(),
-          };
-          if (pendingRef) {
-            payload.ref = pendingRef;
-            pendingRef = null;
-            try { sessionStorage.removeItem('luanna_ref'); } catch (e) {}
+          const session_id = getOrCreateSession();
+          let res;
+          if (image || audio) {
+            const form = new FormData();
+            form.append('session_id', session_id);
+            if (text) form.append('message', text);
+            if (image) form.append('image', image, image.name || 'photo.jpg');
+            if (audio) form.append('audio', audio, 'voice.webm');
+            if (pendingRef) {
+              form.append('ref', pendingRef);
+              pendingRef = null;
+              try { sessionStorage.removeItem('luanna_ref'); } catch (e) {}
+            }
+            res = await fetch('/api/chat', { method: 'POST', body: form });
+          } else {
+            const payload = { message: text, session_id };
+            if (pendingRef) {
+              payload.ref = pendingRef;
+              pendingRef = null;
+              try { sessionStorage.removeItem('luanna_ref'); } catch (e) {}
+            }
+            res = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
           }
-          const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
           const data = await res.json().catch(() => null);
           removeTyping();
           if (!res.ok || !data) {
-            appendMessage('ai', '⚠️ Hubo un problema procesando tu mensaje. Inténtalo de nuevo.');
+            const status = res.status;
+            let msg = '⚠️ Hubo un problema procesando tu mensaje. Inténtalo de nuevo.';
+            if (status === 413) msg = '⚠️ El archivo es muy grande. Prueba con una foto/audio más liviano.';
+            else if (status === 429) msg = '⚠️ Demasiados mensajes seguidos. Espera unos segundos.';
+            appendMessage('ai', msg);
           } else if (data.error) {
             appendMessage('ai', '⚠️ ' + data.error);
           } else if (data.reply && data.reply.trim()) {
@@ -632,9 +766,21 @@
         } finally {
           busy = false;
           sendBtn.disabled = false;
+          attachBtn.disabled = false;
+          micBtn.disabled = false;
           input.focus();
         }
       }
+
+      const attachBtn = document.getElementById('attach-btn');
+      const micBtn = document.getElementById('mic-btn');
+      const imageInput = document.getElementById('image-input');
+      const recPill = document.getElementById('rec-pill');
+      const recTimer = document.getElementById('rec-timer');
+      let mediaRecorder = null;
+      let recordedChunks = [];
+      let recordStartedAt = 0;
+      let recordTimerId = null;
 
       input.addEventListener('input', autoresize);
       input.addEventListener('keydown', function (e) {
@@ -644,6 +790,87 @@
         }
       });
       sendBtn.addEventListener('click', () => send(input.value));
+
+      attachBtn.addEventListener('click', () => imageInput.click());
+      imageInput.addEventListener('change', () => {
+        const file = imageInput.files && imageInput.files[0];
+        imageInput.value = '';
+        if (!file) return;
+        if (file.size > 6 * 1024 * 1024) {
+          appendMessage('ai', '⚠️ La foto es muy grande (máx 6 MB).');
+          return;
+        }
+        send({ text: input.value, image: file });
+      });
+
+      function formatRecTime(ms) {
+        const s = Math.floor(ms / 1000);
+        return Math.floor(s / 60) + ':' + (s % 60).toString().padStart(2, '0');
+      }
+      function stopRecording(cancel) {
+        if (!mediaRecorder) return;
+        const wasRecording = mediaRecorder.state === 'recording';
+        try { if (wasRecording) mediaRecorder.stop(); } catch (e) {}
+        if (recordTimerId) clearInterval(recordTimerId);
+        recordTimerId = null;
+        recPill.style.display = 'none';
+        micBtn.classList.remove('recording');
+        micBtn.title = 'Grabar nota de voz';
+        if (cancel) { recordedChunks = []; mediaRecorder = null; }
+      }
+      async function startRecording() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          appendMessage('ai', '⚠️ Tu navegador no soporta grabación de audio.');
+          return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+          mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+          recordedChunks = [];
+          mediaRecorder.addEventListener('dataavailable', (e) => {
+            if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+          });
+          mediaRecorder.addEventListener('stop', () => {
+            stream.getTracks().forEach((t) => t.stop());
+            if (recordedChunks.length === 0) return;
+            const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+            if (blob.size < 1000) {
+              appendMessage('ai', '⚠️ La grabación fue muy corta. Intenta otra vez.');
+              return;
+            }
+            if (blob.size > 8 * 1024 * 1024) {
+              appendMessage('ai', '⚠️ El audio es muy largo (máx ~8 MB).');
+              return;
+            }
+            send({ audio: blob });
+          });
+          mediaRecorder.start();
+          recordStartedAt = Date.now();
+          recPill.style.display = 'inline-flex';
+          recTimer.textContent = '0:00';
+          micBtn.classList.add('recording');
+          micBtn.title = 'Detener y enviar';
+          recordTimerId = setInterval(() => {
+            const elapsed = Date.now() - recordStartedAt;
+            recTimer.textContent = formatRecTime(elapsed);
+            // Hard cap at 90s
+            if (elapsed >= 90 * 1000) stopRecording(false);
+          }, 300);
+        } catch (err) {
+          appendMessage('ai', '⚠️ No pude acceder al micrófono. Revisa los permisos del navegador.');
+        }
+      }
+      micBtn.addEventListener('click', () => {
+        if (busy) return;
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          stopRecording(false);
+        } else {
+          startRecording();
+        }
+      });
 
       document.querySelectorAll('.chip').forEach(function (chip) {
         chip.addEventListener('click', function () {

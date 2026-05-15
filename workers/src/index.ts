@@ -1355,22 +1355,75 @@ async function handleApiDataDeletion(
   return Response.json({ ok: true, id });
 }
 
+const CHAT_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+const CHAT_AUDIO_MAX_BYTES = 8 * 1024 * 1024;
+
+interface UploadedFile {
+  size: number;
+  type: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+function asUploadedFile(value: unknown): UploadedFile | null {
+  if (value && typeof value === "object" && "arrayBuffer" in value && "size" in value) {
+    const f = value as UploadedFile;
+    return f.size > 0 ? f : null;
+  }
+  return null;
+}
+
 async function handleChat(request: Request, env: Env): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as
-    | { message?: string; session_id?: string; ref?: string }
-    | null;
-  const message = body?.message;
-  if (typeof message !== "string" || message.trim() === "") {
-    return Response.json({ error: "missing 'message'" }, { status: 400 });
+  const contentType = request.headers.get("content-type") || "";
+  let message: string | undefined;
+  let rawSession = "";
+  let refField: string | undefined;
+  let imageFile: UploadedFile | null = null;
+  let audioFile: UploadedFile | null = null;
+
+  if (contentType.includes("multipart/form-data")) {
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return Response.json({ error: "invalid form" }, { status: 400 });
+    }
+    const m = form.get("message");
+    if (typeof m === "string") message = m;
+    const s = form.get("session_id");
+    if (typeof s === "string") rawSession = s;
+    const r = form.get("ref");
+    if (typeof r === "string") refField = r;
+    imageFile = asUploadedFile(form.get("image"));
+    audioFile = asUploadedFile(form.get("audio"));
+  } else {
+    const body = (await request.json().catch(() => null)) as
+      | { message?: string; session_id?: string; ref?: string }
+      | null;
+    message = body?.message;
+    rawSession = typeof body?.session_id === "string" ? body.session_id : "";
+    refField = typeof body?.ref === "string" ? body.ref : undefined;
   }
-  if (message.length > CHAT_MESSAGE_MAX) {
-    return Response.json({ error: "message too long" }, { status: 413 });
-  }
-  const rawSession = typeof body?.session_id === "string" ? body.session_id : "";
+
   const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
   if (!session_id) {
     return Response.json({ error: "missing 'session_id'" }, { status: 400 });
   }
+
+  const hasMedia = imageFile !== null || audioFile !== null;
+  const trimmedMessage = typeof message === "string" ? message : "";
+  if (!hasMedia && trimmedMessage.trim() === "") {
+    return Response.json({ error: "missing 'message'" }, { status: 400 });
+  }
+  if (trimmedMessage.length > CHAT_MESSAGE_MAX) {
+    return Response.json({ error: "message too long" }, { status: 413 });
+  }
+  if (imageFile && imageFile.size > CHAT_IMAGE_MAX_BYTES) {
+    return Response.json({ error: "image too large" }, { status: 413 });
+  }
+  if (audioFile && audioFile.size > CHAT_AUDIO_MAX_BYTES) {
+    return Response.json({ error: "audio too large" }, { status: 413 });
+  }
+
   const sql = getDb(env.DATABASE_URL);
   const ip = getClientIp(request);
   const rl = await checkRateLimit(sql, `chat:${ip}`, 20, 60);
@@ -1380,21 +1433,106 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   await ensureReferralCode(sql, user.id).catch(() => {});
   const history = await getRecentMessages(sql, user.id);
   const isFirstContact = history.length === 0;
-  let userMessage = message;
+  const distinctId = distinctIdForUser(user.id);
+
+  // ── Resolve incoming content: text, image, or audio ──────────────
+  let resolvedText: string = trimmedMessage;
+  let sourceKind: "text" | "image" | "audio" = "text";
+  let userBubbleText: string = trimmedMessage; // what we persist as the user's message
+
+  if (imageFile) {
+    sourceKind = "image";
+    try {
+      const buf = await imageFile.arrayBuffer();
+      const ident = await identifyDestinationFromImage(
+        env,
+        buf,
+        imageFile.type || "image/jpeg",
+        trimmedMessage || null,
+      );
+      await track(env, {
+        event: "image_identified",
+        distinct_id: distinctId,
+        properties: {
+          source: "web",
+          unknown: ident.unknown,
+          summary_length: ident.summary.length,
+        },
+      });
+      if (ident.unknown) {
+        const fallback =
+          "Recibí tu foto 🤔 pero no logré identificar dónde es. ¿Me cuentas qué lugar es?";
+        await appendMessage(
+          sql,
+          user.id,
+          "user",
+          `[foto recibida]${trimmedMessage ? ` "${trimmedMessage}"` : ""}`,
+        );
+        await appendMessage(sql, user.id, "assistant", fallback);
+        return Response.json({ reply: fallback });
+      }
+      userBubbleText = trimmedMessage
+        ? `[foto] ${trimmedMessage}`
+        : "[foto]";
+      resolvedText =
+        `[El usuario mandó una foto. Identifiqué el lugar como: ${ident.summary}.` +
+        (trimmedMessage ? ` Caption del usuario: "${trimmedMessage}".` : "") +
+        ` Tu trabajo: confirmar entusiasmada el destino, preguntarle si quiere que busques vuelos/hotel/paquete desde su origen, e impulsar la conversación. NO le digas que "identificaste una foto" textualmente — habla como si supieras del lugar.]`;
+    } catch (err) {
+      console.error("web image processing failed", err);
+      await recordError(sql, "web:image", err, { user_id: user.id });
+      const fallback =
+        "Recibí tu foto pero tuve un problema procesándola 😬 ¿Me cuentas qué lugar es?";
+      await appendMessage(sql, user.id, "assistant", fallback);
+      return Response.json({ reply: fallback });
+    }
+  } else if (audioFile) {
+    sourceKind = "audio";
+    try {
+      const buf = await audioFile.arrayBuffer();
+      const transcript = await transcribeAudio(env, buf);
+      await track(env, {
+        event: "audio_transcribed",
+        distinct_id: distinctId,
+        properties: {
+          source: "web",
+          text_length: transcript.text.length,
+          duration_seconds: transcript.duration_seconds ?? null,
+        },
+      });
+      if (!transcript.text || transcript.text.length < 2) {
+        const fallback =
+          "No te escuché bien 😅 ¿Lo intentas otra vez o me lo escribes?";
+        await appendMessage(sql, user.id, "user", "[audio inaudible]");
+        await appendMessage(sql, user.id, "assistant", fallback);
+        return Response.json({ reply: fallback });
+      }
+      resolvedText = transcript.text;
+      userBubbleText = `🎤 ${transcript.text}`;
+    } catch (err) {
+      console.error("web audio processing failed", err);
+      await recordError(sql, "web:audio", err, { user_id: user.id });
+      const fallback =
+        "Recibí tu audio pero tuve un problema escuchándolo 😬 ¿Lo intentas otra vez o me escribes?";
+      await appendMessage(sql, user.id, "assistant", fallback);
+      return Response.json({ reply: fallback });
+    }
+  }
 
   // Referral linking for web users: ?ref= param surfaces here as body.ref
   // on the first message of a new session. We also tolerate ref: prefixes
   // inline in the message itself.
-  if (isFirstContact) {
+  if (isFirstContact && sourceKind === "text") {
     let refCode: string | null = null;
-    if (typeof body?.ref === "string" && /^[A-Za-z0-9]{4,20}$/.test(body.ref)) {
-      refCode = body.ref;
+    if (typeof refField === "string" && /^[A-Za-z0-9]{4,20}$/.test(refField)) {
+      refCode = refField;
     } else {
-      const m = userMessage.match(/(?:^|\s)ref:([A-Za-z0-9]{4,20})\b/i);
+      const m = resolvedText.match(/(?:^|\s)ref:([A-Za-z0-9]{4,20})\b/i);
       if (m) {
         refCode = m[1];
-        userMessage = userMessage.replace(/(?:^|\s)ref:[A-Za-z0-9]{4,20}\b/i, "").trim();
-        if (!userMessage) userMessage = "Hola";
+        resolvedText = resolvedText.replace(/(?:^|\s)ref:[A-Za-z0-9]{4,20}\b/i, "").trim();
+        if (!resolvedText) resolvedText = "Hola";
+        userBubbleText = resolvedText;
       }
     }
     if (refCode) {
@@ -1405,7 +1543,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
           if (linked) {
             await track(env, {
               event: "referred_signup",
-              distinct_id: distinctIdForUser(user.id),
+              distinct_id: distinctId,
               properties: { referrer_id: ref.referrer_id, code: refCode, source: "web" },
             });
           }
@@ -1414,8 +1552,45 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     }
   }
 
-  await appendMessage(sql, user.id, "user", userMessage);
-  const distinctId = distinctIdForUser(user.id);
+  // ── /feedback intercept (mirror WhatsApp behavior) ────────────────
+  if (sourceKind === "text") {
+    const feedbackMatch = resolvedText.match(
+      /^\s*\/(feedback|bug|idea)\b\s*(.*)$/is,
+    );
+    if (feedbackMatch) {
+      const cmd = feedbackMatch[1].toLowerCase();
+      const fbBody = (feedbackMatch[2] || "").trim();
+      const kind: FeedbackKind =
+        cmd === "bug" ? "bug" : cmd === "idea" ? "idea" : "other";
+      let ack: string;
+      if (!fbBody) {
+        ack =
+          cmd === "bug"
+            ? "Cuéntame qué falló y te lo paso al equipo. Escribe: `/bug <lo que pasó>` 🐞"
+            : cmd === "idea"
+              ? "¡Cuéntame tu idea! Escribe: `/idea <tu sugerencia>` 💡"
+              : "¡Mándame tu feedback! Escribe: `/feedback <lo que quieras contarme>` ✨";
+      } else {
+        await recordFeedback(sql, user.id, kind, fbBody, "web");
+        await track(env, {
+          event: "feedback_submitted",
+          distinct_id: distinctId,
+          properties: { kind, length: fbBody.length, source: "web" },
+        });
+        ack =
+          kind === "bug"
+            ? "Anotado 🐞 Lo paso al equipo y lo revisamos. ¡Gracias por ayudar a hacer Luanna mejor!"
+            : kind === "idea"
+              ? "¡Buenísima idea! 💡 Queda anotada. Gracias por compartirla 🙌"
+              : "¡Gracias por el feedback! ✨ Lo leemos y nos ayuda muchísimo. 🙌";
+      }
+      await appendMessage(sql, user.id, "user", resolvedText);
+      await appendMessage(sql, user.id, "assistant", ack);
+      return Response.json({ reply: ack });
+    }
+  }
+
+  await appendMessage(sql, user.id, "user", userBubbleText);
   if (isFirstContact) {
     await track(env, {
       event: "user_signed_up",
@@ -1428,12 +1603,13 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     distinct_id: distinctId,
     properties: {
       source: "web",
+      source_kind: sourceKind,
       is_first_contact: isFirstContact,
       has_name: !!user.name,
-      length: userMessage.length,
+      length: resolvedText.length,
     },
   });
-  const reply = await generateReply(env, userMessage, {
+  const reply = await generateReply(env, resolvedText, {
     userId: user.id,
     baseUrl: new URL(request.url).origin,
     history,
