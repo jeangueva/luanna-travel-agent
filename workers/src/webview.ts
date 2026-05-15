@@ -369,7 +369,7 @@ export function renderPreferencesPage(token: string): string {
 
     <section class="panel active" id="panel-prefs" role="tabpanel">
       <p class="tab-intro">
-        Cuéntale a Luanna desde dónde viajas y los destinos que te interesan.
+        Cuéntale a Luanna desde <strong>dónde viajas y los destinos que te interesan.</strong>
         Así te recomienda vuelos y hoteles que realmente encajan contigo. ✨
       </p>
       <div class="field">
