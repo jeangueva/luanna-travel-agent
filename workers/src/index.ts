@@ -1638,6 +1638,90 @@ async function handleChatReset(request: Request, env: Env): Promise<Response> {
   return Response.json({ ok: true });
 }
 
+const CHAT_TRACK_ALLOWED_EVENTS = new Set([
+  "share_clicked",
+  "share_dialog_canceled",
+  "email_dismissed",
+]);
+
+async function handleChatEmail(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as
+    | { session_id?: string; email?: string }
+    | null;
+  if (!body) return Response.json({ error: "invalid json" }, { status: 400 });
+  const rawSession = typeof body.session_id === "string" ? body.session_id : "";
+  const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (!session_id) {
+    return Response.json({ error: "missing 'session_id'" }, { status: 400 });
+  }
+  const rawEmail = typeof body.email === "string" ? body.email.trim() : "";
+  // Basic email validation: local@host.tld with at least one dot in domain.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(rawEmail) || rawEmail.length > 200) {
+    return Response.json({ error: "invalid email" }, { status: 400 });
+  }
+  const email = rawEmail.toLowerCase();
+  const sql = getDb(env.DATABASE_URL);
+  const ip = getClientIp(request);
+  const rl = await checkRateLimit(sql, `email:${ip}`, 5, 3600);
+  if (!rl.allowed) return rateLimitResponse(rl, "too many requests");
+  const phone = `web:${session_id}`;
+  const rows = (await sql`
+    SELECT id FROM users WHERE phone = ${phone} LIMIT 1
+  `) as Array<{ id: number }>;
+  if (rows.length === 0) {
+    return Response.json({ error: "session not found" }, { status: 404 });
+  }
+  const userId = rows[0].id;
+  await sql`
+    UPDATE users SET email = ${email}, email_captured_at = NOW()
+    WHERE id = ${userId}
+  `;
+  await track(env, {
+    event: "email_captured",
+    distinct_id: distinctIdForUser(userId),
+    properties: { source: "web_chat" },
+  });
+  return Response.json({ ok: true });
+}
+
+async function handleChatTrack(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as
+    | { session_id?: string; event?: string; properties?: Record<string, unknown> }
+    | null;
+  if (!body) return Response.json({ error: "invalid json" }, { status: 400 });
+  const rawSession = typeof body.session_id === "string" ? body.session_id : "";
+  const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (!session_id) {
+    return Response.json({ error: "missing 'session_id'" }, { status: 400 });
+  }
+  const event = typeof body.event === "string" ? body.event : "";
+  if (!CHAT_TRACK_ALLOWED_EVENTS.has(event)) {
+    return Response.json({ error: "event not allowed" }, { status: 400 });
+  }
+  const sql = getDb(env.DATABASE_URL);
+  const rows = (await sql`
+    SELECT id FROM users WHERE phone = ${`web:${session_id}`} LIMIT 1
+  `) as Array<{ id: number }>;
+  if (rows.length === 0) {
+    return Response.json({ ok: true, skipped: true });
+  }
+  const props: Record<string, unknown> = { source: "web" };
+  if (body.properties && typeof body.properties === "object") {
+    for (const [k, v] of Object.entries(body.properties)) {
+      // Only allow primitive values, cap names/values
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        props[k.slice(0, 40)] = typeof v === "string" ? v.slice(0, 200) : v;
+      }
+    }
+  }
+  await track(env, {
+    event,
+    distinct_id: distinctIdForUser(rows[0].id),
+    properties: props,
+  });
+  return Response.json({ ok: true });
+}
+
 async function handleChatShare(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const rawSession = url.searchParams.get("session_id") ?? "";
@@ -1659,7 +1743,7 @@ async function handleChatShare(request: Request, env: Env): Promise<Response> {
     return Response.json({ error: "no code" }, { status: 500 });
   }
   const origin = new URL(request.url).origin;
-  const share_url = `${origin}/?ref=${encodeURIComponent(code)}`;
+  const share_url = `${origin}/i/${code}`;
   return Response.json({ code, share_url });
 }
 
@@ -1682,6 +1766,32 @@ async function handleClickRedirect(url: URL, env: Env): Promise<Response> {
     console.error("click redirect failed", err);
     await recordError(sql, "fetch:click_redirect", err, { id });
     return new Response("server error", { status: 500 });
+  }
+}
+
+async function handleInviteRedirect(url: URL, env: Env): Promise<Response> {
+  const code = url.pathname.slice(3).replace(/[^A-Za-z0-9]/g, "").slice(0, 20);
+  if (!code || code.length < 4) {
+    return Response.redirect(`${url.origin}/`, 302);
+  }
+  const sql = getDb(env.DATABASE_URL);
+  try {
+    const rows = (await sql`
+      SELECT id FROM users WHERE referral_code = ${code} LIMIT 1
+    `) as Array<{ id: number }>;
+    if (rows.length === 0) {
+      return Response.redirect(`${url.origin}/`, 302);
+    }
+    void track(env, {
+      event: "invite_link_visited",
+      distinct_id: distinctIdForUser(rows[0].id),
+      properties: { code, referrer_id: rows[0].id },
+    });
+    return Response.redirect(`${url.origin}/?ref=${encodeURIComponent(code)}`, 302);
+  } catch (err) {
+    console.error("invite redirect failed", err);
+    await recordError(sql, "fetch:invite_redirect", err, { code });
+    return Response.redirect(`${url.origin}/`, 302);
   }
 }
 
@@ -1746,6 +1856,9 @@ async function routeFetch(
   if (request.method === "GET" && url.pathname.startsWith("/r/")) {
     return handleClickRedirect(url, env);
   }
+  if (request.method === "GET" && url.pathname.startsWith("/i/")) {
+    return handleInviteRedirect(url, env);
+  }
   if (request.method === "POST" && url.pathname === "/webhook/kapso") {
     return handleKapsoWebhook(request, env, ctx);
   }
@@ -1777,6 +1890,12 @@ async function routeFetch(
   }
   if (request.method === "GET" && url.pathname === "/api/chat/share") {
     return handleChatShare(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/chat/track") {
+    return handleChatTrack(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/chat/email") {
+    return handleChatEmail(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/chat/reset") {
     return handleChatReset(request, env);

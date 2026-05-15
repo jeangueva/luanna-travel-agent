@@ -472,6 +472,74 @@
       border-radius: 12px;
       display: block;
     }
+    .email-banner {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, rgba(255,56,92,0.10) 0%, rgba(255,56,92,0.02) 100%);
+      border: 1px solid rgba(255,56,92,0.20);
+      border-radius: 14px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .email-banner.visible { display: flex; }
+    .email-banner-text {
+      flex: 1;
+      min-width: 0;
+      color: var(--text);
+      font-weight: 500;
+    }
+    .email-banner-text strong { color: var(--rausch); font-weight: 700; }
+    .email-banner input[type="email"] {
+      width: 220px;
+      max-width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .email-banner input[type="email"]:focus {
+      border-color: var(--rausch);
+      box-shadow: 0 0 0 3px rgba(255,56,92,0.12);
+    }
+    .email-banner button.submit {
+      padding: 8px 14px;
+      background: var(--rausch);
+      color: #fff;
+      border: none;
+      border-radius: 999px;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .email-banner button.submit:hover:not(:disabled) { background: var(--rausch-dark); }
+    .email-banner button.submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    .email-banner button.close {
+      background: transparent;
+      color: var(--text-2);
+      border: none;
+      cursor: pointer;
+      padding: 4px 6px;
+      font-size: 16px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .email-banner button.close:hover { color: var(--text); }
+    @media (max-width: 540px) {
+      .email-banner { flex-wrap: wrap; }
+      .email-banner-text { flex: 1 0 100%; margin-bottom: 4px; }
+      .email-banner input[type="email"] { flex: 1; width: auto; }
+    }
     .input-hint {
       font-size: 11px;
       color: var(--text-3);
@@ -577,6 +645,14 @@
     </div>
 
     <div class="input-bar">
+      <div class="email-banner" id="email-banner">
+        <div class="email-banner-text">
+          🌟 <strong>Avísame</strong> cuando Luanna tenga nuevas funciones.
+        </div>
+        <input type="email" id="email-input" placeholder="tu@email.com" autocomplete="email" inputmode="email" maxlength="200">
+        <button class="submit" id="email-submit" type="button">Avísame</button>
+        <button class="close" id="email-close" type="button" aria-label="Cerrar">✕</button>
+      </div>
       <div class="input-wrap">
         <input type="file" id="image-input" accept="image/*" hidden>
         <button class="icon-btn" id="attach-btn" type="button" aria-label="Adjuntar foto" title="Adjuntar foto">
@@ -813,6 +889,8 @@
           } else if (data.reply && data.reply.trim()) {
             appendMessage('ai', data.reply.trim());
             fetchShareUrl();
+            aiReplyCount++;
+            maybeShowEmailBanner();
           } else {
             appendMessage('ai', '...');
           }
@@ -934,6 +1012,65 @@
         });
       });
 
+      // ── Email capture ──
+      const emailBanner = document.getElementById('email-banner');
+      const emailInput = document.getElementById('email-input');
+      const emailSubmit = document.getElementById('email-submit');
+      const emailClose = document.getElementById('email-close');
+      let aiReplyCount = 0;
+      function emailDone() {
+        try { return localStorage.getItem('luanna_email_state'); } catch (e) { return null; }
+      }
+      function setEmailDone(state) {
+        try { localStorage.setItem('luanna_email_state', state); } catch (e) {}
+      }
+      function maybeShowEmailBanner() {
+        if (emailDone()) return;
+        if (aiReplyCount < 3) return;
+        emailBanner.classList.add('visible');
+      }
+      function hideEmailBanner(state) {
+        emailBanner.classList.remove('visible');
+        if (state) setEmailDone(state);
+      }
+      emailClose.addEventListener('click', () => {
+        hideEmailBanner('dismissed');
+        trackEvent('email_dismissed', {});
+      });
+      emailSubmit.addEventListener('click', async () => {
+        const email = (emailInput.value || '').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+          emailInput.focus();
+          showToast('Email inválido');
+          return;
+        }
+        emailSubmit.disabled = true;
+        try {
+          const res = await fetch('/api/chat/email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: getOrCreateSession(), email }),
+          });
+          if (res.ok) {
+            hideEmailBanner('submitted');
+            showToast('¡Gracias! Te avisamos 💌');
+          } else {
+            const d = await res.json().catch(() => ({}));
+            showToast(d.error === 'invalid email' ? 'Email inválido' : 'No pudimos guardar tu email');
+            emailSubmit.disabled = false;
+          }
+        } catch (e) {
+          showToast('Error de red');
+          emailSubmit.disabled = false;
+        }
+      });
+      emailInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          emailSubmit.click();
+        }
+      });
+
       // ── Share Luanna ──
       const shareBtn = document.getElementById('share-btn');
       const toast = document.getElementById('toast');
@@ -957,21 +1094,44 @@
           }
         } catch (e) { /* silent */ }
       }
+      function trackEvent(event, properties) {
+        try {
+          fetch('/api/chat/track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: getOrCreateSession(),
+              event,
+              properties: properties || {},
+            }),
+            keepalive: true,
+          });
+        } catch (e) { /* silent */ }
+      }
       shareBtn.addEventListener('click', async () => {
         if (!shareUrl) return;
         const shareText = '¡Estoy usando Luanna! Es una agente de viajes en WhatsApp que encuentra vuelos baratos.';
+        let method = 'unknown';
         if (navigator.share) {
           try {
             await navigator.share({ title: 'Luanna', text: shareText, url: shareUrl });
+            method = 'native';
+            trackEvent('share_clicked', { method });
             return;
-          } catch (e) { /* user cancelled or unsupported */ }
+          } catch (e) {
+            trackEvent('share_dialog_canceled', {});
+            // fall through to clipboard
+          }
         }
         try {
           await navigator.clipboard.writeText(shareUrl);
           showToast('Link copiado ✨');
+          method = 'clipboard';
         } catch (e) {
           window.prompt('Copia este link:', shareUrl);
+          method = 'prompt';
         }
+        trackEvent('share_clicked', { method });
       });
 
       resetBtn.addEventListener('click', async function () {
