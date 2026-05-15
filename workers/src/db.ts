@@ -940,3 +940,45 @@ export async function listRecentErrors(
     LIMIT ${limit}
   `) as WorkerErrorRow[];
 }
+
+export type FeedbackKind = "bug" | "idea" | "praise" | "other";
+
+export interface FeedbackRow {
+  id: number;
+  user_id: number | null;
+  phone: string | null;
+  kind: FeedbackKind;
+  text: string;
+  source: string;
+  created_at: string;
+}
+
+export async function recordFeedback(
+  sql: Sql,
+  userId: number | null,
+  kind: FeedbackKind,
+  text: string,
+  source: string,
+): Promise<void> {
+  try {
+    await sql`
+      INSERT INTO feedback (user_id, kind, text, source)
+      VALUES (${userId}, ${kind}, ${text.slice(0, 4000)}, ${source.slice(0, 30)})
+    `;
+  } catch (err) {
+    console.error("recordFeedback failed", err);
+  }
+}
+
+export async function listRecentFeedback(
+  sql: Sql,
+  limit: number,
+): Promise<FeedbackRow[]> {
+  return (await sql`
+    SELECT f.id, f.user_id, u.phone, f.kind, f.text, f.source, f.created_at
+    FROM feedback f
+    LEFT JOIN users u ON u.id = f.user_id
+    ORDER BY f.created_at DESC
+    LIMIT ${limit}
+  `) as FeedbackRow[];
+}

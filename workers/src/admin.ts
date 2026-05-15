@@ -434,6 +434,10 @@ export function renderAdminDashboardPage(): string {
         <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><circle cx="17" cy="6" r="3"/><path d="m22 21-1-2a3 3 0 0 0-3-2"/></svg></span>
         <span class="nav-label">Usuarios</span>
       </button></li>
+      <li><button class="nav-item" data-section="feedback">
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+        <span class="nav-label">Feedback</span>
+      </button></li>
     </ul>
 
     <div class="sidebar-foot">
@@ -553,6 +557,19 @@ export function renderAdminDashboardPage(): string {
         </div>
       </section>
 
+      <section class="panel" data-section="feedback">
+        <h2>Feedback recibido</h2>
+        <p class="t-body" style="color:var(--text-2);margin-bottom:14px">
+          Mensajes enviados con <code>/feedback</code>, <code>/bug</code> o <code>/idea</code> desde WhatsApp.
+        </p>
+        <div class="card">
+          <table id="recent-feedback">
+            <thead><tr><th>Cuándo</th><th>Tipo</th><th>Usuario</th><th>Mensaje</th></tr></thead>
+            <tbody><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -607,7 +624,8 @@ export function renderAdminDashboardPage(): string {
     }
 
     // ── Sidebar nav ──
-    const titles = { overview: "Overview", errors: "Errores", users: "Usuarios" };
+    const titles = { overview: "Overview", errors: "Errores", users: "Usuarios", feedback: "Feedback" };
+    let feedbackLoaded = false;
     function activateSection(name) {
       if (!titles[name]) name = "overview";
       document.querySelectorAll('.nav-item[data-section]').forEach(b => {
@@ -620,6 +638,10 @@ export function renderAdminDashboardPage(): string {
       try { localStorage.setItem('luanna_admin_section', name); } catch (e) {}
       // close menu on mobile after navigation
       document.body.classList.remove('menu-open');
+      if (name === "feedback" && !feedbackLoaded) {
+        feedbackLoaded = true;
+        loadFeedback();
+      }
     }
     document.querySelectorAll('.nav-item[data-section]').forEach(b => {
       b.addEventListener('click', () => activateSection(b.dataset.section));
@@ -725,8 +747,41 @@ export function renderAdminDashboardPage(): string {
         banner.textContent = 'No pudimos cargar el dashboard: ' + (err.message || err);
       }
     }
-    document.getElementById('refresh-btn').addEventListener('click', load);
+    async function loadFeedback() {
+      const tbody = document.querySelector('#recent-feedback tbody');
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">Cargando…</td></tr>';
+      try {
+        const res = await fetch('/admin/feedback/recent?limit=100', { credentials: 'include' });
+        if (res.status === 401) { window.location.href = '/admin/login'; return; }
+        if (!res.ok) throw new Error(res.status + '');
+        const data = await res.json();
+        const rows = data.feedback || [];
+        if (rows.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="empty">Sin feedback aún</td></tr>';
+          return;
+        }
+        tbody.innerHTML = rows.map(r =>
+          '<tr>' +
+          '<td><span class="ago">' + ago(r.created_at) + '</span></td>' +
+          '<td><span class="ctx-pill">' + esc(r.kind) + '</span></td>' +
+          '<td>' + esc(r.phone ? r.phone.slice(0, 14) : '—') + '</td>' +
+          '<td><span class="row-msg">' + esc(r.text) + '</span></td>' +
+          '</tr>'
+        ).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">Error: ' + esc(err.message || err) + '</td></tr>';
+      }
+    }
+
+    document.getElementById('refresh-btn').addEventListener('click', () => {
+      load();
+      if (document.querySelector('.panel[data-section="feedback"]').classList.contains('active')) {
+        loadFeedback();
+      }
+    });
     load();
+    // If user landed directly on the feedback tab (via localStorage), load it.
+    if (initialSection === 'feedback') loadFeedback();
   </script>
 </body>
 </html>`;

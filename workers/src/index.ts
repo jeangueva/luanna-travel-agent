@@ -32,10 +32,13 @@ import {
   getUserWatchlist,
   listPendingDeletionRequests,
   listRecentErrors,
+  listRecentFeedback,
   processDeletionRequest,
   recordError,
+  recordFeedback,
   recordWebhookOrSkip,
   setReferredBy,
+  type FeedbackKind,
   upsertPreferences,
   type Message,
   type Preferences,
@@ -553,6 +556,55 @@ async function handleKapsoWebhook(
         }
 
         if (!resolvedText) return;
+
+        // ── /feedback intercept (skip LLM, record + ack) ──────────────
+        const feedbackMatch = resolvedText.match(
+          /^\s*\/(feedback|bug|idea)\b\s*(.*)$/is,
+        );
+        if (feedbackMatch) {
+          const cmd = feedbackMatch[1].toLowerCase();
+          const body = (feedbackMatch[2] || "").trim();
+          const kind: FeedbackKind =
+            cmd === "bug" ? "bug" : cmd === "idea" ? "idea" : "other";
+          if (!body) {
+            const ask =
+              cmd === "bug"
+                ? "Cuéntame qué falló y te lo paso al equipo. Escribe: `/bug <lo que pasó>` 🐞"
+                : cmd === "idea"
+                  ? "¡Cuéntame tu idea! Escribe: `/idea <tu sugerencia>` 💡"
+                  : "¡Mándame tu feedback! Escribe: `/feedback <lo que quieras contarme>` ✨";
+            await appendMessage(sql, user.id, "user", resolvedText);
+            await appendMessage(sql, user.id, "assistant", ask);
+            await sendKapsoText({
+              apiKey: env.KAPSO_API_KEY,
+              phoneNumberId: phone_number_id,
+              to: from,
+              body: ask,
+            });
+            return;
+          }
+          await recordFeedback(sql, user.id, kind, body, "whatsapp");
+          await track(env, {
+            event: "feedback_submitted",
+            distinct_id: distinctId,
+            properties: { kind, length: body.length },
+          });
+          const ack =
+            kind === "bug"
+              ? "Anotado 🐞 Lo paso al equipo y lo revisamos. ¡Gracias por ayudar a hacer Luanna mejor!"
+              : kind === "idea"
+                ? "¡Buenísima idea! 💡 Queda anotada. Gracias por compartirla 🙌"
+                : "¡Gracias por el feedback! ✨ Lo leemos y nos ayuda muchísimo. 🙌";
+          await appendMessage(sql, user.id, "user", resolvedText);
+          await appendMessage(sql, user.id, "assistant", ack);
+          await sendKapsoText({
+            apiKey: env.KAPSO_API_KEY,
+            phoneNumberId: phone_number_id,
+            to: from,
+            body: ack,
+          });
+          return;
+        }
 
         // ── Referral linking on first contact ──────────────────────────
         if (isFirstContact) {
@@ -1234,6 +1286,24 @@ async function handleAdminErrorsRecent(
   return Response.json({ limit, context, count: errors.length, errors });
 }
 
+async function handleAdminFeedbackRecent(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response("unauthorized", { status: 401 });
+  }
+  const url = new URL(request.url);
+  const limitParam = url.searchParams.get("limit") ?? "50";
+  const parsedLimit = parseInt(limitParam, 10);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.min(200, parsedLimit))
+    : 50;
+  const sql = getDb(env.DATABASE_URL);
+  const feedback = await listRecentFeedback(sql, limit);
+  return Response.json({ limit, count: feedback.length, feedback });
+}
+
 async function handleAdminProcessDeletion(
   request: Request,
   env: Env,
@@ -1524,6 +1594,9 @@ async function routeFetch(
   }
   if (request.method === "GET" && url.pathname === "/admin/errors/recent") {
     return handleAdminErrorsRecent(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/admin/feedback/recent") {
+    return handleAdminFeedbackRecent(request, env);
   }
   if (
     request.method === "GET" &&
