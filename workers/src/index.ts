@@ -1638,6 +1638,31 @@ async function handleChatReset(request: Request, env: Env): Promise<Response> {
   return Response.json({ ok: true });
 }
 
+async function handleChatShare(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const rawSession = url.searchParams.get("session_id") ?? "";
+  const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (!session_id) {
+    return Response.json({ error: "missing 'session_id'" }, { status: 400 });
+  }
+  const sql = getDb(env.DATABASE_URL);
+  const phone = `web:${session_id}`;
+  const rows = (await sql`
+    SELECT id FROM users WHERE phone = ${phone} LIMIT 1
+  `) as Array<{ id: number }>;
+  if (rows.length === 0) {
+    return Response.json({ error: "session not found" }, { status: 404 });
+  }
+  const userId = rows[0].id;
+  const code = await ensureReferralCode(sql, userId).catch(() => null);
+  if (!code) {
+    return Response.json({ error: "no code" }, { status: 500 });
+  }
+  const origin = new URL(request.url).origin;
+  const share_url = `${origin}/?ref=${encodeURIComponent(code)}`;
+  return Response.json({ code, share_url });
+}
+
 async function handleClickRedirect(url: URL, env: Env): Promise<Response> {
   const id = url.pathname.slice(3).replace(/[^A-Za-z0-9_-]/g, "");
   if (!id || id.length < 4 || id.length > 32) {
@@ -1749,6 +1774,9 @@ async function routeFetch(
   }
   if (request.method === "POST" && url.pathname === "/api/chat") {
     return handleChat(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/chat/share") {
+    return handleChatShare(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/chat/reset") {
     return handleChatReset(request, env);

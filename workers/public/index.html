@@ -602,6 +602,118 @@
     .testimonial-name { font-size: 14px; font-weight: 700; color: var(--text); }
     .testimonial-meta { font-size: 12px; font-weight: 500; color: var(--text-2); }
 
+    /* ─── Examples gallery ─── */
+    .examples {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .ex-card {
+      background: #fff;
+      border-radius: var(--r-card);
+      padding: 18px;
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .ex-card:hover {
+      transform: translateY(-4px);
+      box-shadow: rgba(0, 0, 0, 0.02) 0px 0px 0px 1px,
+                  rgba(0, 0, 0, 0.06) 0px 8px 16px,
+                  rgba(0, 0, 0, 0.12) 0px 12px 24px;
+    }
+    .ex-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      align-self: flex-start;
+      padding: 4px 10px;
+      background: rgba(255, 56, 92, 0.08);
+      color: var(--rausch);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.24px;
+      text-transform: uppercase;
+    }
+    .ex-msg {
+      max-width: 92%;
+      padding: 9px 12px;
+      border-radius: 14px;
+      font-size: 13.5px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .ex-msg.user {
+      background: var(--text);
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .ex-msg.ai {
+      background: var(--surface);
+      color: var(--text);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .ex-photo {
+      align-self: flex-end;
+      width: 130px;
+      height: 90px;
+      border-radius: 12px;
+      background-size: cover;
+      background-position: center;
+      border: 2px solid #fff;
+      box-shadow: rgba(0,0,0,0.06) 0 2px 8px;
+    }
+    .ex-voice {
+      align-self: flex-end;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--text);
+      color: #fff;
+      border-radius: 14px;
+      border-bottom-right-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .ex-voice-wave {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .ex-voice-wave span {
+      display: inline-block;
+      width: 2px;
+      background: #fff;
+      border-radius: 1px;
+    }
+    .ex-pricetag {
+      align-self: flex-start;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      width: 92%;
+    }
+    .ex-pricetag .route {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-2);
+    }
+    .ex-pricetag .pri {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.32px;
+    }
+    .ex-pricetag .pri sup { font-size: 12px; font-weight: 600; color: var(--text-2); margin-right: 1px; }
+    .ex-pricetag .meta { font-size: 11px; color: var(--text-2); }
+
     /* ─── Pricing ─── */
     .price-box {
       max-width: 480px;
@@ -820,7 +932,7 @@
       .hero-visual { order: -1; }
       .float-badge { display: none; }
       .nav-links { display: none; }
-      .steps, .features, .testimonials {
+      .steps, .features, .testimonials, .examples {
         grid-template-columns: 1fr;
       }
       .section { padding: 72px 0; }
@@ -843,6 +955,7 @@
         <a href="/" class="logo">luanna<span>.</span></a>
         <div class="nav-links">
           <a href="#como-funciona">Cómo funciona</a>
+          <a href="#ejemplos">Ejemplos</a>
           <a href="#features">Características</a>
           <a href="#precios">Precio</a>
           <a href="/chat">Probar en web</a>
@@ -1021,6 +1134,72 @@
           <h3>Respuestas en segundos</h3>
           <p>No esperas días. Luanna responde al instante, 24/7, en WhatsApp o en el chat web.</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Examples gallery ───── -->
+  <section class="section section-surface" id="ejemplos">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="t-eyebrow">Lo que puedes pedirle</span>
+        <h2 class="t-section">Habla como con una amiga. Luanna entiende todo.</h2>
+        <p>Texto, foto o nota de voz. Estos son ejemplos reales de cómo la gente la usa.</p>
+      </div>
+      <div class="examples reveal-stagger reveal">
+
+        <div class="ex-card">
+          <span class="ex-tag">✈️ Vuelos</span>
+          <div class="ex-msg user">Vuelos Lima → Madrid en agosto, máximo $700</div>
+          <div class="ex-msg ai">¡Encontré varias opciones! 🙌</div>
+          <div class="ex-pricetag">
+            <div class="route">LIM → MAD · 12–22 ago</div>
+            <div class="pri"><sup>$</sup>624</div>
+            <div class="meta">Iberia · 1 escala · ida y vuelta</div>
+          </div>
+        </div>
+
+        <div class="ex-card">
+          <span class="ex-tag">📸 Foto</span>
+          <div class="ex-photo" style="background:linear-gradient(135deg,#5fb1e8 0%,#1f6fb4 60%,#0c3a66 100%);background-image:radial-gradient(circle at 30% 70%, #ffd9a8 0 18%, transparent 19%), linear-gradient(135deg, #5fb1e8 0%, #1f6fb4 60%, #0c3a66 100%);"></div>
+          <div class="ex-msg user">¿Qué playa es esta?</div>
+          <div class="ex-msg ai">¡Es Positano, Italia! 🇮🇹 ¿Te armo el viaje desde Lima? Hay vuelos desde $890.</div>
+        </div>
+
+        <div class="ex-card">
+          <span class="ex-tag">🎙️ Nota de voz</span>
+          <div class="ex-voice">
+            <span class="ex-voice-wave">
+              <span style="height:6px"></span><span style="height:14px"></span><span style="height:10px"></span><span style="height:18px"></span><span style="height:8px"></span><span style="height:12px"></span><span style="height:16px"></span><span style="height:7px"></span><span style="height:11px"></span>
+            </span>
+            0:08
+          </div>
+          <div class="ex-msg ai">Te entendí: Tokio en marzo, presupuesto $1,200. Busco vuelos + hotel ya 🇯🇵</div>
+        </div>
+
+        <div class="ex-card">
+          <span class="ex-tag">🔔 Alerta</span>
+          <div class="ex-msg user">Avísame si bajan vuelos a Cancún de menos de $300</div>
+          <div class="ex-msg ai">Listo! ✅ Te aviso por WhatsApp cuando LIM→CUN baje de $300. Reviso cada 6 horas.</div>
+        </div>
+
+        <div class="ex-card">
+          <span class="ex-tag">📦 Paquete</span>
+          <div class="ex-msg user">Vuelo + hotel a Cartagena, 3 noches</div>
+          <div class="ex-msg ai">Te armo el combo 🏨✈️</div>
+          <div class="ex-pricetag">
+            <div class="route">LIM → CTG · 15–18 oct</div>
+            <div class="pri"><sup>$</sup>412 <span style="font-size:11px;font-weight:500;color:var(--text-2)">/ pp todo</span></div>
+            <div class="meta">Vuelo + hotel 4★ · sin escalas</div>
+          </div>
+        </div>
+
+        <div class="ex-card">
+          <span class="ex-tag">🗺️ Tips</span>
+          <div class="ex-msg user">¿Qué hacer en Tokio en 4 días?</div>
+          <div class="ex-msg ai">🍣 Tsukiji al amanecer, Shibuya de noche, día completo en Nikko, y Akihabara una tarde. Te paso el itinerario completo 👇</div>
+        </div>
+
       </div>
     </div>
   </section>
