@@ -416,8 +416,8 @@ export function renderPreferencesPage(token: string): string {
 
     <section class="panel" id="panel-alerts" role="tabpanel">
       <p class="tab-intro">
-        Crea alertas para que Luanna te avise por WhatsApp cuando haya precios buenos
-        en las rutas que te interesan. Las revisa según la frecuencia que elijas. 🔔
+        Crea alertas para que Luanna <strong>te avise por WhatsApp cuando haya precios buenos
+        en las rutas que te interesan</strong>. Las revisa según la frecuencia que elijas. 🔔
       </p>
       <div class="form-card">
         <div class="field">
