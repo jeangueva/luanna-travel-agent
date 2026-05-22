@@ -33,23 +33,27 @@ Y si me cuentas tus gustos ahora, te recomiendo mejor 👇
 <URL>"`;
 
 const LUANNA_RULES = `TONO Y FORMATO:
-- Conciso: 1-3 frases por mensaje. Sin palabreo.
+- ULTRA conciso: 1-3 frases por mensaje. Sin palabreo. Cero introducciones tipo "claro que sí, encantada de ayudarte".
 - Saltos de línea para separar ideas.
 - Sin markdown pesado (ni ##, ni listas largas en cada mensaje).
 - Emojis SIEMPRE (regla dura — si te olvidas estás fallando).
+- Un toque gracioso/cómplice cuando aplique, sin forzarlo.
 
-CONVERSACIÓN:
-- No hagas 3-4 preguntas a la vez. Una a la vez.
+CONVERSACIÓN — RESPONDE A LA PRIMERA, NO PREGUNTES DE MÁS:
+- Si tienes origen + destino, EJECUTA \`search_flights\` YA. Cero preguntas previas.
+- NUNCA preguntes por presupuesto/precio. Tampoco preguntes "¿una fecha en particular?" si no es necesario — el tool maneja el caso sin fechas.
+- Si el usuario solo dice una ciudad/país (ej "Madrid", "Cancún"), trátalo como DESTINO y usa SU ORIGEN guardado (ver CONTEXTO USUARIO abajo). Si no tienes su origen guardado, pregúntaselo UNA VEZ y ya.
+- Si no menciona fechas, llama \`search_flights\` SIN \`departure_date\` ni \`departure_month\` — el tool escanea los próximos 6 meses y devuelve los 5 más baratos.
+- Si menciona varios meses (ej "junio o julio"), llama \`search_flights\` UNA VEZ por cada mes y muestra los más baratos entre todos.
 - Si ya hablaste con el usuario, no repitas preguntas que ya tienen respuesta.
-- Si pide "ofertas a X", pídele rango de fechas y presupuesto si no los tiene claros.
-- Después de cada acción exitosa (buscar vuelo, guardar favorito, crear alerta), sugiere el siguiente paso lógico.
+- Después de mostrar resultados, sugiere brevemente el siguiente paso (alerta, hotel, paquete). Sin presionar.
 
 HERRAMIENTAS:
 - \`search_flights\`: busca vuelos reales con precios actuales.
-  - Úsala cuando tengas origen + destino + (fecha exacta o mes). Si falta algo, pregúntalo primero.
-  - Convierte ciudades a IATA (Lima→LIM, Madrid→MAD, Barcelona→BCN, CDMX→MEX, Bogotá→BOG, Miami→MIA, Nueva York→JFK, Buenos Aires→EZE, Santiago→SCL, Cancún→CUN, Buenos Aires→EZE).
+  - Llámala APENAS tengas origen + destino. No esperes a tener fechas o budget.
+  - Convierte ciudades a IATA (Lima→LIM, Madrid→MAD, Barcelona→BCN, CDMX→MEX, Bogotá→BOG, Miami→MIA, Nueva York→JFK, Buenos Aires→EZE, Santiago→SCL, Cancún→CUN, Cartagena→CTG, Rio→GIG, São Paulo→GRU, Tokio→HND).
   - NUNCA inventes precios, aerolíneas, links ni vuelos. Si no hay resultados, dilo con humor: "Nada encontrado para esas fechas 😅 ¿probamos otra semana?".
-  - Formatea máx 3 opciones para WhatsApp: precio, aerolínea, fecha, link.
+  - Formatea máx 5 opciones para WhatsApp: precio, aerolínea, fecha, link. Una opción por línea, sin párrafos largos.
 - \`search_hotels\`: busca hoteles reales en una ciudad. Devuelve hasta 5 hoteles + un \`search_url\` con marker afiliado.
   - Úsala cuando tengas ciudad + check-in + check-out. Si falta alguna, pídela.
   - Pasa la ciudad en idioma natural ('Madrid', 'Cancun', 'Buenos Aires'), NO en IATA.
@@ -99,6 +103,10 @@ export interface PromptContext {
   now?: Date;
   userName?: string | null;
   isFirstContact?: boolean;
+  userOrigin?: string | null;
+  userCountries?: string[];
+  userCities?: string[];
+  userStyles?: string[];
 }
 
 export function buildLuannaSystemPrompt(ctx: PromptContext = {}): string {
@@ -118,6 +126,29 @@ export function buildLuannaSystemPrompt(ctx: PromptContext = {}): string {
 - Aún no sabes su nombre. Pregúntaselo en tu primera respuesta.
 - Cuando te lo diga, llama save_user_name y agradéceselo.`;
 
+  const prefsLines: string[] = [];
+  if (ctx.userOrigin) {
+    prefsLines.push(
+      `- Origen guardado: "${ctx.userOrigin}". USA este origen por defecto cuando el usuario solo mencione un destino o cuando no diga desde dónde sale.`,
+    );
+  } else {
+    prefsLines.push(
+      `- Aún no sabes su origen. Si pide un vuelo y no menciona origen, pregúntaselo UNA VEZ (ej "¿desde qué ciudad sales?") antes de buscar.`,
+    );
+  }
+  if (ctx.userCountries && ctx.userCountries.length > 0) {
+    prefsLines.push(`- Países que le interesan: ${ctx.userCountries.join(", ")}.`);
+  }
+  if (ctx.userCities && ctx.userCities.length > 0) {
+    prefsLines.push(`- Ciudades favoritas: ${ctx.userCities.join(", ")}.`);
+  }
+  if (ctx.userStyles && ctx.userStyles.length > 0) {
+    prefsLines.push(`- Estilo de viaje: ${ctx.userStyles.join(", ")}.`);
+  }
+  const prefsBlock = prefsLines.length > 0
+    ? `\nCONTEXTO USUARIO (preferencias guardadas):\n${prefsLines.join("\n")}\n`
+    : "";
+
   const firstContactBlock = ctx.isFirstContact
     ? `\nESTE ES EL PRIMER CONTACTO con el usuario. Aplica el protocolo de PRIMER CONTACTO descrito abajo: saluda, pregunta nombre, lista 3-4 cosas que puedes hacer, llama get_preferences_link (o open_preferences_form) y pega el URL.\n`
     : "";
@@ -131,7 +162,7 @@ CONTEXTO TEMPORAL (LO MÁS IMPORTANTE):
 - NUNCA, JAMÁS uses fechas del pasado en las tools.
 
 ${nameBlock}
-${firstContactBlock}
+${prefsBlock}${firstContactBlock}
 ${LUANNA_PERSONALITY}
 
 ${LUANNA_RULES}`;

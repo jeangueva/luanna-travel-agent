@@ -338,7 +338,8 @@ export function makeFlightSearchTool(
     description:
       "Busca vuelos baratos. Devuelve hasta 5 opciones ordenadas por precio (USD). " +
       "Usa códigos IATA de 3 letras para origen y destino (ej: LIM, MAD, BCN, MEX, BOG, MIA, JFK). " +
-      "Si el usuario tiene fechas flexibles, pasa solo 'departure_month' (YYYY-MM). " +
+      "Si NO sabes las fechas, NO pases ni departure_date ni departure_month — el tool escanea los próximos 6 meses solo. " +
+      "Si el usuario menciona un mes específico, pasa 'departure_month' (YYYY-MM). " +
       "Si tiene fecha exacta, pasa 'departure_date' (YYYY-MM-DD). " +
       "Para vuelo redondo, agrega 'return_date' (YYYY-MM-DD).",
     inputSchema: z.object({
@@ -347,11 +348,11 @@ export function makeFlightSearchTool(
       departure_date: z
         .string()
         .optional()
-        .describe("Fecha exacta YYYY-MM-DD"),
+        .describe("Fecha exacta YYYY-MM-DD (solo si el usuario la dio)"),
       departure_month: z
         .string()
         .optional()
-        .describe("Mes flexible YYYY-MM (cuando no hay fecha exacta)"),
+        .describe("Mes específico YYYY-MM (solo si el usuario mencionó un mes)"),
       return_date: z.string().optional().describe("YYYY-MM-DD para ida y vuelta"),
     }),
     execute: async ({
@@ -361,30 +362,61 @@ export function makeFlightSearchTool(
       departure_month,
       return_date,
     }) => {
-      const url = new URL(
-        "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
-      );
-      url.searchParams.set("origin", origin.toUpperCase());
-      url.searchParams.set("destination", destination.toUpperCase());
-      const departure = departure_date ?? departure_month;
-      if (departure) url.searchParams.set("departure_at", departure);
-      if (return_date) url.searchParams.set("return_at", return_date);
-      url.searchParams.set("currency", "usd");
-      url.searchParams.set("sorting", "price");
-      url.searchParams.set("limit", "5");
-      url.searchParams.set("unique", "false");
-
-      const res = await fetch(url.toString(), {
-        headers: { "X-Access-Token": env.TRAVELPAYOUTS_TOKEN },
-      });
-      if (!res.ok) {
-        return { error: `travelpayouts ${res.status}`, flights: [] };
-      }
-      const json = (await res.json()) as {
-        success?: boolean;
-        data?: TravelpayoutsFlight[];
+      const baseHeaders = { "X-Access-Token": env.TRAVELPAYOUTS_TOKEN };
+      const buildUrl = (departureAt?: string): string => {
+        const url = new URL(
+          "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
+        );
+        url.searchParams.set("origin", origin.toUpperCase());
+        url.searchParams.set("destination", destination.toUpperCase());
+        if (departureAt) url.searchParams.set("departure_at", departureAt);
+        if (return_date) url.searchParams.set("return_at", return_date);
+        url.searchParams.set("currency", "usd");
+        url.searchParams.set("sorting", "price");
+        url.searchParams.set("limit", "5");
+        url.searchParams.set("unique", "false");
+        return url.toString();
       };
-      const raw = (json.data ?? []).slice(0, 5);
+      const fetchOne = async (
+        departureAt: string | undefined,
+      ): Promise<TravelpayoutsFlight[]> => {
+        const res = await fetch(buildUrl(departureAt), { headers: baseHeaders });
+        if (!res.ok) return [];
+        const json = (await res.json()) as { data?: TravelpayoutsFlight[] };
+        return json.data ?? [];
+      };
+
+      // ── Resolve which date windows to query ──────────────────────────
+      // 1. Exact date / single month → one call
+      // 2. No date hint at all → fan out to next 6 months, merge, pick top 5
+      let raw: TravelpayoutsFlight[];
+      const departure = departure_date ?? departure_month;
+      if (departure) {
+        raw = (await fetchOne(departure)).slice(0, 5);
+      } else {
+        const now = new Date();
+        const months: string[] = [];
+        for (let i = 0; i < 6; i++) {
+          const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + i, 1));
+          const yyyy = d.getUTCFullYear();
+          const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+          months.push(`${yyyy}-${mm}`);
+        }
+        const batches = await Promise.all(months.map((m) => fetchOne(m)));
+        const merged = batches.flat();
+        // De-dup by (price, departure_at, airline) and sort by price
+        const seen = new Set<string>();
+        const unique = merged
+          .sort((a, b) => a.price - b.price)
+          .filter((f) => {
+            const k = `${f.price}|${f.departure_at}|${f.airline}|${f.flight_number}`;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+        raw = unique.slice(0, 5);
+      }
+
       // Record the cheapest observation for the route so the watchlist cron
       // can detect actual price drops over time.
       const cheapest = raw[0];
@@ -417,7 +449,7 @@ export function makeFlightSearchTool(
           };
         }),
       );
-      return { flights };
+      return { flights, scanned_months: departure ? 1 : 6 };
     },
   });
 }

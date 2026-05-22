@@ -107,6 +107,7 @@ interface ReplyContext {
   phoneNumberId?: string;
   userName?: string | null;
   isFirstContact?: boolean;
+  userPrefs?: Preferences | null;
 }
 
 const TRAVELPAYOUTS_HOSTS = new Set([
@@ -317,6 +318,10 @@ async function generateReply(
       now: new Date(),
       userName: ctx.userName ?? null,
       isFirstContact: ctx.isFirstContact ?? false,
+      userOrigin: ctx.userPrefs?.origin ?? null,
+      userCountries: ctx.userPrefs?.countries ?? [],
+      userCities: ctx.userPrefs?.cities ?? [],
+      userStyles: ctx.userPrefs?.styles ?? [],
     }),
     messages,
     tools,
@@ -466,7 +471,7 @@ async function handleKapsoWebhook(
           if (media.kind === "image") {
             sourceKind = "image";
             try {
-              const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id);
+              const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id, phone_number_id);
               const ident = await identifyDestinationFromImage(
                 env,
                 blob.bytes,
@@ -513,7 +518,7 @@ async function handleKapsoWebhook(
           } else if (media.kind === "audio") {
             sourceKind = "audio";
             try {
-              const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id);
+              const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id, phone_number_id);
               const transcript = await transcribeAudio(env, blob.bytes);
               await track(env, {
                 event: "audio_transcribed",
@@ -648,6 +653,7 @@ async function handleKapsoWebhook(
           },
         });
         await appendMessage(sql, user.id, "user", resolvedText);
+        const userPrefs = await getPreferences(sql, user.id).catch(() => null);
         const reply = await generateReply(env, resolvedText, {
           userId: user.id,
           baseUrl,
@@ -657,6 +663,7 @@ async function handleKapsoWebhook(
           phoneNumberId: phone_number_id,
           userName: user.name,
           isFirstContact,
+          userPrefs,
         });
         if (reply.trim()) {
           await appendMessage(sql, user.id, "assistant", reply);
@@ -1609,6 +1616,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
       length: resolvedText.length,
     },
   });
+  const userPrefs = await getPreferences(sql, user.id).catch(() => null);
   const reply = await generateReply(env, resolvedText, {
     userId: user.id,
     baseUrl: new URL(request.url).origin,
@@ -1616,6 +1624,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     sql,
     userName: user.name,
     isFirstContact,
+    userPrefs,
   });
   if (reply.trim()) {
     await appendMessage(sql, user.id, "assistant", reply);

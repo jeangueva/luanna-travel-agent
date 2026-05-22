@@ -100,23 +100,31 @@ export function extractMediaMessage(body: unknown): MediaMessage | null {
 export async function downloadKapsoMedia(
   apiKey: string,
   mediaId: string,
+  phoneNumberId: string,
 ): Promise<{ bytes: ArrayBuffer; mimeType: string }> {
   // Step 1: ask Meta (via Kapso proxy) for the temporary download URL.
+  // Kapso requires phone_number_id as a query param so it knows which
+  // WhatsApp Business Account credentials to use.
   const metaRes = await fetch(
-    `https://api.kapso.ai/meta/whatsapp/v24.0/${mediaId}`,
+    `https://api.kapso.ai/meta/whatsapp/v24.0/${mediaId}?phone_number_id=${encodeURIComponent(phoneNumberId)}`,
     { headers: { "X-API-Key": apiKey } },
   );
   if (!metaRes.ok) {
     const t = await metaRes.text().catch(() => "");
     throw new Error(`Kapso media meta ${metaRes.status}: ${t.slice(0, 200)}`);
   }
-  const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
-  if (!meta.url) {
+  const meta = (await metaRes.json()) as {
+    url?: string;
+    download_url?: string;
+    mime_type?: string;
+  };
+  // Prefer the Kapso-hosted authenticated download_url (works with X-API-Key);
+  // fall back to the raw Meta url if Kapso doesn't return it.
+  const fetchUrl = meta.download_url ?? meta.url;
+  if (!fetchUrl) {
     throw new Error("Kapso media: missing url in response");
   }
-  // Step 2: download the bytes. Meta's signed URLs expire ~5 min; fetch
-  // immediately. Forward the API key in case Kapso proxies the download too.
-  const blobRes = await fetch(meta.url, {
+  const blobRes = await fetch(fetchUrl, {
     headers: { "X-API-Key": apiKey },
   });
   if (!blobRes.ok) {
