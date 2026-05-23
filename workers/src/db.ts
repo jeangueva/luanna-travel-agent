@@ -765,7 +765,7 @@ export async function getDashboardStats(sql: Sql): Promise<DashboardStats> {
 
 // ─── Click tracking ──────────────────────────────────────────────────────────
 
-export type ClickKind = "flight" | "hotel" | "package" | "offer" | "other";
+export type ClickKind = "flight" | "hotel" | "package" | "offer" | "watchlist" | "other";
 
 export async function createClickRedirect(
   sql: Sql,

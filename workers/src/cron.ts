@@ -20,6 +20,7 @@ import {
 import { sendKapsoText } from "./kapso";
 import { distinctIdForUser, track } from "./posthog";
 import { HOLIDAYS, holidaysWithinDays } from "./holidays";
+import { wrapClickUrl } from "./tools";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 
@@ -218,6 +219,18 @@ async function processWatchlistRow(
     return;
   }
 
+  // Wrap the flight URL through our click redirect so the WhatsApp message
+  // shows luanna.app/r/<id> instead of the 200-char aviasales link. The
+  // redirect also tracks clicks, which we can't get from the raw URL.
+  if (cheapest.link) {
+    const baseUrl = env.PUBLIC_BASE_URL ?? "https://luanna.app";
+    cheapest.link = await wrapClickUrl(
+      { sql, userId: row.user_id, baseUrl },
+      "watchlist",
+      cheapest.link,
+    );
+  }
+
   // Always record the observation for future baseline comparisons.
   try {
     await recordPriceObservation(sql, {
@@ -322,6 +335,16 @@ async function processOfferUser(
   const flight = await findCheapest(env, originIata, destination.iata);
   if (!flight) return "skipped";
   if (user.budget_max && flight.price > user.budget_max) return "skipped";
+
+  if (flight.link) {
+    const baseUrl = env.PUBLIC_BASE_URL ?? "https://luanna.app";
+    const sqlForClick = getDb(env.DATABASE_URL);
+    flight.link = await wrapClickUrl(
+      { sql: sqlForClick, userId: user.id, baseUrl },
+      "offer",
+      flight.link,
+    );
+  }
 
   await sendKapsoText({
     apiKey: env.KAPSO_API_KEY,

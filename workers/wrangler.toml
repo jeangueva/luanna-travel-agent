@@ -9,6 +9,9 @@ routes = [
   { pattern = "www.luanna.app", custom_domain = true }
 ]
 
+[vars]
+PUBLIC_BASE_URL = "https://luanna.app"
+
 [assets]
 directory = "./public"
 binding = "ASSETS"

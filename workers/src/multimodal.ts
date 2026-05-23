@@ -7,7 +7,9 @@ export interface MultimodalEnv {
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
 }
 
-const VISION_MODEL = "claude-sonnet-4-6";
+// Haiku 4.5 supports vision and is much less likely to hit "Overloaded"
+// (HTTP 529) during peak load. Landmark recognition doesn't need Sonnet.
+const VISION_MODEL = "claude-haiku-4-5";
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
