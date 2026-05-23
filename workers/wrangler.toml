@@ -30,7 +30,7 @@ crons = [
   "0 14 * * *",       # daily offer push at 9am Lima (14:00 UTC)
   "0 3 * * *",        # cleanup rate_limits + processed_webhooks at 3am UTC
   "0 * * * *",        # error-alert digest every hour (no-op when ALERT_WEBHOOK_URL unset)
-  "0 15 * * 1,3,5"    # re-engagement + seasonal nudges (Mon/Wed/Fri 10am Lima)
+  "0 15 * * *"        # staggered re-engagement + seasonal nudges (daily, 10am Lima)
 ]
 
 # Secrets (set via `wrangler secret put <NAME>`):

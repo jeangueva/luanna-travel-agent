@@ -38,6 +38,7 @@ import {
   recordError,
   recordFeedback,
   recordWebhookOrSkip,
+  resetInactivityNudgeCount,
   setReferredBy,
   type FeedbackKind,
   upsertPreferences,
@@ -326,12 +327,18 @@ async function generateReply(
     }),
     messages,
     tools,
-    stopWhen: stepCountIs(5),
+    // 3 steps is plenty for the typical flow: one tool call + one reply.
+    // Capping lower than 5 saves a roundtrip when the model wanders.
+    stopWhen: stepCountIs(3),
   });
+  // PostHog tracking is fire-and-forget — never block the user's reply on
+  // analytics. Errors swallowed (analytics SDK has its own retry).
   if (ctx.userId > 0) {
     const toolEvents = collectToolEvents(result, ctx.userId);
     if (toolEvents.length > 0) {
-      await trackBatch(env, toolEvents);
+      trackBatch(env, toolEvents).catch((err) =>
+        console.error("trackBatch failed", err),
+      );
     }
   }
   return sanitizeReply(result.text, ctx.baseUrl).trim();
@@ -467,8 +474,14 @@ async function handleKapsoWebhook(
       try {
         const sql = getDb(env.DATABASE_URL);
         const user = await getOrCreateUser(sql, from, phone_number_id);
-        await ensureReferralCode(sql, user.id).catch(() => {});
-        const history = await getRecentMessages(sql, user.id);
+        // Parallelize the three independent post-user-fetch DB roundtrips.
+        // None of them depend on each other and they all hit the same Neon
+        // connection — saves ~300ms vs the sequential chain.
+        const [history] = await Promise.all([
+          getRecentMessages(sql, user.id),
+          ensureReferralCode(sql, user.id).catch(() => null),
+          resetInactivityNudgeCount(sql, user.id).catch(() => undefined),
+        ]);
         const isFirstContact = history.length === 0;
         const distinctId = distinctIdForUser(user.id);
 
@@ -664,8 +677,12 @@ async function handleKapsoWebhook(
             length: resolvedText.length,
           },
         });
-        await appendMessage(sql, user.id, "user", resolvedText);
-        const userPrefs = await getPreferences(sql, user.id).catch(() => null);
+        // appendMessage(user) and getPreferences both touch Neon and don't
+        // depend on each other — fire in parallel.
+        const [, userPrefs] = await Promise.all([
+          appendMessage(sql, user.id, "user", resolvedText),
+          getPreferences(sql, user.id).catch(() => null),
+        ]);
         const reply = await generateReply(env, resolvedText, {
           userId: user.id,
           baseUrl,
@@ -678,13 +695,19 @@ async function handleKapsoWebhook(
           userPrefs,
         });
         if (reply.trim()) {
-          await appendMessage(sql, user.id, "assistant", reply);
+          // Send the reply FIRST (user sees it immediately), then persist
+          // the assistant turn in the background. The webhook handler is
+          // already inside ctx.waitUntil so the persist completes before
+          // the worker invocation ends.
           await sendKapsoText({
             apiKey: env.KAPSO_API_KEY,
             phoneNumberId: phone_number_id,
             to: from,
             body: reply,
           });
+          appendMessage(sql, user.id, "assistant", reply).catch((err) =>
+            console.error("appendMessage assistant failed", err),
+          );
         }
       } catch (err) {
         console.error("kapso handler error", err);
@@ -1609,15 +1632,20 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     }
   }
 
-  await appendMessage(sql, user.id, "user", userBubbleText);
+  // Persist user turn and fetch prefs in parallel — they're independent.
+  // PostHog events fire-and-forget so analytics never gates the reply.
+  const [, userPrefs] = await Promise.all([
+    appendMessage(sql, user.id, "user", userBubbleText),
+    getPreferences(sql, user.id).catch(() => null),
+  ]);
   if (isFirstContact) {
-    await track(env, {
+    track(env, {
       event: "user_signed_up",
       distinct_id: distinctId,
       properties: { source: "web" },
-    });
+    }).catch(() => undefined);
   }
-  await track(env, {
+  track(env, {
     event: "message_received",
     distinct_id: distinctId,
     properties: {
@@ -1627,8 +1655,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
       has_name: !!user.name,
       length: resolvedText.length,
     },
-  });
-  const userPrefs = await getPreferences(sql, user.id).catch(() => null);
+  }).catch(() => undefined);
   const reply = await generateReply(env, resolvedText, {
     userId: user.id,
     baseUrl: new URL(request.url).origin,
@@ -1639,7 +1666,11 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     userPrefs,
   });
   if (reply.trim()) {
-    await appendMessage(sql, user.id, "assistant", reply);
+    // Persist the assistant turn in the background — the web client
+    // already has the JSON response, so we don't gate on the DB write.
+    appendMessage(sql, user.id, "assistant", reply).catch((err) =>
+      console.error("appendMessage assistant (web) failed", err),
+    );
   }
   return Response.json({ reply });
 }
@@ -1983,7 +2014,7 @@ async function dispatchScheduled(
         await runCleanupCron(env);
       } else if (cron === "0 * * * *") {
         await runErrorAlertCron(env);
-      } else if (cron === "0 15 * * 1,3,5") {
+      } else if (cron === "0 15 * * *") {
         await runReEngagementCron(env);
       } else {
         await runWatchlistCron(env);

@@ -2,6 +2,7 @@ import {
   cleanupRateLimitsAndWebhooks,
   createClickRedirect,
   findNudgeCandidates,
+  findStaggeredNudgeCandidates,
   getDb,
   getDueWatchlist,
   getOfferEligibleUsers,
@@ -530,14 +531,9 @@ export async function runReEngagementCron(env: CronEnv): Promise<void> {
   // doesn't require silence). last_nudge_at gate ensures we don't double-push.
   await runSeasonalCron(env);
   const sql = getDb(env.DATABASE_URL);
-  // Second pass: standard re-engagement for users silent 7-30 days.
-  // Anyone seasonal already nudged above is filtered out by the gap check.
-  const candidates = await findNudgeCandidates(sql, {
-    minSilentDays: 7,
-    maxSilentDays: 30,
-    minNudgeGapDays: 14,
-    limit: 10,
-  });
+  // Second pass: staggered silence-based nudges. Each user gets at most
+  // 3 nudges (day 1 / day 3 / day 7 of silence). Counter resets on any reply.
+  const candidates = await findStaggeredNudgeCandidates(sql, 20);
   console.log(`re-engagement cron: ${candidates.length} candidates`);
   let sent = 0;
   let skipped = 0;

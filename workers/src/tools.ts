@@ -418,17 +418,16 @@ export function makeFlightSearchTool(
       }
 
       // Record the cheapest observation for the route so the watchlist cron
-      // can detect actual price drops over time.
+      // can detect actual price drops over time. Fire-and-forget — analytics
+      // never blocks the user's reply.
       const cheapest = raw[0];
       if (cheapest && click?.sql) {
-        try {
-          await recordPriceObservation(click.sql, {
-            originIata: origin.toUpperCase(),
-            destinationIata: destination.toUpperCase(),
-            priceUsd: cheapest.price,
-            source: "tool_search",
-          });
-        } catch (e) { /* never break the reply */ }
+        recordPriceObservation(click.sql, {
+          originIata: origin.toUpperCase(),
+          destinationIata: destination.toUpperCase(),
+          priceUsd: cheapest.price,
+          source: "tool_search",
+        }).catch(() => { /* never break the reply */ });
       }
       const flights = await Promise.all(
         raw.map(async (f) => {

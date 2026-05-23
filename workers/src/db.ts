@@ -460,6 +460,7 @@ export interface NudgeCandidate {
   countries: string[];
   last_message_at: string;
   days_silent: number;
+  inactivity_nudge_count: number;
 }
 
 export async function findNudgeCandidates(
@@ -473,7 +474,7 @@ export async function findNudgeCandidates(
 ): Promise<NudgeCandidate[]> {
   return (await sql`
     SELECT
-      u.id, u.phone, u.phone_number_id, u.name,
+      u.id, u.phone, u.phone_number_id, u.name, u.inactivity_nudge_count,
       p.origin, p.countries,
       MAX(m.created_at) AS last_message_at,
       EXTRACT(EPOCH FROM (NOW() - MAX(m.created_at))) / 86400 AS days_silent
@@ -487,7 +488,7 @@ export async function findNudgeCandidates(
         jsonb_array_length(COALESCE(p.countries, '[]'::jsonb)) > 0
         OR p.origin IS NOT NULL
       )
-    GROUP BY u.id, u.phone, u.phone_number_id, u.name, p.origin, p.countries
+    GROUP BY u.id, u.phone, u.phone_number_id, u.name, u.inactivity_nudge_count, p.origin, p.countries
     HAVING MAX(m.created_at) < NOW() - (${args.minSilentDays} || ' days')::interval
        AND MAX(m.created_at) > NOW() - (${args.maxSilentDays} || ' days')::interval
     ORDER BY MAX(m.created_at) ASC
@@ -495,8 +496,61 @@ export async function findNudgeCandidates(
   `) as NudgeCandidate[];
 }
 
+/**
+ * Find users due for a staggered re-engagement nudge.
+ * Schedule (since last user message):
+ *   - attempt 1 at day  1 (current count = 0)
+ *   - attempt 2 at day  3 (current count = 1)
+ *   - attempt 3 at day  7 (current count = 2)
+ * After 3 attempts without a reply we stop (count >= 3) until the user
+ * sends any message, which resets the counter to 0.
+ */
+export async function findStaggeredNudgeCandidates(
+  sql: Sql,
+  limit: number,
+): Promise<NudgeCandidate[]> {
+  return (await sql`
+    SELECT
+      u.id, u.phone, u.phone_number_id, u.name, u.inactivity_nudge_count,
+      p.origin, p.countries,
+      MAX(m.created_at) AS last_message_at,
+      EXTRACT(EPOCH FROM (NOW() - MAX(m.created_at))) / 86400 AS days_silent
+    FROM users u
+    LEFT JOIN preferences p ON p.user_id = u.id
+    JOIN messages m ON m.user_id = u.id
+    WHERE u.phone_number_id IS NOT NULL
+      AND u.phone NOT LIKE 'web:%'
+      AND u.inactivity_nudge_count < 3
+      AND (u.last_nudge_at IS NULL OR u.last_nudge_at < NOW() - INTERVAL '20 hours')
+    GROUP BY u.id, u.phone, u.phone_number_id, u.name, u.inactivity_nudge_count, p.origin, p.countries
+    HAVING (
+      (u.inactivity_nudge_count = 0 AND MAX(m.created_at) < NOW() - INTERVAL '1 day')
+      OR (u.inactivity_nudge_count = 1 AND MAX(m.created_at) < NOW() - INTERVAL '3 days')
+      OR (u.inactivity_nudge_count = 2 AND MAX(m.created_at) < NOW() - INTERVAL '7 days')
+    )
+    ORDER BY u.inactivity_nudge_count DESC, MAX(m.created_at) ASC
+    LIMIT ${limit}
+  `) as NudgeCandidate[];
+}
+
 export async function markUserNudged(sql: Sql, userId: number): Promise<void> {
-  await sql`UPDATE users SET last_nudge_at = NOW() WHERE id = ${userId}`;
+  await sql`
+    UPDATE users
+    SET last_nudge_at = NOW(),
+        inactivity_nudge_count = inactivity_nudge_count + 1
+    WHERE id = ${userId}
+  `;
+}
+
+export async function resetInactivityNudgeCount(
+  sql: Sql,
+  userId: number,
+): Promise<void> {
+  // No-op when already zero so we don't burn writes on chatty users.
+  await sql`
+    UPDATE users SET inactivity_nudge_count = 0
+    WHERE id = ${userId} AND inactivity_nudge_count > 0
+  `;
 }
 
 // ─── Referrals ───────────────────────────────────────────────────────────────
