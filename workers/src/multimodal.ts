@@ -87,17 +87,26 @@ export async function transcribeAudio(
   if (!env.AI) {
     throw new Error("Workers AI binding (AI) is not configured");
   }
-  // Workers AI Whisper expects uint8 array as plain JS array.
-  const buf = new Uint8Array(audioBytes);
-  const audio = Array.from(buf);
-  const result = (await env.AI.run("@cf/openai/whisper", { audio })) as {
+  // whisper-large-v3-turbo handles OGG/Opus (WhatsApp voice format) and has
+  // strong Spanish support. Audio is sent as base64; we chunk the binary
+  // encoding to avoid call-stack issues on large clips.
+  const base64 = arrayBufferToBase64(audioBytes);
+  const result = (await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
+    audio: base64,
+    task: "transcribe",
+    language: "es",
+    initial_prompt:
+      "Hola Luanna. Quiero un vuelo desde Lima a Madrid. Cancún, Cartagena, Cusco, Buenos Aires, Barcelona, Tokio. Vuelos baratos, hotel, paquete, alerta de precio, presupuesto.",
+  })) as {
     text?: string;
-    duration?: number;
+    transcription_info?: { duration?: number };
   };
   const text = (result.text ?? "").trim();
   return {
     text,
     duration_seconds:
-      typeof result.duration === "number" ? result.duration : undefined,
+      typeof result.transcription_info?.duration === "number"
+        ? result.transcription_info.duration
+        : undefined,
   };
 }

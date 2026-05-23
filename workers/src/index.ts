@@ -8,6 +8,7 @@ import {
   sendKapsoCtaUrl,
   sendKapsoFlow,
   sendKapsoText,
+  sendKapsoTypingIndicator,
   verifyKapsoSignature,
 } from "./kapso";
 import {
@@ -449,6 +450,17 @@ async function handleKapsoWebhook(
   }
 
   const baseUrl = new URL(request.url).origin;
+
+  // Fire WhatsApp's native typing indicator immediately so the user sees
+  // the typing dots while we're transcribing audio, vision-identifying
+  // photos, or fanning out flight searches. Auto-dismisses on real reply.
+  ctx.waitUntil(
+    sendKapsoTypingIndicator({
+      apiKey: env.KAPSO_API_KEY,
+      phoneNumberId: phone_number_id,
+      messageId: message_id,
+    }),
+  );
 
   ctx.waitUntil(
     (async () => {

@@ -97,6 +97,36 @@ export function extractMediaMessage(body: unknown): MediaMessage | null {
   return null;
 }
 
+export async function sendKapsoTypingIndicator(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  messageId: string;
+}): Promise<void> {
+  // WhatsApp Cloud API: marking a message as read with a typing_indicator
+  // payload shows the "typing…" dots in the user's chat for up to 25 seconds,
+  // and is dismissed automatically when we send the real reply. This is the
+  // native, lightweight way to signal "buscando…" without an extra message.
+  const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": params.apiKey,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: params.messageId,
+        typing_indicator: { type: "text" },
+      }),
+    });
+  } catch (err) {
+    // Typing indicator is purely cosmetic — never let it fail the reply.
+    console.error("sendKapsoTypingIndicator failed", err);
+  }
+}
+
 export async function downloadKapsoMedia(
   apiKey: string,
   mediaId: string,
