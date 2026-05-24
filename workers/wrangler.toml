@@ -11,6 +11,10 @@ routes = [
 
 [vars]
 PUBLIC_BASE_URL = "https://luanna.app"
+# Bot's WhatsApp number in E.164 WITHOUT the leading + (e.g. "51977150415").
+# Used to build wa.me link-merge URLs from /chat → WhatsApp. Leave empty to
+# disable the "Vincular con WhatsApp" feature.
+LUANNA_WHATSAPP_NUMBER = ""
 
 [assets]
 directory = "./public"

@@ -1036,3 +1036,162 @@ export async function listRecentFeedback(
     LIMIT ${limit}
   `) as FeedbackRow[];
 }
+
+// ─── Magic-link merge (web ↔ WhatsApp) ───────────────────────────────────────
+
+export interface LinkCodeRow {
+  code: string;
+  web_user_id: number;
+  linked_user_id: number | null;
+  status: "pending" | "completed" | "expired";
+  expires_at: string;
+}
+
+function makeLinkCode(): string {
+  // 8-char URL-safe alphanumeric, ~47 bits of entropy. Codes are short-lived
+  // (15 min) and one-shot, so the collision window is tiny.
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 56])
+    .join("");
+}
+
+export async function createLinkCode(
+  sql: Sql,
+  webUserId: number,
+): Promise<string> {
+  // Retry briefly in case of a UNIQUE collision (vanishingly rare).
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = makeLinkCode();
+    try {
+      await sql`
+        INSERT INTO link_codes (code, web_user_id, expires_at)
+        VALUES (${code}, ${webUserId}, NOW() + INTERVAL '15 minutes')
+      `;
+      return code;
+    } catch (err) {
+      if (attempt === 4) throw err;
+    }
+  }
+  throw new Error("createLinkCode: exhausted retries");
+}
+
+export async function findLinkCode(
+  sql: Sql,
+  code: string,
+): Promise<LinkCodeRow | null> {
+  const rows = (await sql`
+    SELECT code, web_user_id, linked_user_id, status, expires_at
+    FROM link_codes
+    WHERE code = ${code}
+    LIMIT 1
+  `) as LinkCodeRow[];
+  return rows[0] ?? null;
+}
+
+export async function completeLinkCode(
+  sql: Sql,
+  code: string,
+  linkedUserId: number,
+): Promise<void> {
+  await sql`
+    UPDATE link_codes
+    SET status = 'completed', linked_user_id = ${linkedUserId}, completed_at = NOW()
+    WHERE code = ${code} AND status = 'pending'
+  `;
+}
+
+/**
+ * Move all data belonging to `webUserId` over to `targetUserId` and delete
+ * the web user row. Designed for the magic-link merge: the web user's
+ * messages, preferences, watchlist items, click redirects, feedback, and
+ * email get folded into the WhatsApp user's record. The WhatsApp user's
+ * own values take precedence on conflict; we only copy from the web side
+ * when the WhatsApp side is empty.
+ */
+export async function mergeWebUserInto(
+  sql: Sql,
+  webUserId: number,
+  targetUserId: number,
+): Promise<void> {
+  if (webUserId === targetUserId) return;
+  // Touch each table that has a user_id FK. We do this in a single batched
+  // call to Neon to minimize roundtrips; order matters only for the prefs
+  // merge below (we read web's prefs before deleting them).
+  const webPrefsRows = (await sql`
+    SELECT origin, countries, cities, styles, budget_min, budget_max, budget_currency
+    FROM preferences WHERE user_id = ${webUserId}
+  `) as Array<{
+    origin: string | null;
+    countries: unknown;
+    cities: unknown;
+    styles: unknown;
+    budget_min: number | null;
+    budget_max: number | null;
+    budget_currency: string | null;
+  }>;
+  const webEmail = (await sql`
+    SELECT email FROM users WHERE id = ${webUserId} AND email IS NOT NULL
+  `) as Array<{ email: string }>;
+
+  // Move messages, watchlist, click_redirects, feedback over by FK update.
+  await sql`UPDATE messages SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
+  await sql`UPDATE watchlist_items SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
+  await sql`UPDATE click_redirects SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
+  await sql`UPDATE feedback SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
+
+  // Merge preferences: COALESCE picks the target's existing value first,
+  // falling back to the web user's. Then drop the web row so the FK CASCADE
+  // doesn't try to remove the merged data when we delete the user.
+  if (webPrefsRows.length > 0) {
+    const wp = webPrefsRows[0];
+    await sql`
+      INSERT INTO preferences (
+        user_id, origin, countries, cities, styles,
+        budget_min, budget_max, budget_currency
+      )
+      VALUES (
+        ${targetUserId},
+        ${wp.origin},
+        ${JSON.stringify(wp.countries ?? [])}::jsonb,
+        ${JSON.stringify(wp.cities ?? [])}::jsonb,
+        ${JSON.stringify(wp.styles ?? [])}::jsonb,
+        ${wp.budget_min},
+        ${wp.budget_max},
+        ${wp.budget_currency ?? "USD"}
+      )
+      ON CONFLICT (user_id) DO UPDATE SET
+        origin = COALESCE(preferences.origin, EXCLUDED.origin),
+        countries = CASE
+          WHEN jsonb_array_length(COALESCE(preferences.countries, '[]'::jsonb)) > 0
+            THEN preferences.countries
+          ELSE EXCLUDED.countries
+        END,
+        cities = CASE
+          WHEN jsonb_array_length(COALESCE(preferences.cities, '[]'::jsonb)) > 0
+            THEN preferences.cities
+          ELSE EXCLUDED.cities
+        END,
+        styles = CASE
+          WHEN jsonb_array_length(COALESCE(preferences.styles, '[]'::jsonb)) > 0
+            THEN preferences.styles
+          ELSE EXCLUDED.styles
+        END,
+        budget_min = COALESCE(preferences.budget_min, EXCLUDED.budget_min),
+        budget_max = COALESCE(preferences.budget_max, EXCLUDED.budget_max)
+    `;
+    await sql`DELETE FROM preferences WHERE user_id = ${webUserId}`;
+  }
+
+  // Carry over email only if the WhatsApp user doesn't have one.
+  if (webEmail.length > 0) {
+    await sql`
+      UPDATE users SET email = ${webEmail[0].email}, email_captured_at = NOW()
+      WHERE id = ${targetUserId} AND email IS NULL
+    `;
+  }
+
+  // Finally, drop the web user. CASCADE handles link_codes pointing here.
+  await sql`DELETE FROM users WHERE id = ${webUserId}`;
+}

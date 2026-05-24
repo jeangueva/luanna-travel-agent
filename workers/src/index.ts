@@ -31,9 +31,13 @@ import {
   getPreferences,
   getRecentMessages,
   getUserWatchlist,
+  completeLinkCode,
+  createLinkCode,
+  findLinkCode,
   listPendingDeletionRequests,
   listRecentErrors,
   listRecentFeedback,
+  mergeWebUserInto,
   processDeletionRequest,
   recordError,
   recordFeedback,
@@ -68,7 +72,12 @@ import {
   makeSaveUserNameTool,
   makeSuggestItineraryTool,
 } from "./tools";
-import { createWebviewToken, verifyWebviewToken } from "./auth";
+import {
+  createChatToken,
+  createWebviewToken,
+  verifyChatToken,
+  verifyWebviewToken,
+} from "./auth";
 import { renderPreferencesPage } from "./webview";
 import {
   runCleanupCron,
@@ -94,6 +103,8 @@ export interface Env {
   ALERT_WEBHOOK_URL?: string;
   POSTHOG_API_KEY?: string;
   POSTHOG_HOST?: string;
+  PUBLIC_BASE_URL?: string;
+  LUANNA_WHATSAPP_NUMBER?: string;
   ASSETS: Fetcher;
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
 }
@@ -587,6 +598,57 @@ async function handleKapsoWebhook(
 
         if (!resolvedText) return;
 
+        // ── Magic-link merge intercept (skip LLM, merge web user) ──────
+        // Match "vincular ABCDxyz" or "link ABCDxyz" — the user copy-paste
+        // arrives here from the wa.me CTA fired by /chat. We're conservative:
+        // require the verb at the START of the message and a known code in
+        // link_codes. Anything else falls through to the LLM.
+        const linkMatch = resolvedText.match(
+          /^\s*(?:vincular|link)\s+([A-Za-z0-9]{4,16})\b/i,
+        );
+        if (linkMatch) {
+          const code = linkMatch[1];
+          const linkRow = await findLinkCode(sql, code).catch(() => null);
+          let ack: string;
+          if (!linkRow) {
+            ack = "No reconocí ese código de vinculación 🤔 Asegúrate de copiarlo desde el chat web.";
+          } else if (linkRow.status !== "pending") {
+            ack = "Ese código ya fue usado o expiró ⏰ Pide uno nuevo desde el chat web.";
+          } else if (new Date(linkRow.expires_at).getTime() < Date.now()) {
+            ack = "Ese código ya expiró ⏰ Pide uno nuevo desde el chat web.";
+          } else if (linkRow.web_user_id === user.id) {
+            ack = "Ya estás vinculado a este número 🙌";
+          } else {
+            try {
+              await mergeWebUserInto(sql, linkRow.web_user_id, user.id);
+              await completeLinkCode(sql, code, user.id);
+              await track(env, {
+                event: "web_linked_to_whatsapp",
+                distinct_id: distinctId,
+                properties: { code, web_user_id: linkRow.web_user_id },
+              });
+              ack = "¡Listo! 🙌 Tu chat web quedó vinculado a este número. Tus preferencias y conversación ahora viven acá ✨";
+            } catch (err) {
+              console.error("merge failed", err);
+              await recordError(sql, "webhook:link_merge", err, {
+                code,
+                web_user_id: linkRow.web_user_id,
+                target_user_id: user.id,
+              });
+              ack = "Tuve un problema vinculando tu chat web 😬 Intenta otra vez en un minuto.";
+            }
+          }
+          await appendMessage(sql, user.id, "user", resolvedText);
+          await appendMessage(sql, user.id, "assistant", ack);
+          await sendKapsoText({
+            apiKey: env.KAPSO_API_KEY,
+            phoneNumberId: phone_number_id,
+            to: from,
+            body: ack,
+          });
+          return;
+        }
+
         // ── /feedback intercept (skip LLM, record + ack) ──────────────
         const feedbackMatch = resolvedText.match(
           /^\s*\/(feedback|bug|idea)\b\s*(.*)$/is,
@@ -1050,6 +1112,37 @@ function rateLimitResponse(r: RateLimitResult, msg: string): Response {
   });
 }
 
+const CHAT_COOKIE_NAME = "luanna_chat";
+
+function readCookie(request: Request, name: string): string | null {
+  const header = request.headers.get("cookie");
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const [k, v] = part.trim().split("=");
+    if (k === name) return decodeURIComponent(v ?? "");
+  }
+  return null;
+}
+
+async function readChatCookieUserId(
+  request: Request,
+  env: Env,
+): Promise<number | null> {
+  const token = readCookie(request, CHAT_COOKIE_NAME);
+  if (!token) return null;
+  return verifyChatToken(token, env.WEBVIEW_SIGNING_KEY);
+}
+
+async function loadUserById(
+  sql: ReturnType<typeof getDb>,
+  userId: number,
+): Promise<{ id: number; phone: string; name: string | null; phone_number_id: string | null } | null> {
+  const rows = (await sql`
+    SELECT id, phone, name, phone_number_id FROM users WHERE id = ${userId} LIMIT 1
+  `) as Array<{ id: number; phone: string; name: string | null; phone_number_id: string | null }>;
+  return rows[0] ?? null;
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let mismatch = 0;
@@ -1446,8 +1539,13 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     refField = typeof body?.ref === "string" ? body.ref : undefined;
   }
 
+  // Cookie-based identity takes precedence over the session_id. If the
+  // user previously vinculó su chat web con WhatsApp, the cookie carries a
+  // signed token for their WhatsApp user_id and we use that account.
+  const linkedUserId = await readChatCookieUserId(request, env);
+
   const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
-  if (!session_id) {
+  if (!linkedUserId && !session_id) {
     return Response.json({ error: "missing 'session_id'" }, { status: 400 });
   }
 
@@ -1470,8 +1568,11 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   const ip = getClientIp(request);
   const rl = await checkRateLimit(sql, `chat:${ip}`, 20, 60);
   if (!rl.allowed) return rateLimitResponse(rl, "too many requests");
-  const phone = `web:${session_id}`;
-  const user = await getOrCreateUser(sql, phone);
+  // If the linked user_id from the cookie still exists, use it (WA-linked
+  // account). Otherwise fall back to the legacy web:session_id flow.
+  const user = linkedUserId
+    ? await loadUserById(sql, linkedUserId) ?? await getOrCreateUser(sql, `web:${session_id}`)
+    : await getOrCreateUser(sql, `web:${session_id}`);
   await ensureReferralCode(sql, user.id).catch(() => {});
   const history = await getRecentMessages(sql, user.id);
   const isFirstContact = history.length === 0;
@@ -1799,6 +1900,106 @@ async function handleChatShare(request: Request, env: Env): Promise<Response> {
   return Response.json({ code, share_url });
 }
 
+async function handleChatLinkInit(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!env.LUANNA_WHATSAPP_NUMBER) {
+    return Response.json(
+      { error: "linking not configured" },
+      { status: 503 },
+    );
+  }
+  const body = (await request.json().catch(() => null)) as
+    | { session_id?: string }
+    | null;
+  if (!body) return Response.json({ error: "invalid json" }, { status: 400 });
+  const rawSession = typeof body.session_id === "string" ? body.session_id : "";
+  const session_id = rawSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (!session_id) {
+    return Response.json({ error: "missing 'session_id'" }, { status: 400 });
+  }
+  const sql = getDb(env.DATABASE_URL);
+  const ip = getClientIp(request);
+  const rl = await checkRateLimit(sql, `link:${ip}`, 5, 3600);
+  if (!rl.allowed) return rateLimitResponse(rl, "too many requests");
+  const rows = (await sql`
+    SELECT id FROM users WHERE phone = ${`web:${session_id}`} LIMIT 1
+  `) as Array<{ id: number }>;
+  if (rows.length === 0) {
+    return Response.json({ error: "session not found" }, { status: 404 });
+  }
+  const code = await createLinkCode(sql, rows[0].id);
+  const number = env.LUANNA_WHATSAPP_NUMBER.replace(/[^0-9]/g, "");
+  const text = encodeURIComponent(`vincular ${code}`);
+  const wa_url = `https://wa.me/${number}?text=${text}`;
+  return Response.json({ code, wa_url, expires_in_seconds: 15 * 60 });
+}
+
+async function handleChatLinkStatus(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const code = (url.searchParams.get("code") ?? "")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .slice(0, 16);
+  if (!code) {
+    return Response.json({ error: "missing 'code'" }, { status: 400 });
+  }
+  const sql = getDb(env.DATABASE_URL);
+  const row = await findLinkCode(sql, code);
+  if (!row) {
+    return Response.json({ status: "not_found" }, { status: 404 });
+  }
+  if (row.status === "completed" && row.linked_user_id) {
+    const token = await createChatToken(
+      row.linked_user_id,
+      env.WEBVIEW_SIGNING_KEY,
+    );
+    // Set the HttpOnly chat-session cookie on the response so subsequent
+    // /api/chat calls authenticate as the linked WhatsApp user.
+    const cookie = `${CHAT_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; Max-Age=${30 * 24 * 60 * 60}; HttpOnly; Secure; SameSite=Lax`;
+    return new Response(JSON.stringify({ status: "completed" }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": cookie,
+      },
+    });
+  }
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    return Response.json({ status: "expired" });
+  }
+  return Response.json({ status: "pending" });
+}
+
+async function handleChatWhoami(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const userId = await readChatCookieUserId(request, env);
+  if (!userId) return Response.json({ linked: false });
+  const sql = getDb(env.DATABASE_URL);
+  const u = await loadUserById(sql, userId);
+  if (!u || u.phone.startsWith("web:")) {
+    // The user_id in the cookie was deleted or is a web user (shouldn't
+    // happen, but be defensive). Tell the client it's not linked.
+    return Response.json({ linked: false });
+  }
+  return Response.json({ linked: true, name: u.name ?? null });
+}
+
+async function handleChatLogout(): Promise<Response> {
+  // Clear the chat-session cookie. The web user will need to vincular again
+  // (or just chat normally as a brand-new web session) on the next message.
+  const cookie = `${CHAT_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { "Content-Type": "application/json", "Set-Cookie": cookie },
+  });
+}
+
 async function handleClickRedirect(url: URL, env: Env): Promise<Response> {
   const id = url.pathname.slice(3).replace(/[^A-Za-z0-9_-]/g, "");
   if (!id || id.length < 4 || id.length > 32) {
@@ -1948,6 +2149,18 @@ async function routeFetch(
   }
   if (request.method === "POST" && url.pathname === "/api/chat/email") {
     return handleChatEmail(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/chat/link/init") {
+    return handleChatLinkInit(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/chat/link/status") {
+    return handleChatLinkStatus(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/chat/whoami") {
+    return handleChatWhoami(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/chat/logout") {
+    return handleChatLogout();
   }
   if (request.method === "POST" && url.pathname === "/api/chat/reset") {
     return handleChatReset(request, env);

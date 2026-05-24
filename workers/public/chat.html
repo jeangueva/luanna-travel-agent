@@ -128,6 +128,34 @@
       border-color: var(--rausch);
       transform: translateY(-1px);
     }
+    .link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      background: #25d366;
+      border: 1px solid #25d366;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .link-btn.hidden { display: none; }
+    .link-btn:hover {
+      background: #128c4f;
+      border-color: #128c4f;
+      transform: translateY(-1px);
+    }
+    .link-btn:disabled {
+      background: var(--surface-2);
+      border-color: var(--border);
+      color: var(--text-3);
+      cursor: not-allowed;
+      transform: none;
+    }
     .share-btn {
       display: none;
       align-items: center;
@@ -559,7 +587,12 @@
       .welcome p { font-size: 15px; }
       .welcome-illustration { width: 96px; height: 96px; margin-bottom: 16px; }
       .msg { font-size: 14px; max-width: 84%; }
-      .reset-btn span { display: none; }
+      .reset-btn span,
+      .link-btn span,
+      .share-btn span { display: none; }
+      .link-btn,
+      .share-btn,
+      .reset-btn { padding: 8px 10px; }
     }
   </style>
 </head>
@@ -573,6 +606,12 @@
         Modo prueba
       </div>
       <div style="display:inline-flex;gap:8px;align-items:center">
+        <button class="link-btn" id="link-btn" title="Vincula este chat con tu WhatsApp">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
+          </svg>
+          <span>Vincular WhatsApp</span>
+        </button>
         <button class="share-btn" id="share-btn" title="Comparte Luanna con un amigo">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="18" cy="5" r="3"/>
@@ -1134,6 +1173,83 @@
         trackEvent('share_clicked', { method });
       });
 
+      // ── Vincular con WhatsApp ──
+      const linkBtn = document.getElementById('link-btn');
+      let linkPollTimer = null;
+      async function checkLinkStatus() {
+        try {
+          const res = await fetch('/api/chat/whoami', { credentials: 'include' });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.linked) {
+            linkBtn.classList.add('hidden');
+            const h1 = welcome && welcome.querySelector('h1');
+            if (h1) {
+              h1.innerHTML = 'Bienvenido de vuelta' +
+                (data.name ? ', <span class="accent">' + escapeHtml(data.name) + '</span>' : '') +
+                ' 👋';
+            }
+          }
+        } catch (e) { /* silent */ }
+      }
+      async function startLinkFlow() {
+        if (linkBtn.disabled) return;
+        linkBtn.disabled = true;
+        try {
+          const res = await fetch('/api/chat/link/init', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: getOrCreateSession() }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            if (data.error === 'linking not configured') {
+              showToast('Vinculación no disponible aún');
+            } else {
+              showToast('Error: ' + (data.error || res.status));
+            }
+            linkBtn.disabled = false;
+            return;
+          }
+          const data = await res.json();
+          window.open(data.wa_url, '_blank');
+          showToast('Abriendo WhatsApp… envía el mensaje para vincular ✨');
+          let pollsLeft = 100;
+          if (linkPollTimer) clearInterval(linkPollTimer);
+          linkPollTimer = setInterval(async () => {
+            pollsLeft--;
+            if (pollsLeft <= 0) {
+              clearInterval(linkPollTimer);
+              linkBtn.disabled = false;
+              return;
+            }
+            try {
+              const sr = await fetch(
+                '/api/chat/link/status?code=' + encodeURIComponent(data.code),
+                { credentials: 'include' },
+              );
+              if (!sr.ok) return;
+              const sd = await sr.json();
+              if (sd.status === 'completed') {
+                clearInterval(linkPollTimer);
+                showToast('¡Vinculado! 🙌 Recargando…');
+                try { localStorage.removeItem('luanna_session_id'); } catch (e) {}
+                setTimeout(() => location.reload(), 1200);
+              } else if (sd.status === 'expired' || sd.status === 'not_found') {
+                clearInterval(linkPollTimer);
+                showToast('El código expiró. Intenta de nuevo.');
+                linkBtn.disabled = false;
+              }
+            } catch (e) { /* keep polling */ }
+          }, 3000);
+        } catch (err) {
+          showToast('Error de red');
+          linkBtn.disabled = false;
+        }
+      }
+      linkBtn.addEventListener('click', startLinkFlow);
+      checkLinkStatus();
+
       resetBtn.addEventListener('click', async function () {
         if (!confirm('¿Reiniciar la conversación? Se borrará todo el historial.')) return;
         const session_id = getOrCreateSession();
@@ -1142,6 +1258,13 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id }),
+          });
+        } catch (e) { /* noop */ }
+        // Also clear the WhatsApp link cookie so reset truly starts from zero.
+        try {
+          await fetch('/api/chat/logout', {
+            method: 'POST',
+            credentials: 'include',
           });
         } catch (e) { /* noop */ }
         localStorage.removeItem('luanna_session_id');

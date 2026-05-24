@@ -54,3 +54,33 @@ export async function verifyWebviewToken(
   if (!constantTimeEq(sig, expectedSig)) return null;
   return userId;
 }
+
+const CHAT_TOKEN_TTL_SECONDS = 30 * 24 * 3600; // 30 days
+
+export async function createChatToken(
+  userId: number,
+  secret: string,
+): Promise<string> {
+  // Same shape as the webview token but with a longer TTL and a "c" prefix
+  // so we can tell them apart in logs.
+  const exp = Math.floor(Date.now() / 1000) + CHAT_TOKEN_TTL_SECONDS;
+  const payload = `c.${userId}.${exp}`;
+  const sig = await hmac(payload, secret);
+  return `${payload}.${sig}`;
+}
+
+export async function verifyChatToken(
+  token: string,
+  secret: string,
+): Promise<number | null> {
+  const parts = token.split(".");
+  if (parts.length !== 4 || parts[0] !== "c") return null;
+  const [, userIdStr, expStr, sig] = parts;
+  const userId = Number(userIdStr);
+  const exp = Number(expStr);
+  if (!Number.isFinite(userId) || !Number.isFinite(exp)) return null;
+  if (exp * 1000 < Date.now()) return null;
+  const expectedSig = await hmac(`c.${userIdStr}.${expStr}`, secret);
+  if (!constantTimeEq(sig, expectedSig)) return null;
+  return userId;
+}
