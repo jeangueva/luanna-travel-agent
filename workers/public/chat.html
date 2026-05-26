@@ -803,6 +803,22 @@
         return row;
       }
 
+      function appendEmptyAiBubble() {
+        if (welcome && welcome.parentNode) welcome.remove();
+        const row = document.createElement('div');
+        row.className = 'msg-row ai';
+        const avatar = document.createElement('div');
+        avatar.className = 'msg-avatar';
+        avatar.textContent = 'L';
+        row.appendChild(avatar);
+        const bubble = document.createElement('div');
+        bubble.className = 'msg';
+        row.appendChild(bubble);
+        messages.appendChild(row);
+        scrollToBottom();
+        return bubble;
+      }
+
       function appendTyping() {
         const row = document.createElement('div');
         row.className = 'msg-row ai';
@@ -915,23 +931,57 @@
               body: JSON.stringify(payload),
             });
           }
-          const data = await res.json().catch(() => null);
-          removeTyping();
-          if (!res.ok || !data) {
+          const contentType = res.headers.get('content-type') || '';
+          if (!res.ok) {
+            removeTyping();
             const status = res.status;
             let msg = '⚠️ Hubo un problema procesando tu mensaje. Inténtalo de nuevo.';
             if (status === 413) msg = '⚠️ El archivo es muy grande. Prueba con una foto/audio más liviano.';
             else if (status === 429) msg = '⚠️ Demasiados mensajes seguidos. Espera unos segundos.';
             appendMessage('ai', msg);
-          } else if (data.error) {
-            appendMessage('ai', '⚠️ ' + data.error);
-          } else if (data.reply && data.reply.trim()) {
-            appendMessage('ai', data.reply.trim());
-            fetchShareUrl();
-            aiReplyCount++;
-            maybeShowEmailBanner();
+          } else if (contentType.startsWith('text/plain')) {
+            // Streaming response — read chunks and append to a live bubble.
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let bubble = null;
+            let fullText = '';
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              if (!chunk) continue;
+              if (!bubble) {
+                removeTyping();
+                bubble = appendEmptyAiBubble();
+              }
+              fullText += chunk;
+              bubble.innerHTML = renderText(fullText);
+              scrollToBottom();
+            }
+            if (!bubble) {
+              // Edge case: stream ended with zero bytes.
+              removeTyping();
+              appendMessage('ai', '...');
+            } else if (fullText.trim()) {
+              fetchShareUrl();
+              aiReplyCount++;
+              maybeShowEmailBanner();
+            }
           } else {
-            appendMessage('ai', '...');
+            const data = await res.json().catch(() => null);
+            removeTyping();
+            if (!data) {
+              appendMessage('ai', '⚠️ Hubo un problema procesando tu mensaje. Inténtalo de nuevo.');
+            } else if (data.error) {
+              appendMessage('ai', '⚠️ ' + data.error);
+            } else if (data.reply && data.reply.trim()) {
+              appendMessage('ai', data.reply.trim());
+              fetchShareUrl();
+              aiReplyCount++;
+              maybeShowEmailBanner();
+            } else {
+              appendMessage('ai', '...');
+            }
           }
         } catch (err) {
           removeTyping();

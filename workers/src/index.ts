@@ -1,5 +1,10 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateText, stepCountIs, type ModelMessage } from "ai";
+import {
+  generateText,
+  stepCountIs,
+  streamText,
+  type ModelMessage,
+} from "ai";
 import {
   downloadKapsoMedia,
   extractFlowSubmission,
@@ -262,6 +267,33 @@ async function generateReply(
     }
   }
 
+  const llmArgs = buildLLMArgs(env, userMessage, ctx, flowEnabled, inWhatsApp);
+  const result = await generateText(llmArgs);
+  // PostHog tracking is fire-and-forget — never block the user's reply on
+  // analytics. Errors swallowed (analytics SDK has its own retry).
+  if (ctx.userId > 0) {
+    const toolEvents = collectToolEvents(result, ctx.userId);
+    if (toolEvents.length > 0) {
+      trackBatch(env, toolEvents).catch((err) =>
+        console.error("trackBatch failed", err),
+      );
+    }
+  }
+  return sanitizeReply(result.text, ctx.baseUrl).trim();
+}
+
+/**
+ * Build the args for either generateText or streamText. Centralizes the
+ * model / tools / system / messages plumbing so the streaming and non-
+ * streaming paths can't drift apart.
+ */
+function buildLLMArgs(
+  env: Env,
+  userMessage: string,
+  ctx: ReplyContext,
+  flowEnabled: boolean,
+  inWhatsApp: boolean,
+) {
   const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL);
   const messages: ModelMessage[] = [
@@ -325,7 +357,7 @@ async function generateReply(
       userId: ctx.userId,
     }),
   };
-  const result = await generateText({
+  return {
     model,
     system: buildLuannaSystemPrompt({
       now: new Date(),
@@ -341,18 +373,55 @@ async function generateReply(
     // 3 steps is plenty for the typical flow: one tool call + one reply.
     // Capping lower than 5 saves a roundtrip when the model wanders.
     stopWhen: stepCountIs(3),
+  };
+}
+
+/**
+ * Streaming sibling of generateReply for the web chat's text-only path.
+ * Returns a ReadableStream of plain-text chunks the frontend can append to
+ * the message bubble token-by-token. The full text is committed to Postgres
+ * via onFinish so we don't block the stream on the persist roundtrip.
+ *
+ * IMPORTANT: handleChat must call this ONLY when none of the early-return
+ * paths in generateReply apply (no first-contact, no prefs intent). Those
+ * paths return short strings synthesized by the worker, not LLM tokens,
+ * and streaming them would just add overhead.
+ */
+function streamReply(
+  env: Env,
+  userMessage: string,
+  ctx: ReplyContext,
+): Response {
+  const flowEnabled =
+    env.KAPSO_PREFS_FLOWS_ENABLED === "1" &&
+    !!env.KAPSO_PREFS_FLOW_ID &&
+    !!ctx.to &&
+    !!ctx.phoneNumberId;
+  const inWhatsApp = !!ctx.to && !!ctx.phoneNumberId;
+  const args = buildLLMArgs(env, userMessage, ctx, flowEnabled, inWhatsApp);
+  const baseUrl = ctx.baseUrl;
+  const sql = ctx.sql;
+  const userId = ctx.userId;
+  const result = streamText({
+    ...args,
+    onFinish: ({ text, steps }) => {
+      const sanitized = sanitizeReply(text, baseUrl).trim();
+      if (sanitized && userId > 0) {
+        appendMessage(sql, userId, "assistant", sanitized).catch((err) =>
+          console.error("appendMessage assistant (stream) failed", err),
+        );
+      }
+      if (userId > 0) {
+        const toolEvents = collectToolEvents({ steps }, userId);
+        if (toolEvents.length > 0) {
+          trackBatch(env, toolEvents).catch((err) =>
+            console.error("trackBatch (stream) failed", err),
+          );
+        }
+      }
+    },
   });
-  // PostHog tracking is fire-and-forget — never block the user's reply on
-  // analytics. Errors swallowed (analytics SDK has its own retry).
-  if (ctx.userId > 0) {
-    const toolEvents = collectToolEvents(result, ctx.userId);
-    if (toolEvents.length > 0) {
-      trackBatch(env, toolEvents).catch((err) =>
-        console.error("trackBatch failed", err),
-      );
-    }
-  }
-  return sanitizeReply(result.text, ctx.baseUrl).trim();
+  return result.toTextStreamResponse();
 }
 
 interface ToolCallStep {
@@ -1757,6 +1826,23 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
       length: resolvedText.length,
     },
   }).catch(() => undefined);
+  // Stream the LLM response when this is a "regular" text chat — no media,
+  // not a first-contact welcome (handled deterministically), and not a
+  // preferences-intent reply (also deterministic). Streaming wins ~1-3s of
+  // perceived latency because tokens land in the bubble as they're produced.
+  const canStream =
+    sourceKind === "text" && !isFirstContact && !PREFS_INTENT_RE.test(resolvedText);
+  if (canStream) {
+    return streamReply(env, resolvedText, {
+      userId: user.id,
+      baseUrl: new URL(request.url).origin,
+      history,
+      sql,
+      userName: user.name,
+      isFirstContact,
+      userPrefs,
+    });
+  }
   const reply = await generateReply(env, resolvedText, {
     userId: user.id,
     baseUrl: new URL(request.url).origin,
