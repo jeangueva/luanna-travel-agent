@@ -136,13 +136,24 @@ const TRAVELPAYOUTS_HOSTS = new Set([
   "tp.media",
 ]);
 
+/**
+ * Only let URLs on our own domain reach the user. Tools wrap every
+ * affiliate URL through wrapClickUrl into a luanna.app/r/<id> short link,
+ * so anything else in the LLM output is either a hallucination, an echo
+ * of stale chat history, or a path we forgot to wrap. Stripping is the
+ * safe default — a missing URL is recoverable, a 200-char Aviasales URL
+ * blasted to WhatsApp is not.
+ */
 function sanitizeReply(text: string, baseUrl: string): string {
   const allowedHost = new URL(baseUrl).host;
   return text.replace(/https?:\/\/[^\s)]+/g, (url) => {
     try {
       const host = new URL(url).host;
       if (host === allowedHost) return url;
-      if (TRAVELPAYOUTS_HOSTS.has(host)) return url;
+      // Travelpayouts hosts used to be allowed inline. Now we strip them so
+      // long affiliate URLs can never reach the user — the tool result
+      // already provides a wrapped luanna.app URL the model should use.
+      if (TRAVELPAYOUTS_HOSTS.has(host)) return "";
       return "";
     } catch {
       return "";
