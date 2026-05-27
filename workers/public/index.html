@@ -22,6 +22,128 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Structured data: helps Google (and any AI surface that uses Google's
+       search index) understand what Luanna is, how to contact it, and what
+       questions it answers. Per Google's AI optimization guide, schema.org
+       remains a good optional signal — we keep it minimal and accurate. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://luanna.app/#org",
+        "name": "Luanna",
+        "url": "https://luanna.app/",
+        "logo": "https://luanna.app/og-image.svg",
+        "description": "Agente de viajes en WhatsApp que ayuda a encontrar vuelos baratos, hoteles y paquetes.",
+        "sameAs": ["https://luanna.app/"],
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "availableLanguage": ["es", "Spanish"],
+          "url": "https://wa.me/15559144311"
+        }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://luanna.app/#app",
+        "name": "Luanna",
+        "url": "https://luanna.app/",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Web, WhatsApp",
+        "description": "Asistente de viajes conversacional por WhatsApp. Búsqueda de vuelos, hoteles y paquetes con alertas de precio. Acepta texto, fotos y notas de voz en español.",
+        "inLanguage": "es",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "publisher": { "@id": "https://luanna.app/#org" },
+        "featureList": [
+          "Búsqueda de vuelos baratos en tiempo real",
+          "Búsqueda de hoteles y estadías",
+          "Paquetes vuelo + hotel",
+          "Alertas de precio por WhatsApp",
+          "Reconocimiento de imágenes de destinos",
+          "Transcripción de notas de voz en español"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://luanna.app/#website",
+        "url": "https://luanna.app/",
+        "name": "Luanna",
+        "inLanguage": "es",
+        "publisher": { "@id": "https://luanna.app/#org" }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://luanna.app/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "¿Cuánto cuesta usar Luanna?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Luanna es gratis. Ganamos una pequeña comisión cuando reservas vuelos u hoteles a través de los links que te enviamos — sale del proveedor, no de tu bolsillo. No hay suscripción ni comisión extra."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿Cómo le hablo a Luanna?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Escríbele en WhatsApp como si fuera una amiga. Le puedes mandar texto ('vuelos Lima a Madrid en agosto'), una foto del lugar al que quieres ir, o una nota de voz. Te responde en segundos, 24/7, en español."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿Dónde se reserva el vuelo o el hotel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Luanna te manda el link directo al proveedor (aerolínea, Booking, Hotellook, etc.) para que reserves ahí. Nunca te pide datos de tarjeta — la reserva la haces tú en el sitio del proveedor."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿Cómo funcionan las alertas de precio?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Le dices a Luanna que quieres monitorear una ruta (ej. 'avísame si bajan vuelos a Cancún de menos de $300'). Cada 6 horas chequea precios. Cuando detecta una caída real (más del 10% bajo el promedio reciente), te avisa por WhatsApp."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿En qué idiomas hablas?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Luanna está optimizada para español. Entiende variantes regionales (LatAm, España) tanto en texto como en notas de voz."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿Puedo probar Luanna sin WhatsApp?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Sí. Tenemos un chat web en luanna.app/chat con las mismas funcionalidades (texto, foto y nota de voz). Si después quieres vincularlo a tu WhatsApp, lo puedes hacer desde el botón Vincular."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿Cómo elimino mis datos?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Visita luanna.app/data-deletion y haz la solicitud con tu número. Procesamos la eliminación de mensajes, preferencias, alertas y datos asociados en menos de 30 días."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
   <style>
     :root {
       --rausch: #ff385c;
@@ -771,6 +893,53 @@
     }
     .price-alt a:hover { color: var(--rausch-dark); }
 
+    /* ─── FAQ ─── */
+    .faq-list {
+      max-width: 760px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .faq-item {
+      background: #fff;
+      border-radius: var(--r-card);
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+    }
+    .faq-item summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 20px 24px;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      transition: color 0.15s;
+    }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item summary:hover { color: var(--rausch); }
+    .faq-item summary::after {
+      content: "+";
+      font-size: 22px;
+      font-weight: 400;
+      color: var(--text-2);
+      transition: transform 0.2s ease;
+      line-height: 1;
+    }
+    .faq-item[open] summary::after { transform: rotate(45deg); color: var(--rausch); }
+    .faq-item .faq-answer {
+      padding: 0 24px 22px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
+    .faq-item .faq-answer a { color: var(--rausch); font-weight: 600; }
+
     /* ─── Final CTA ─── */
     .cta-banner {
       padding: 96px 0;
@@ -958,6 +1127,7 @@
           <a href="#ejemplos">Ejemplos</a>
           <a href="#features">Características</a>
           <a href="#precios">Precio</a>
+          <a href="#faq">FAQ</a>
           <a href="/chat">Probar en web</a>
         </div>
         <a href="https://wa.me/message/4RGE5PFNLMZSM1" class="btn btn-primary nav-cta" target="_blank" rel="noopener">
@@ -970,6 +1140,7 @@
     </div>
   </header>
 
+  <main>
   <!-- ───── Hero ───── -->
   <section class="hero">
     <div class="hero-bg" aria-hidden="true">
@@ -1278,6 +1449,60 @@
     </div>
   </section>
 
+  <!-- ───── FAQ ───── -->
+  <section class="section section-surface" id="faq" aria-labelledby="faq-title">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="t-eyebrow">Preguntas frecuentes</span>
+        <h2 id="faq-title" class="t-section">Lo que la gente nos pregunta antes de usarla.</h2>
+      </div>
+      <div class="faq-list reveal">
+        <details class="faq-item">
+          <summary>¿Cuánto cuesta usar Luanna?</summary>
+          <div class="faq-answer">
+            Luanna es gratis. Ganamos una pequeña comisión cuando reservas vuelos u hoteles a través de los links que te enviamos — sale del proveedor, no de tu bolsillo. No hay suscripción ni comisión extra.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary>¿Cómo le hablo a Luanna?</summary>
+          <div class="faq-answer">
+            Escríbele en WhatsApp como si fuera una amiga. Le puedes mandar texto ("vuelos Lima a Madrid en agosto"), una foto del lugar al que quieres ir, o una nota de voz. Te responde en segundos, 24/7, en español.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary>¿Dónde se reserva el vuelo o el hotel?</summary>
+          <div class="faq-answer">
+            Luanna te manda el link directo al proveedor (aerolínea, Booking, Hotellook, etc.) para que reserves ahí. Nunca te pide datos de tarjeta — la reserva la haces tú en el sitio del proveedor.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary>¿Cómo funcionan las alertas de precio?</summary>
+          <div class="faq-answer">
+            Le dices a Luanna que quieres monitorear una ruta (ej. "avísame si bajan vuelos a Cancún de menos de $300"). Cada 6 horas chequea precios. Cuando detecta una caída real (más del 10% bajo el promedio reciente), te avisa por WhatsApp.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary>¿En qué idiomas habla?</summary>
+          <div class="faq-answer">
+            Luanna está optimizada para español. Entiende variantes regionales (LatAm, España) tanto en texto como en notas de voz.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary>¿Puedo probarla sin WhatsApp?</summary>
+          <div class="faq-answer">
+            Sí. Tenemos un <a href="/chat">chat web en luanna.app/chat</a> con las mismas funcionalidades (texto, foto y nota de voz). Si después quieres vincularlo a tu WhatsApp, lo puedes hacer desde el botón Vincular.
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary>¿Cómo elimino mis datos?</summary>
+          <div class="faq-answer">
+            Visita <a href="/data-deletion">luanna.app/data-deletion</a> y haz la solicitud con tu número. Procesamos la eliminación de mensajes, preferencias, alertas y datos asociados en menos de 30 días.
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
   <!-- ───── Final CTA ───── -->
   <section class="cta-banner">
     <div class="container">
@@ -1299,6 +1524,7 @@
       </div>
     </div>
   </section>
+  </main>
 
   <!-- ───── Footer ───── -->
   <footer>
@@ -1309,6 +1535,7 @@
           <a href="#como-funciona">Cómo funciona</a>
           <a href="#features">Características</a>
           <a href="#precios">Precio</a>
+          <a href="#faq">FAQ</a>
           <a href="/chat">Chat web</a>
           <a href="/privacy">Privacidad</a>
           <a href="/terms">Términos</a>
