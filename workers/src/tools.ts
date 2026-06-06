@@ -354,6 +354,13 @@ export function makeFlightSearchTool(
         .optional()
         .describe("Mes específico YYYY-MM (solo si el usuario mencionó un mes)"),
       return_date: z.string().optional().describe("YYYY-MM-DD para ida y vuelta"),
+      airline: z
+        .string()
+        .length(2)
+        .optional()
+        .describe(
+          "Código IATA de 2 letras de la aerolínea, SOLO si el usuario pide una específica. Ej: LATAM→LA, Avianca→AV, Sky→H2, JetSMART→JA, Iberia→IB, American→AA, Copa→CM, Aeroméxico→AM. Filtra los resultados a esa aerolínea.",
+        ),
     }),
     execute: async ({
       origin,
@@ -361,8 +368,12 @@ export function makeFlightSearchTool(
       departure_date,
       departure_month,
       return_date,
+      airline,
     }) => {
       const baseHeaders = { "X-Access-Token": env.TRAVELPAYOUTS_TOKEN };
+      // When filtering by a specific airline, pull a wider pool so enough of
+      // that carrier's flights survive the filter; otherwise 5 is plenty.
+      const fetchLimit = airline ? "100" : "5";
       const buildUrl = (departureAt?: string): string => {
         const url = new URL(
           "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
@@ -373,10 +384,16 @@ export function makeFlightSearchTool(
         if (return_date) url.searchParams.set("return_at", return_date);
         url.searchParams.set("currency", "usd");
         url.searchParams.set("sorting", "price");
-        url.searchParams.set("limit", "5");
+        url.searchParams.set("limit", fetchLimit);
         url.searchParams.set("unique", "false");
         return url.toString();
       };
+      const byAirline = (list: TravelpayoutsFlight[]): TravelpayoutsFlight[] =>
+        airline
+          ? list.filter(
+              (f) => (f.airline ?? "").toUpperCase() === airline.toUpperCase(),
+            )
+          : list;
       const fetchOne = async (
         departureAt: string | undefined,
       ): Promise<TravelpayoutsFlight[]> => {
@@ -392,7 +409,9 @@ export function makeFlightSearchTool(
       let raw: TravelpayoutsFlight[];
       const departure = departure_date ?? departure_month;
       if (departure) {
-        raw = (await fetchOne(departure)).slice(0, 5);
+        raw = byAirline(await fetchOne(departure))
+          .sort((a, b) => a.price - b.price)
+          .slice(0, 5);
       } else {
         const now = new Date();
         const months: string[] = [];
@@ -403,7 +422,7 @@ export function makeFlightSearchTool(
           months.push(`${yyyy}-${mm}`);
         }
         const batches = await Promise.all(months.map((m) => fetchOne(m)));
-        const merged = batches.flat();
+        const merged = byAirline(batches.flat());
         // De-dup by (price, departure_at, airline) and sort by price
         const seen = new Set<string>();
         const unique = merged

@@ -97,6 +97,43 @@ export function extractMediaMessage(body: unknown): MediaMessage | null {
   return null;
 }
 
+// When webhook message buffering is enabled in Kapso, a single delivery
+// carries an ARRAY of messages (`data: [...]`) plus a `batch_info` object —
+// even for a lone message. With buffering off, `data` is a single object (or
+// the body itself is the bare data). Normalize all three shapes into an
+// ordered array of message-data records, each with a guaranteed top-level
+// `phone_number_id` so the per-message extractors above
+// (extractMessageReceived / extractMediaMessage / extractFlowSubmission) work
+// on each element unchanged. Unknown event types yield an empty array.
+export function extractMessageBatch(
+  body: unknown,
+): KapsoMessageReceivedData[] {
+  if (!body || typeof body !== "object") return [];
+  const envelope = body as { event?: string; data?: unknown };
+  if (envelope.event && envelope.event !== "whatsapp.message.received") {
+    return [];
+  }
+  const rawItems: unknown[] = Array.isArray(envelope.data)
+    ? envelope.data
+    : envelope.data
+      ? [envelope.data]
+      : [body];
+  const out: KapsoMessageReceivedData[] = [];
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== "object") continue;
+    const d = raw as KapsoMessageReceivedData & {
+      whatsapp_config?: { phone_number_id?: string };
+    };
+    const phone_number_id =
+      d.phone_number_id ??
+      d.conversation?.phone_number_id ??
+      d.whatsapp_config?.phone_number_id;
+    if (!d.message || !d.message.from || !phone_number_id) continue;
+    out.push({ ...d, phone_number_id });
+  }
+  return out;
+}
+
 export async function sendKapsoTypingIndicator(params: {
   apiKey: string;
   phoneNumberId: string;

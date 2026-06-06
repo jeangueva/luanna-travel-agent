@@ -475,7 +475,7 @@ export async function findNudgeCandidates(
   return (await sql`
     SELECT
       u.id, u.phone, u.phone_number_id, u.name, u.inactivity_nudge_count,
-      p.origin, p.countries,
+      p.origin, COALESCE(p.countries, '[]'::jsonb) AS countries,
       MAX(m.created_at) AS last_message_at,
       EXTRACT(EPOCH FROM (NOW() - MAX(m.created_at))) / 86400 AS days_silent
     FROM users u
@@ -512,7 +512,7 @@ export async function findStaggeredNudgeCandidates(
   return (await sql`
     SELECT
       u.id, u.phone, u.phone_number_id, u.name, u.inactivity_nudge_count,
-      p.origin, p.countries,
+      p.origin, COALESCE(p.countries, '[]'::jsonb) AS countries,
       MAX(m.created_at) AS last_message_at,
       EXTRACT(EPOCH FROM (NOW() - MAX(m.created_at))) / 86400 AS days_silent
     FROM users u
@@ -1137,7 +1137,7 @@ export async function mergeWebUserInto(
 
   // Move messages, watchlist, click_redirects, feedback over by FK update.
   await sql`UPDATE messages SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
-  await sql`UPDATE watchlist_items SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
+  await sql`UPDATE watchlist SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
   await sql`UPDATE click_redirects SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
   await sql`UPDATE feedback SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
 

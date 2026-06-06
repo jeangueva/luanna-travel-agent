@@ -9,7 +9,9 @@ import {
   downloadKapsoMedia,
   extractFlowSubmission,
   extractMediaMessage,
+  extractMessageBatch,
   extractMessageReceived,
+  type MediaMessage,
   sendKapsoCtaUrl,
   sendKapsoFlow,
   sendKapsoText,
@@ -164,8 +166,8 @@ function sanitizeReply(text: string, baseUrl: string): string {
 const PREFS_INTENT_RE =
   /\b(configura|configurar|preferencia|preferencias|gustos|perfil|prefer)\b/i;
 
-function buildFirstContactWelcome(prefsUrl: string | null): string {
-  const lines = [
+function buildFirstContactWelcome(): string {
+  return [
     "¡Hola! ✈️ Soy Luanna, tu agente de viajes en WhatsApp.",
     "¿Cómo te llamas? 😊",
     "",
@@ -175,14 +177,8 @@ function buildFirstContactWelcome(prefsUrl: string | null): string {
     "🔹 Paquetes vuelo+hotel",
     "🔹 Alertas cuando bajen precios",
     "",
-  ];
-  if (prefsUrl) {
-    lines.push("Y si me cuentas tus gustos ahora, te recomiendo mejor 👇");
-    lines.push(prefsUrl);
-  } else {
-    lines.push("De paso, configura tus gustos con el botón de abajo para recomendarte mejor 👇");
-  }
-  return lines.join("\n");
+    "Dime a dónde quieres ir y desde qué ciudad sales, ¡y te busco vuelos al toque! 🔎",
+  ].join("\n");
 }
 
 async function generateReply(
@@ -198,47 +194,12 @@ async function generateReply(
 
   const inWhatsApp = !!ctx.to && !!ctx.phoneNumberId;
 
-  // First contact: deterministic welcome + preferences entry point. We don't
-  // trust the model to follow the exact welcome format every time, so build
-  // it ourselves before the conversation deepens.
+  // First contact: deterministic welcome that greets, asks the name, and
+  // invites the user to search flights. We DON'T push the preferences form
+  // here anymore — it's surfaced on demand (PREFS_INTENT below) and in the
+  // re-engagement nudges instead, so the first message stays light.
   if (ctx.isFirstContact && ctx.userId > 0) {
-    if (flowEnabled) {
-      await sendKapsoFlow({
-        apiKey: env.KAPSO_API_KEY,
-        phoneNumberId: ctx.phoneNumberId!,
-        to: ctx.to!,
-        flowId: env.KAPSO_PREFS_FLOW_ID!,
-        bodyText: "Configura tus preferencias para que te recomiende mejor 🎯",
-        cta: "Configurar",
-        screen: "PREFERENCES",
-        draft: env.KAPSO_PREFS_FLOW_DRAFT === "1",
-      });
-      return buildFirstContactWelcome(null);
-    }
-    const token = await createWebviewToken(ctx.userId, env.WEBVIEW_SIGNING_KEY);
-    const url = `${ctx.baseUrl}/webview/prefs?token=${encodeURIComponent(token)}`;
-    // In WhatsApp, send the URL as a native CTA URL button (renders as a
-    // dedicated "Abrir panel" button below the message; the URL itself
-    // doesn't appear inline). On web/chat, return the URL inline so the
-    // chat UI renders it as a clickable link.
-    if (inWhatsApp) {
-      try {
-        await sendKapsoCtaUrl({
-          apiKey: env.KAPSO_API_KEY,
-          phoneNumberId: ctx.phoneNumberId!,
-          to: ctx.to!,
-          bodyText: "Configura tus preferencias y alertas — el botón te abre el panel dentro de WhatsApp 🎯",
-          buttonText: "Abrir panel",
-          url,
-          footerText: "Solo tú puedes ver este link",
-        });
-      } catch (err) {
-        console.error("first-contact CTA url failed, falling back to text", err);
-        return buildFirstContactWelcome(url);
-      }
-      return buildFirstContactWelcome(null);
-    }
-    return buildFirstContactWelcome(url);
+    return buildFirstContactWelcome();
   }
 
   if (PREFS_INTENT_RE.test(userMessage)) {
@@ -489,6 +450,120 @@ function sanitizeToolArgs(args: Record<string, unknown>): Record<string, unknown
   return out;
 }
 
+type WebhookSql = ReturnType<typeof getDb>;
+
+interface IncomingMessage {
+  id: string;
+  text: string | null;
+  media: MediaMessage | null;
+}
+
+// Resolve one incoming message (text / image / audio) into a plain-text
+// fragment for the LLM. Media items do their heavy lifting here (vision /
+// Whisper). On media failure or an empty/unidentifiable result we send the
+// user a per-item fallback, persist it, and return null so the caller skips
+// this fragment (the rest of the burst still gets answered).
+async function resolveIncomingText(
+  env: Env,
+  sql: WebhookSql,
+  item: IncomingMessage,
+  userId: number,
+  phone_number_id: string,
+  from: string,
+  distinctId: string,
+): Promise<{ text: string; kind: "text" | "image" | "audio" } | null> {
+  if (item.text) {
+    return { text: item.text, kind: "text" };
+  }
+  const media = item.media;
+  if (!media) return null;
+
+  if (media.kind === "image") {
+    try {
+      const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id, phone_number_id);
+      const ident = await identifyDestinationFromImage(
+        env,
+        blob.bytes,
+        blob.mimeType,
+        media.caption,
+      );
+      await track(env, {
+        event: "image_identified",
+        distinct_id: distinctId,
+        properties: { unknown: ident.unknown, summary_length: ident.summary.length },
+      });
+      if (ident.unknown) {
+        const fallback = "Recibí tu foto 🤔 pero no logré identificar dónde es. ¿Me cuentas qué lugar es?";
+        await appendMessage(sql, userId, "user", `[foto recibida]${media.caption ? ` "${media.caption}"` : ""}`);
+        await appendMessage(sql, userId, "assistant", fallback);
+        await sendKapsoText({
+          apiKey: env.KAPSO_API_KEY,
+          phoneNumberId: phone_number_id,
+          to: from,
+          body: fallback,
+        });
+        return null;
+      }
+      const text =
+        `[El usuario mandó una foto. Identifiqué el lugar como: ${ident.summary}.` +
+        (media.caption ? ` Caption del usuario: "${media.caption}".` : "") +
+        ` Tu trabajo: confirmar entusiasmada el destino, preguntarle si quiere que busques vuelos/hotel/paquete desde su origen, e impulsar la conversación. NO le digas que "identificaste una foto" textualmente — habla como si supieras del lugar.]`;
+      return { text, kind: "image" };
+    } catch (err) {
+      console.error("image processing failed", err);
+      await recordError(sql, "webhook:image", err, { user_id: userId, media_id: media.media_id });
+      const fallback = "Recibí tu foto pero tuve un problema procesándola 😬 ¿Me cuentas qué lugar es?";
+      await appendMessage(sql, userId, "assistant", fallback);
+      await sendKapsoText({
+        apiKey: env.KAPSO_API_KEY,
+        phoneNumberId: phone_number_id,
+        to: from,
+        body: fallback,
+      });
+      return null;
+    }
+  }
+
+  // audio / voice
+  try {
+    const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id, phone_number_id);
+    const transcript = await transcribeAudio(env, blob.bytes);
+    await track(env, {
+      event: "audio_transcribed",
+      distinct_id: distinctId,
+      properties: {
+        text_length: transcript.text.length,
+        duration_seconds: transcript.duration_seconds ?? null,
+      },
+    });
+    if (!transcript.text || transcript.text.length < 2) {
+      const fallback = "No te escuché bien 😅 ¿Lo intentas otra vez o me lo escribes?";
+      await appendMessage(sql, userId, "user", "[audio inaudible]");
+      await appendMessage(sql, userId, "assistant", fallback);
+      await sendKapsoText({
+        apiKey: env.KAPSO_API_KEY,
+        phoneNumberId: phone_number_id,
+        to: from,
+        body: fallback,
+      });
+      return null;
+    }
+    return { text: transcript.text, kind: "audio" };
+  } catch (err) {
+    console.error("audio processing failed", err);
+    await recordError(sql, "webhook:audio", err, { user_id: userId, media_id: media.media_id });
+    const fallback = "Recibí tu audio pero tuve un problema escuchándolo 😬 ¿Lo intentas otra vez o me escribes?";
+    await appendMessage(sql, userId, "assistant", fallback);
+    await sendKapsoText({
+      apiKey: env.KAPSO_API_KEY,
+      phoneNumberId: phone_number_id,
+      to: from,
+      body: fallback,
+    });
+    return null;
+  }
+}
+
 async function handleKapsoWebhook(
   request: Request,
   env: Env,
@@ -511,43 +586,57 @@ async function handleKapsoWebhook(
     return new Response("invalid json", { status: 400 });
   }
 
-  const submission = extractFlowSubmission(payload);
-  if (submission) {
-    ctx.waitUntil(handleFlowSubmission(env, submission));
+  // Kapso delivers either a single message (`data: {...}`) or, when webhook
+  // buffering is enabled, a batch (`data: [...]`) — even a lone message arrives
+  // as a 1-element batch. Normalizing to an array lets us process a burst of
+  // rapid messages as ONE conversational turn instead of racing N overlapping
+  // LLM calls (or dropping all but the first, which the old single-message
+  // parse did).
+  const batch = extractMessageBatch(payload);
+  if (batch.length === 0) {
+    return new Response("ignored", { status: 200 });
+  }
+
+  const phone_number_id = batch[0].phone_number_id;
+  const from = batch[0].message.from;
+  const baseUrl = new URL(request.url).origin;
+
+  // Flow (preferences form) submissions are their own turn — handle each
+  // independently, never merged into the conversational text.
+  for (const item of batch) {
+    const submission = extractFlowSubmission(item);
+    if (submission) {
+      ctx.waitUntil(handleFlowSubmission(env, submission));
+    }
+  }
+
+  // Collect the conversational messages (text + media), de-duplicated by wamid
+  // so a Kapso retry of the whole batch never double-replies. Heavy multimodal
+  // work (vision + Whisper) happens later INSIDE ctx.waitUntil so we still ack
+  // the webhook in <500ms.
+  const dedupeSql = getDb(env.DATABASE_URL);
+  const incoming: IncomingMessage[] = [];
+  for (const item of batch) {
+    const data = extractMessageReceived(item);
+    const media = data ? null : extractMediaMessage(item);
+    if (!data && !media) continue; // flow / unsupported type
+    const text = data ? data.message.text?.body?.trim() ?? null : null;
+    if (data && !text) continue; // empty text body
+    const id = data ? data.message.id : media!.message_id;
+    const fresh = await recordWebhookOrSkip(dedupeSql, id);
+    if (!fresh) {
+      console.log("kapso webhook duplicate", id);
+      continue;
+    }
+    incoming.push({ id, text, media });
+  }
+
+  if (incoming.length === 0) {
     return new Response("ok", { status: 200 });
   }
 
-  // Resolve the incoming message into a unified shape (text, image-as-text,
-  // or audio-transcript-as-text). Heavy multimodal work (vision + Whisper)
-  // happens INSIDE ctx.waitUntil so we still ack the webhook in <500ms.
-  const data = extractMessageReceived(payload);
-  const media = data ? null : extractMediaMessage(payload);
-
-  if (!data && !media) {
-    return new Response("ignored", { status: 200 });
-  }
-
-  const message_id = data ? data.message.id : media!.message_id;
-  const from = data ? data.message.from : media!.from;
-  const phone_number_id = data
-    ? data.phone_number_id
-    : media!.phone_number_id;
-
-  // Idempotency by wamid — Kapso retries a delivery on 5xx, and we don't
-  // want to double-process. Applies equally to text and media.
-  const dedupeSql = getDb(env.DATABASE_URL);
-  const fresh = await recordWebhookOrSkip(dedupeSql, message_id);
-  if (!fresh) {
-    console.log("kapso webhook duplicate", message_id);
-    return new Response("duplicate", { status: 200 });
-  }
-
-  const userText = data ? data.message.text?.body?.trim() : null;
-  if (data && !userText) {
-    return new Response("ignored", { status: 200 });
-  }
-
-  const baseUrl = new URL(request.url).origin;
+  // Typing indicator + error logging anchor on the most recent message.
+  const message_id = incoming[incoming.length - 1].id;
 
   // Fire WhatsApp's native typing indicator immediately so the user sees
   // the typing dots while we're transcribing audio, vision-identifying
@@ -576,106 +665,28 @@ async function handleKapsoWebhook(
         const isFirstContact = history.length === 0;
         const distinctId = distinctIdForUser(user.id);
 
-        // ── Resolve incoming text (text / image / audio) ────────────────
-        let resolvedText: string | null = null;
+        // ── Resolve every batched message (text / image / audio) and merge
+        // the fragments into ONE turn. Media failures send their own per-item
+        // fallback and contribute no fragment. If the batch mixes media kinds,
+        // sourceKind reflects the last non-text item (analytics only).
+        const fragments: string[] = [];
         let sourceKind: "text" | "image" | "audio" = "text";
-
-        if (data && userText) {
-          resolvedText = userText;
-          sourceKind = "text";
-        } else if (media) {
-          if (media.kind === "image") {
-            sourceKind = "image";
-            try {
-              const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id, phone_number_id);
-              const ident = await identifyDestinationFromImage(
-                env,
-                blob.bytes,
-                blob.mimeType,
-                media.caption,
-              );
-              await track(env, {
-                event: "image_identified",
-                distinct_id: distinctId,
-                properties: { unknown: ident.unknown, summary_length: ident.summary.length },
-              });
-              if (ident.unknown) {
-                const fallback = "Recibí tu foto 🤔 pero no logré identificar dónde es. ¿Me cuentas qué lugar es?";
-                await appendMessage(sql, user.id, "user", `[foto recibida]${media.caption ? ` "${media.caption}"` : ""}`);
-                await appendMessage(sql, user.id, "assistant", fallback);
-                await sendKapsoText({
-                  apiKey: env.KAPSO_API_KEY,
-                  phoneNumberId: phone_number_id,
-                  to: from,
-                  body: fallback,
-                });
-                return;
-              }
-              resolvedText =
-                `[El usuario mandó una foto. Identifiqué el lugar como: ${ident.summary}.` +
-                (media.caption ? ` Caption del usuario: "${media.caption}".` : "") +
-                ` Tu trabajo: confirmar entusiasmada el destino, preguntarle si quiere que busques vuelos/hotel/paquete desde su origen, e impulsar la conversación. NO le digas que "identificaste una foto" textualmente — habla como si supieras del lugar.]`;
-            } catch (err) {
-              console.error("image processing failed", err);
-              await recordError(sql, "webhook:image", err, {
-                user_id: user.id,
-                media_id: media.media_id,
-              });
-              const fallback = "Recibí tu foto pero tuve un problema procesándola 😬 ¿Me cuentas qué lugar es?";
-              await appendMessage(sql, user.id, "assistant", fallback);
-              await sendKapsoText({
-                apiKey: env.KAPSO_API_KEY,
-                phoneNumberId: phone_number_id,
-                to: from,
-                body: fallback,
-              });
-              return;
-            }
-          } else if (media.kind === "audio") {
-            sourceKind = "audio";
-            try {
-              const blob = await downloadKapsoMedia(env.KAPSO_API_KEY, media.media_id, phone_number_id);
-              const transcript = await transcribeAudio(env, blob.bytes);
-              await track(env, {
-                event: "audio_transcribed",
-                distinct_id: distinctId,
-                properties: {
-                  text_length: transcript.text.length,
-                  duration_seconds: transcript.duration_seconds ?? null,
-                },
-              });
-              if (!transcript.text || transcript.text.length < 2) {
-                const fallback = "No te escuché bien 😅 ¿Lo intentas otra vez o me lo escribes?";
-                await appendMessage(sql, user.id, "user", "[audio inaudible]");
-                await appendMessage(sql, user.id, "assistant", fallback);
-                await sendKapsoText({
-                  apiKey: env.KAPSO_API_KEY,
-                  phoneNumberId: phone_number_id,
-                  to: from,
-                  body: fallback,
-                });
-                return;
-              }
-              resolvedText = transcript.text;
-            } catch (err) {
-              console.error("audio processing failed", err);
-              await recordError(sql, "webhook:audio", err, {
-                user_id: user.id,
-                media_id: media.media_id,
-              });
-              const fallback = "Recibí tu audio pero tuve un problema escuchándolo 😬 ¿Lo intentas otra vez o me escribes?";
-              await appendMessage(sql, user.id, "assistant", fallback);
-              await sendKapsoText({
-                apiKey: env.KAPSO_API_KEY,
-                phoneNumberId: phone_number_id,
-                to: from,
-                body: fallback,
-              });
-              return;
-            }
-          }
+        for (const item of incoming) {
+          const resolved = await resolveIncomingText(
+            env,
+            sql,
+            item,
+            user.id,
+            phone_number_id,
+            from,
+            distinctId,
+          );
+          if (!resolved) continue;
+          fragments.push(resolved.text);
+          if (resolved.kind !== "text") sourceKind = resolved.kind;
         }
 
+        let resolvedText = fragments.join("\n").trim();
         if (!resolvedText) return;
 
         // ── Magic-link merge intercept (skip LLM, merge web user) ──────
