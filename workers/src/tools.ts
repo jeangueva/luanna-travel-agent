@@ -195,9 +195,9 @@ export function makeSaveUserNameTool(args: { sql: Sql; userId: number }) {
 export function makeAddWatchlistTool(args: { sql: Sql; userId: number }) {
   return tool({
     description:
-      "Crea una alerta de precio: Luanna chequea periódicamente este destino y avisa al usuario cuando un vuelo cuesta menos que su límite. " +
+      "Crea una alerta de precio: Luanna chequea periódicamente este destino y avisa al usuario cuando el vuelo baja de precio. " +
       "Úsala cuando el usuario diga cosas como 'avísame si bajan los vuelos a X', 'monitoréalo', 'mándame ofertas a X', 'quiero saber cuándo X esté barato'. " +
-      "Antes de llamarla pide y confirma: origen, destino y precio máximo en USD. " +
+      "Solo necesitas origen y destino. El precio máximo es OPCIONAL: si el usuario lo menciona, pásalo; si no, créala igual SIN pedírselo. " +
       "Devuelve un id de la alerta creada.",
     inputSchema: z.object({
       destination: z.string().describe("Nombre del destino (ej: 'Madrid')"),
@@ -207,7 +207,8 @@ export function makeAddWatchlistTool(args: { sql: Sql; userId: number }) {
         .number()
         .int()
         .positive()
-        .describe("Precio máximo en USD que dispara la alerta"),
+        .optional()
+        .describe("Precio máximo en USD (OPCIONAL, solo si el usuario lo da)"),
       frequency_days: z
         .number()
         .int()
@@ -224,10 +225,13 @@ export function makeAddWatchlistTool(args: { sql: Sql; userId: number }) {
       frequency_days,
     }) => {
       const { id } = await addWatchlistItem(args.sql, args.userId, {
+        // No cap given → store an effectively-unlimited sentinel so the cron
+        // always alerts on real price drops (it uses drop detection, not this
+        // value). Matches the web /api/watchlist behavior.
         destination,
         destination_iata: destination_iata.toUpperCase(),
         origin_iata: origin_iata.toUpperCase(),
-        max_price: max_price_usd,
+        max_price: max_price_usd ?? 999_999,
         currency: "USD",
         frequency_days,
       });
