@@ -357,7 +357,13 @@ export function makeFlightSearchTool(
         .string()
         .optional()
         .describe("Mes específico YYYY-MM (solo si el usuario mencionó un mes)"),
-      return_date: z.string().optional().describe("YYYY-MM-DD para ida y vuelta"),
+      return_date: z.string().optional().describe("YYYY-MM-DD para ida y vuelta (solo si el usuario dio fecha de retorno)"),
+      one_way: z
+        .boolean()
+        .optional()
+        .describe(
+          "true SOLO si el usuario pide explícitamente solo ida. Por defecto (omitido) busca IDA Y VUELTA.",
+        ),
       airline: z
         .string()
         .length(2)
@@ -372,9 +378,14 @@ export function makeFlightSearchTool(
       departure_date,
       departure_month,
       return_date,
+      one_way,
       airline,
     }) => {
       const baseHeaders = { "X-Access-Token": env.TRAVELPAYOUTS_TOKEN };
+      // Default to round-trip. Aviasales returns round-trip itineraries (with
+      // a return_at it picks) when one_way=false, even if the user didn't give
+      // a return date. Only search one-way when explicitly requested.
+      const oneWay = one_way ?? false;
       // When filtering by a specific airline, pull a wider pool so enough of
       // that carrier's flights survive the filter; otherwise 5 is plenty.
       const fetchLimit = airline ? "100" : "5";
@@ -386,6 +397,7 @@ export function makeFlightSearchTool(
         url.searchParams.set("destination", destination.toUpperCase());
         if (departureAt) url.searchParams.set("departure_at", departureAt);
         if (return_date) url.searchParams.set("return_at", return_date);
+        url.searchParams.set("one_way", oneWay ? "true" : "false");
         url.searchParams.set("currency", "usd");
         url.searchParams.set("sorting", "price");
         url.searchParams.set("limit", fetchLimit);
