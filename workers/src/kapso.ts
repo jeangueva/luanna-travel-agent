@@ -285,6 +285,67 @@ export async function sendKapsoText(params: {
   }
 }
 
+/**
+ * True when a Kapso/Meta send failed because we're outside the 24-hour
+ * customer-service window (error 470 / 131047 / the human-readable "24-hour
+ * window" message). In that state only an approved template can be delivered.
+ */
+export function isOutside24hWindow(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /24-hour window/i.test(msg) ||
+    /\b131047\b/.test(msg) ||
+    /\b470\b/.test(msg) ||
+    /outside.*window/i.test(msg)
+  );
+}
+
+/**
+ * Send a pre-approved NAMED template. Used to re-open the 24-hour window for
+ * proactive messages (nudges, price alerts) when the user has been silent >24h
+ * and a free-form message would be rejected. `params` map is param_name->value.
+ */
+export async function sendKapsoTemplate(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  templateName: string;
+  language?: string;
+  bodyParams: Record<string, string>;
+}): Promise<void> {
+  const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
+  const parameters = Object.entries(params.bodyParams).map(([name, text]) => ({
+    type: "text",
+    parameter_name: name,
+    // WhatsApp template params can't contain newlines or 4+ consecutive spaces.
+    text: String(text).replace(/\s+/g, " ").trim().slice(0, 1024),
+  }));
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": params.apiKey,
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: params.to,
+      type: "template",
+      template: {
+        name: params.templateName,
+        language: { code: params.language ?? "es" },
+        components:
+          parameters.length > 0
+            ? [{ type: "body", parameters }]
+            : [],
+      },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Kapso template send failed ${res.status}: ${text}`);
+  }
+}
+
 export async function sendKapsoCtaUrl(params: {
   apiKey: string;
   phoneNumberId: string;

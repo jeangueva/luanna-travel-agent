@@ -1,0 +1,29 @@
+{
+  "name": "alerta_precio",
+  "language": "es",
+  "category": "MARKETING",
+  "parameter_format": "NAMED",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "📉 ¡{{nombre}}, buenas noticias! Encontré una buena opción para {{ruta}}: desde {{precio}}. ¿Te muestro los detalles? 🙌",
+      "example": {
+        "body_text_named_params": [
+          { "param_name": "nombre", "example": "Jean" },
+          { "param_name": "ruta", "example": "Lima → Madrid" },
+          { "param_name": "precio", "example": "$540" }
+        ]
+      }
+    },
+    {
+      "type": "FOOTER",
+      "text": "Responde y te paso el link"
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        { "type": "QUICK_REPLY", "text": "Ver opciones" }
+      ]
+    }
+  ]
+}

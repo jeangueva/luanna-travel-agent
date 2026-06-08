@@ -18,7 +18,7 @@ import {
   type OfferEligibleUser,
   type Sql,
 } from "./db";
-import { sendKapsoText } from "./kapso";
+import { sendKapsoText, sendKapsoTemplate, isOutside24hWindow } from "./kapso";
 import { distinctIdForUser, track } from "./posthog";
 import { HOLIDAYS, holidaysWithinDays } from "./holidays";
 import { wrapClickUrl } from "./tools";
@@ -204,6 +204,42 @@ function formatFirstAlertNotification(
   return lines.join("\n");
 }
 
+// Send a proactive message free-form. If we're outside the 24-hour window
+// (user silent >24h), Meta rejects free-form, so fall back to an approved
+// template that re-opens the conversation. The template intentionally omits
+// the deep link — once the user taps "Ver opciones"/"Sí, búscame precios" and
+// replies, the window reopens and the normal LLM flow sends the real links.
+async function sendProactive(
+  env: CronEnv,
+  args: {
+    phoneNumberId: string;
+    to: string;
+    body: string;
+    templateName: string;
+    templateParams: Record<string, string>;
+  },
+): Promise<"text" | "template"> {
+  try {
+    await sendKapsoText({
+      apiKey: env.KAPSO_API_KEY,
+      phoneNumberId: args.phoneNumberId,
+      to: args.to,
+      body: args.body,
+    });
+    return "text";
+  } catch (err) {
+    if (!isOutside24hWindow(err)) throw err;
+    await sendKapsoTemplate({
+      apiKey: env.KAPSO_API_KEY,
+      phoneNumberId: args.phoneNumberId,
+      to: args.to,
+      templateName: args.templateName,
+      bodyParams: args.templateParams,
+    });
+    return "template";
+  }
+}
+
 async function processWatchlistRow(
   env: CronEnv,
   row: DueWatchlistRow,
@@ -279,11 +315,16 @@ async function processWatchlistRow(
     return;
   }
 
-  await sendKapsoText({
-    apiKey: env.KAPSO_API_KEY,
+  await sendProactive(env, {
     phoneNumberId: row.phone_number_id,
     to: row.phone,
     body,
+    templateName: "alerta_precio",
+    templateParams: {
+      nombre: "viajero",
+      ruta: `${row.origin_iata} → ${row.destination || row.destination_iata}`,
+      precio: `$${cheapest.price}`,
+    },
   });
   await markWatchlistChecked(sql, row.id, true);
 }
@@ -347,11 +388,16 @@ async function processOfferUser(
     );
   }
 
-  await sendKapsoText({
-    apiKey: env.KAPSO_API_KEY,
+  await sendProactive(env, {
     phoneNumberId: user.phone_number_id,
     to: user.phone,
     body: formatOfferMessage(user, destination, flight),
+    templateName: "alerta_precio",
+    templateParams: {
+      nombre: user.name || "viajero",
+      ruta: `${user.origin} → ${destination.pretty}`,
+      precio: `$${flight.price}`,
+    },
   });
   const sql = getDb(env.DATABASE_URL);
   await markUserOfferSent(sql, user.id);
@@ -506,11 +552,15 @@ async function processNudge(
   if (!user.phone_number_id) return "skipped";
   const sql = getDb(env.DATABASE_URL);
   const body = extra ? `${extra}\n${await generateNudgeText(env, user)}` : await generateNudgeText(env, user);
-  await sendKapsoText({
-    apiKey: env.KAPSO_API_KEY,
+  await sendProactive(env, {
     phoneNumberId: user.phone_number_id,
     to: user.phone,
     body,
+    templateName: "reengagement_viaje",
+    templateParams: {
+      nombre: user.name || "viajero",
+      destino: user.countries[0] || "tu próximo viaje",
+    },
   });
   await markUserNudged(sql, user.id);
   await track(env, {

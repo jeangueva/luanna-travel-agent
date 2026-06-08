@@ -1,0 +1,28 @@
+{
+  "name": "reengagement_viaje",
+  "language": "es",
+  "category": "MARKETING",
+  "parameter_format": "NAMED",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "¡Hola {{nombre}}! ✈️ Soy Luanna. ¿Seguimos con tu viaje a {{destino}}? Puedo buscarte precios actualizados ahora mismo 🙌",
+      "example": {
+        "body_text_named_params": [
+          { "param_name": "nombre", "example": "Jean" },
+          { "param_name": "destino", "example": "Madrid" }
+        ]
+      }
+    },
+    {
+      "type": "FOOTER",
+      "text": "Responde y seguimos"
+    },
+    {
+      "type": "BUTTONS",
+      "buttons": [
+        { "type": "QUICK_REPLY", "text": "Sí, búscame precios" }
+      ]
+    }
+  ]
+}
