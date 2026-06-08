@@ -848,17 +848,20 @@ async function handleKapsoWebhook(
           userPrefs,
         });
         if (reply.trim()) {
-          // Send the reply FIRST (user sees it immediately), then persist
-          // the assistant turn in the background. The webhook handler is
-          // already inside ctx.waitUntil so the persist completes before
-          // the worker invocation ends.
+          // Send the reply FIRST (user sees it immediately), then persist the
+          // assistant turn. We MUST await the persist: a fire-and-forget write
+          // races worker termination — once this async IIFE resolves, the
+          // ctx.waitUntil promise settles and the runtime can kill the
+          // invocation before a dangling DB write lands. That dropped the
+          // assistant turns from history, so the bot never "saw" its own
+          // replies and repeated itself / lost context.
           await sendKapsoText({
             apiKey: env.KAPSO_API_KEY,
             phoneNumberId: phone_number_id,
             to: from,
             body: reply,
           });
-          appendMessage(sql, user.id, "assistant", reply).catch((err) =>
+          await appendMessage(sql, user.id, "assistant", reply).catch((err) =>
             console.error("appendMessage assistant failed", err),
           );
         }
