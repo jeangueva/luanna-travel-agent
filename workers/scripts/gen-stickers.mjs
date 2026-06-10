@@ -17,10 +17,13 @@ const GOLD = "#f5a623";
 const RED = "#ef4444";
 const WHITE = "#ffffff";
 
-// A simple paper-plane glyph path (drawn, not an emoji font dependency).
-const plane = (fill) =>
-  `<path transform="translate(206,150) scale(0.9)" fill="${fill}"
-     d="M2 2 L118 52 L60 64 L52 118 L34 74 L2 2 Z"/>`;
+// Airplane silhouette (Material "flight" icon, 24x24 path). Reads clearly as
+// a plane, not a cursor. Drawn vector — no emoji-font dependency.
+// tx/ty position the top-left; scale sizes it (24 units * scale = px).
+const plane = (fill, tx, ty, scale = 6, rotate = 0) =>
+  `<g transform="translate(${tx},${ty}) scale(${scale}) rotate(${rotate} 12 12)">
+     <path fill="${fill}" d="M21,16V14L13,9V3.5A1.5,1.5 0 0,0 11.5,2A1.5,1.5 0 0,0 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z"/>
+   </g>`;
 
 const card = (bg) =>
   `<rect x="26" y="26" width="460" height="460" rx="80" ry="80" fill="${bg}"/>`;
@@ -32,9 +35,9 @@ const text = (s, y, size, fill = WHITE, weight = 800) =>
 
 const stickers = {
   // First-contact greeting
-  welcome: `${card(TEAL)}${plane(WHITE)}${text("¡HOLA!", 330, 78)}${text("Soy Luanna", 392, 40, WHITE, 600)}`,
+  welcome: `${card(TEAL)}${plane(WHITE, 184, 70, 6.5, -20)}${text("¡HOLA!", 340, 78)}${text("Soy Luanna", 402, 40, WHITE, 600)}`,
   // Cheap flight / good deal found
-  deal: `${card(GOLD)}${text("OFERTA", 250, 86, NAVY)}${text("¡Vuelo barato!", 330, 42, NAVY, 600)}${plane(NAVY)}`,
+  deal: `${card(GOLD)}${text("OFERTA", 230, 86, NAVY)}${text("¡Vuelo barato!", 300, 42, NAVY, 600)}${plane(NAVY, 196, 350, 5.5, -20)}`,
   // Price alert created / triggered
   alert: `${card(NAVY)}
      <circle cx="256" cy="210" r="70" fill="${TEAL}"/>
