@@ -13,6 +13,7 @@ import {
   extractMessageReceived,
   type MediaMessage,
   sendKapsoCtaUrl,
+  sendKapsoSticker,
   sendKapsoFlow,
   sendKapsoText,
   sendKapsoTypingIndicator,
@@ -77,6 +78,7 @@ import {
   makePreferencesLinkTool,
   makeRemoveFavoritePlacesTool,
   makeSaveUserNameTool,
+  makeSendStickerTool,
   makeSuggestItineraryTool,
 } from "./tools";
 import {
@@ -199,6 +201,15 @@ async function generateReply(
   // here anymore — it's surfaced on demand (PREFS_INTENT below) and in the
   // re-engagement nudges instead, so the first message stays light.
   if (ctx.isFirstContact && ctx.userId > 0) {
+    // Send the welcome sticker first (cosmetic, never blocks the greeting).
+    if (inWhatsApp) {
+      await sendKapsoSticker({
+        apiKey: env.KAPSO_API_KEY,
+        phoneNumberId: ctx.phoneNumberId!,
+        to: ctx.to!,
+        link: `${ctx.baseUrl}/stickers/welcome.webp`,
+      });
+    }
     return buildFirstContactWelcome();
   }
 
@@ -244,7 +255,10 @@ async function generateReply(
   // PostHog tracking is fire-and-forget — never block the user's reply on
   // analytics. Errors swallowed (analytics SDK has its own retry).
   if (ctx.userId > 0) {
-    const toolEvents = collectToolEvents(result, ctx.userId);
+    const toolEvents = collectToolEvents(
+      result as unknown as { steps?: ToolCallStep[] },
+      ctx.userId,
+    );
     if (toolEvents.length > 0) {
       trackBatch(env, toolEvents).catch((err) =>
         console.error("trackBatch failed", err),
@@ -328,6 +342,17 @@ function buildLLMArgs(
       sql: ctx.sql,
       userId: ctx.userId,
     }),
+    // Stickers only make sense in WhatsApp (need a real recipient + phone id).
+    ...(inWhatsApp
+      ? {
+          send_sticker: makeSendStickerTool({
+            apiKey: env.KAPSO_API_KEY,
+            phoneNumberId: ctx.phoneNumberId!,
+            to: ctx.to!,
+            baseUrl: ctx.baseUrl,
+          }),
+        }
+      : {}),
   };
   return {
     model,
@@ -384,7 +409,10 @@ function streamReply(
         );
       }
       if (userId > 0) {
-        const toolEvents = collectToolEvents({ steps }, userId);
+        const toolEvents = collectToolEvents(
+          { steps } as unknown as { steps?: ToolCallStep[] },
+          userId,
+        );
         if (toolEvents.length > 0) {
           trackBatch(env, toolEvents).catch((err) =>
             console.error("trackBatch (stream) failed", err),

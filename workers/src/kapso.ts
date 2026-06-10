@@ -346,6 +346,41 @@ export async function sendKapsoTemplate(params: {
   }
 }
 
+/**
+ * Send a WhatsApp sticker by public link. The link must point to a static
+ * .webp (512x512, <100KB) — we serve ours from luanna.app/stickers/*.webp.
+ * Stickers are cosmetic: never let a failure break the conversation.
+ */
+export async function sendKapsoSticker(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  link: string;
+}): Promise<void> {
+  const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": params.apiKey,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: params.to,
+        type: "sticker",
+        sticker: { link: params.link },
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`sendKapsoSticker failed ${res.status}: ${text.slice(0, 200)}`);
+    }
+  } catch (err) {
+    console.error("sendKapsoSticker error", err);
+  }
+}
+
 export async function sendKapsoCtaUrl(params: {
   apiKey: string;
   phoneNumberId: string;

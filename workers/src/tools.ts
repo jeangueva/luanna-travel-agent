@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { createWebviewToken } from "./auth";
-import { sendKapsoCtaUrl, sendKapsoFlow } from "./kapso";
+import { sendKapsoCtaUrl, sendKapsoFlow, sendKapsoSticker } from "./kapso";
 import {
   addWatchlistItem,
   createClickRedirect,
@@ -174,6 +174,39 @@ export function makeSuggestItineraryTool() {
         format_example:
           "Día 1: barrio histórico + atardecer\\nDía 2: museo + parque\\n...\\n🍝 No te pierdas la X\\n🚇 Usa la app Y para metro\\n💸 Presupuesto: $A-$B/día",
       };
+    },
+  });
+}
+
+// Sticker moods → served from luanna.app/stickers/<mood>.webp
+const STICKER_MOODS = ["deal", "alert", "thanks"] as const;
+
+export function makeSendStickerTool(args: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  baseUrl: string;
+}) {
+  return tool({
+    description:
+      "Envía un sticker de Luanna para darle calidez al momento. Úsalo CON MODERACIÓN (máx 1 por conversación, no en cada mensaje): " +
+      "'deal' cuando muestras un vuelo/oferta muy barata 🔥; " +
+      "'alert' cuando confirmas que creaste una alerta de precio ✅; " +
+      "'thanks' cuando el usuario agradece o se despide 🙌. " +
+      "Llama esta tool ADEMÁS de tu mensaje de texto, no en vez de él.",
+    inputSchema: z.object({
+      mood: z
+        .enum(STICKER_MOODS)
+        .describe("Tipo de sticker según el momento: deal | alert | thanks"),
+    }),
+    execute: async ({ mood }) => {
+      await sendKapsoSticker({
+        apiKey: args.apiKey,
+        phoneNumberId: args.phoneNumberId,
+        to: args.to,
+        link: `${args.baseUrl}/stickers/${mood}.webp`,
+      });
+      return { ok: true, mood };
     },
   });
 }
