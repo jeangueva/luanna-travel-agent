@@ -78,6 +78,9 @@ export async function identifyDestinationFromImage(
 export interface AudioTranscript {
   text: string;
   duration_seconds?: number;
+  // ISO-639-1 code Whisper detected (e.g. "es", "en", "pt"). undefined if
+  // the model didn't report one.
+  language?: string;
 }
 
 export async function transcribeAudio(
@@ -87,26 +90,32 @@ export async function transcribeAudio(
   if (!env.AI) {
     throw new Error("Workers AI binding (AI) is not configured");
   }
-  // whisper-large-v3-turbo handles OGG/Opus (WhatsApp voice format) and has
-  // strong Spanish support. Audio is sent as base64; we chunk the binary
-  // encoding to avoid call-stack issues on large clips.
+  // whisper-large-v3-turbo handles OGG/Opus (WhatsApp voice format). We DON'T
+  // pin a language: Luanna serves Spanish, English and Portuguese speakers, so
+  // we let Whisper auto-detect — pinning "es" mangled English/Portuguese notes
+  // into garbage Spanish. The initial_prompt is just language-neutral proper
+  // nouns (place names) to bias spelling without biasing the detected language.
   const base64 = arrayBufferToBase64(audioBytes);
   const result = (await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
     audio: base64,
     task: "transcribe",
-    language: "es",
     initial_prompt:
-      "Hola Luanna. Quiero un vuelo desde Lima a Madrid. Cancún, Cartagena, Cusco, Buenos Aires, Barcelona, Tokio. Vuelos baratos, hotel, paquete, alerta de precio, presupuesto.",
+      "Luanna. Lima, Madrid, Cancún, Cartagena, Cusco, Buenos Aires, Barcelona, Tokyo, São Paulo, Rio de Janeiro, Miami.",
   })) as {
     text?: string;
-    transcription_info?: { duration?: number };
+    transcription_info?: { duration?: number; language?: string };
+    language?: string;
   };
   const text = (result.text ?? "").trim();
+  const language =
+    result.transcription_info?.language ?? result.language ?? undefined;
   return {
     text,
     duration_seconds:
       typeof result.transcription_info?.duration === "number"
         ? result.transcription_info.duration
         : undefined,
+    language:
+      typeof language === "string" ? language.slice(0, 5).toLowerCase() : undefined,
   };
 }

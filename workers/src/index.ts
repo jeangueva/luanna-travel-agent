@@ -562,6 +562,7 @@ async function resolveIncomingText(
       properties: {
         text_length: transcript.text.length,
         duration_seconds: transcript.duration_seconds ?? null,
+        language: transcript.language ?? null,
       },
     });
     if (!transcript.text || transcript.text.length < 2) {
@@ -1763,6 +1764,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
           source: "web",
           text_length: transcript.text.length,
           duration_seconds: transcript.duration_seconds ?? null,
+          language: transcript.language ?? null,
         },
       });
       if (!transcript.text || transcript.text.length < 2) {
