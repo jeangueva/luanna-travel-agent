@@ -85,6 +85,7 @@ import {
   makeSaveUserNameTool,
   makeSendStickerTool,
   makeSuggestItineraryTool,
+  makeTripPrepTool,
 } from "./tools";
 import {
   createChatToken,
@@ -325,6 +326,7 @@ function buildLLMArgs(
     search_hotels: makeHotelSearchTool(tpEnv, clickCtx),
     get_package_link: makePackageLinkTool(tpEnv, clickCtx),
     suggest_itinerary: makeSuggestItineraryTool(),
+    trip_prep: makeTripPrepTool(),
     ...(flowEnabled
       ? {
           open_preferences_form: makePreferencesFlowTool({

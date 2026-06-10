@@ -211,6 +211,40 @@ export function makeSendStickerTool(args: {
   });
 }
 
+export function makeTripPrepTool() {
+  return tool({
+    description:
+      "Da info práctica de preparación de viaje para un destino: si necesita visa, mejor época para ir, clima y presupuesto diario aproximado. " +
+      "Úsala cuando el usuario pregunte '¿necesito visa?', '¿cuándo es mejor ir a X?', '¿qué clima hace?', '¿cuánto cuesta el día en X?' o pida 'tips para mi viaje a X'. " +
+      "Devuelve hints estructurados que TÚ formateas como respuesta corta de WhatsApp.",
+    inputSchema: z.object({
+      destination: z.string().min(2).describe("Ciudad o país destino, ej 'Madrid', 'Japón'"),
+      from_country: z
+        .string()
+        .optional()
+        .describe("País/nacionalidad del usuario para la visa (ej 'Perú'). Si no lo sabes, asume el país de su origen guardado."),
+      topics: z
+        .array(z.enum(["visa", "mejor_epoca", "clima", "presupuesto"]))
+        .optional()
+        .describe("Qué temas cubrir. Si se omite, cubre los relevantes a lo que preguntó."),
+    }),
+    execute: async ({ destination, from_country, topics }) => {
+      return {
+        destination,
+        from_country: from_country ?? null,
+        topics: topics ?? ["visa", "mejor_epoca", "clima", "presupuesto"],
+        hint:
+          `Da info breve y útil de viaje a ${destination}` +
+          (from_country ? ` para alguien de ${from_country}` : "") +
+          `: visa (si la necesita y tipo), mejor época para ir, clima general y presupuesto diario aprox en USD. ` +
+          `Formato WhatsApp: 3-5 líneas, 1 dato por línea con emoji (🛂 🗓️ 🌦️ 💸). Tono cálido de Luanna.`,
+        visa_disclaimer:
+          "REGLA DURA: si mencionas visa, agrega SIEMPRE al final: 'Confírmalo con la embajada/consulado, las reglas cambian 🙏'. NUNCA afirmes requisitos de visa como definitivos.",
+      };
+    },
+  });
+}
+
 export function makeSaveUserNameTool(args: { sql: Sql; userId: number }) {
   return tool({
     description:
