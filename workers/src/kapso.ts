@@ -15,6 +15,41 @@ export interface KapsoMessage {
       response_json?: string;
     };
   };
+  location?: {
+    latitude?: number;
+    longitude?: number;
+    name?: string;
+    address?: string;
+  };
+}
+
+export interface LocationMessage {
+  message_id: string;
+  from: string;
+  phone_number_id: string;
+  latitude: number;
+  longitude: number;
+}
+
+export function extractLocationMessage(body: unknown): LocationMessage | null {
+  const data = unwrapEnvelope(body);
+  if (!data) return null;
+  if (data.message.type !== "location") return null;
+  const loc = data.message.location;
+  if (
+    !loc ||
+    typeof loc.latitude !== "number" ||
+    typeof loc.longitude !== "number"
+  ) {
+    return null;
+  }
+  return {
+    message_id: data.message.id,
+    from: data.message.from,
+    phone_number_id: data.phone_number_id,
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+  };
 }
 
 export interface KapsoMessageReceivedData {

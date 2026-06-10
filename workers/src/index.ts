@@ -9,8 +9,10 @@ import {
   downloadKapsoMedia,
   extractFlowSubmission,
   extractMediaMessage,
+  extractLocationMessage,
   extractMessageBatch,
   extractMessageReceived,
+  type LocationMessage,
   type MediaMessage,
   sendKapsoCtaUrl,
   sendKapsoSticker,
@@ -66,6 +68,7 @@ import {
   cleanStringArray,
 } from "./validators";
 import { distinctIdForUser, track, trackBatch } from "./posthog";
+import { inferOriginFromPhone, nearestAirport } from "./geo";
 import { buildLuannaSystemPrompt } from "./prompt";
 import {
   makeAddFavoritePlacesTool,
@@ -361,6 +364,14 @@ function buildLLMArgs(
       userName: ctx.userName ?? null,
       isFirstContact: ctx.isFirstContact ?? false,
       userOrigin: ctx.userPrefs?.origin ?? null,
+      // Capa A: only suggest a phone-derived origin when none is saved.
+      suggestedOrigin:
+        !ctx.userPrefs?.origin && ctx.to
+          ? (() => {
+              const g = inferOriginFromPhone(ctx.to!);
+              return g ? { city: g.city, iata: g.iata } : null;
+            })()
+          : null,
       userCountries: ctx.userPrefs?.countries ?? [],
       userCities: ctx.userPrefs?.cities ?? [],
       userStyles: ctx.userPrefs?.styles ?? [],
@@ -593,6 +604,42 @@ async function resolveIncomingText(
   }
 }
 
+// Capa B: a shared WhatsApp location pin → set the user's origin to the
+// nearest airport city and confirm. Cosmetic-safe: failures are logged, never
+// thrown back into the webhook ack.
+async function handleLocationMessage(
+  env: Env,
+  loc: LocationMessage,
+): Promise<void> {
+  try {
+    const sql = getDb(env.DATABASE_URL);
+    const user = await getOrCreateUser(sql, loc.from, loc.phone_number_id);
+    const airport = nearestAirport(loc.latitude, loc.longitude);
+    if (!airport) return;
+    const prefs = await getPreferences(sql, user.id);
+    await upsertPreferences(sql, user.id, { ...prefs, origin: airport.city });
+    const body = `📍 ¡Listo! Te ubiqué cerca de ${airport.city} (${airport.iata}). Usaré ese origen para tus vuelos. Si sales desde otra ciudad, dímelo 🙂`;
+    await appendMessage(sql, user.id, "user", "[ubicación compartida]");
+    await appendMessage(sql, user.id, "assistant", body);
+    await sendKapsoText({
+      apiKey: env.KAPSO_API_KEY,
+      phoneNumberId: loc.phone_number_id,
+      to: loc.from,
+      body,
+    });
+    await track(env, {
+      event: "location_shared",
+      distinct_id: distinctIdForUser(user.id),
+      properties: { iata: airport.iata, city: airport.city },
+    });
+  } catch (err) {
+    console.error("location handler error", err);
+    await recordError(getDb(env.DATABASE_URL), "webhook:location", err, {
+      from: loc.from,
+    });
+  }
+}
+
 async function handleKapsoWebhook(
   request: Request,
   env: Env,
@@ -639,11 +686,24 @@ async function handleKapsoWebhook(
     }
   }
 
+  const dedupeSql = getDb(env.DATABASE_URL);
+
+  // Capa B: a shared location pin sets the user's origin to the nearest
+  // airport city. Handled as its own intercept (never merged into chat text).
+  for (const item of batch) {
+    const loc = extractLocationMessage(item);
+    if (loc) {
+      const fresh = await recordWebhookOrSkip(dedupeSql, loc.message_id);
+      if (fresh) {
+        ctx.waitUntil(handleLocationMessage(env, loc));
+      }
+    }
+  }
+
   // Collect the conversational messages (text + media), de-duplicated by wamid
   // so a Kapso retry of the whole batch never double-replies. Heavy multimodal
   // work (vision + Whisper) happens later INSIDE ctx.waitUntil so we still ack
   // the webhook in <500ms.
-  const dedupeSql = getDb(env.DATABASE_URL);
   const incoming: IncomingMessage[] = [];
   for (const item of batch) {
     const data = extractMessageReceived(item);

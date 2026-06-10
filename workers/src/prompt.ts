@@ -130,6 +130,8 @@ export interface PromptContext {
   userName?: string | null;
   isFirstContact?: boolean;
   userOrigin?: string | null;
+  /** City guessed from the user's phone country code (Capa A). */
+  suggestedOrigin?: { city: string; iata: string } | null;
   userCountries?: string[];
   userCities?: string[];
   userStyles?: string[];
@@ -157,9 +159,13 @@ export function buildLuannaSystemPrompt(ctx: PromptContext = {}): string {
     prefsLines.push(
       `- Origen guardado: "${ctx.userOrigin}". USA este origen por defecto cuando el usuario solo mencione un destino o cuando no diga desde dónde sale.`,
     );
+  } else if (ctx.suggestedOrigin) {
+    prefsLines.push(
+      `- No tienes su origen guardado, PERO por su número de teléfono probablemente sale desde ${ctx.suggestedOrigin.city} (${ctx.suggestedOrigin.iata}). Si pide un vuelo sin decir origen, NO preguntes en seco: propón ese origen y confirma en una línea (ej "¿Sales desde ${ctx.suggestedOrigin.city}? Si es otra ciudad dime cuál 🙂"). Si confirma o no corrige, úsalo. Si te da otra ciudad, usa esa.`,
+    );
   } else {
     prefsLines.push(
-      `- Aún no sabes su origen. Si pide un vuelo y no menciona origen, pregúntaselo UNA VEZ (ej "¿desde qué ciudad sales?") antes de buscar.`,
+      `- Aún no sabes su origen. Si pide un vuelo y no menciona origen, pregúntaselo UNA VEZ (ej "¿desde qué ciudad sales? O si quieres, compárteme tu ubicación 📍 y la detecto") antes de buscar.`,
     );
   }
   if (ctx.userCountries && ctx.userCountries.length > 0) {
