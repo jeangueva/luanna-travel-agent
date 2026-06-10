@@ -83,6 +83,45 @@ export interface AudioTranscript {
   language?: string;
 }
 
+// MeloTTS supports these speech languages. Portuguese isn't available, so
+// PT voice replies fall back to text-only (the caller skips TTS).
+const TTS_LANGS = new Set(["es", "en", "fr", "zh", "ja", "ko"]);
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * Text → spoken MP3 via Workers AI MeloTTS. Returns null when TTS is
+ * unavailable or the language isn't supported (caller then stays text-only).
+ * Cosmetic feature: never throws.
+ */
+export async function generateSpeech(
+  env: MultimodalEnv,
+  text: string,
+  lang: string | undefined,
+): Promise<Uint8Array | null> {
+  if (!env.AI) return null;
+  const code = (lang ?? "es").slice(0, 2).toLowerCase();
+  if (!TTS_LANGS.has(code)) return null;
+  const prompt = text.trim().slice(0, 800);
+  if (!prompt) return null;
+  try {
+    const result = (await env.AI.run("@cf/myshell-ai/melotts", {
+      prompt,
+      lang: code,
+    })) as { audio?: string };
+    if (!result.audio) return null;
+    return base64ToBytes(result.audio);
+  } catch (err) {
+    console.error("generateSpeech failed", err);
+    return null;
+  }
+}
+
 export async function transcribeAudio(
   env: MultimodalEnv,
   audioBytes: ArrayBuffer,

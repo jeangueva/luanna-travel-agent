@@ -382,6 +382,62 @@ export async function sendKapsoTemplate(params: {
 }
 
 /**
+ * Send a voice note: upload the MP3 to Kapso media, then send it as an audio
+ * message by id. WhatsApp renders audio messages as playable voice notes.
+ * Cosmetic — a failure logs and is swallowed (the text reply already went out).
+ */
+export async function sendKapsoAudio(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  mp3: Uint8Array;
+}): Promise<void> {
+  try {
+    // 1) Upload media → get an id.
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "audio/mpeg");
+    form.append(
+      "file",
+      new Blob([params.mp3.buffer as ArrayBuffer], { type: "audio/mpeg" }),
+      "luanna.mp3",
+    );
+    const upRes = await fetch(
+      `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/media`,
+      { method: "POST", headers: { "X-API-Key": params.apiKey }, body: form },
+    );
+    if (!upRes.ok) {
+      console.error(`sendKapsoAudio upload failed ${upRes.status}: ${(await upRes.text().catch(() => "")).slice(0, 200)}`);
+      return;
+    }
+    const up = (await upRes.json().catch(() => null)) as { id?: string } | null;
+    if (!up?.id) {
+      console.error("sendKapsoAudio: no media id in upload response");
+      return;
+    }
+    // 2) Send the audio message by id.
+    const sendRes = await fetch(
+      `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": params.apiKey },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: params.to,
+          type: "audio",
+          audio: { id: up.id },
+        }),
+      },
+    );
+    if (!sendRes.ok) {
+      console.error(`sendKapsoAudio send failed ${sendRes.status}: ${(await sendRes.text().catch(() => "")).slice(0, 200)}`);
+    }
+  } catch (err) {
+    console.error("sendKapsoAudio error", err);
+  }
+}
+
+/**
  * Send a WhatsApp sticker by public link. The link must point to a static
  * .webp (512x512, <100KB) — we serve ours from luanna.app/stickers/*.webp.
  * Stickers are cosmetic: never let a failure break the conversation.

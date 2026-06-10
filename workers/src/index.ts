@@ -14,6 +14,7 @@ import {
   extractMessageReceived,
   type LocationMessage,
   type MediaMessage,
+  sendKapsoAudio,
   sendKapsoCtaUrl,
   sendKapsoSticker,
   sendKapsoFlow,
@@ -22,6 +23,7 @@ import {
   verifyKapsoSignature,
 } from "./kapso";
 import {
+  generateSpeech,
   identifyDestinationFromImage,
   transcribeAudio,
 } from "./multimodal";
@@ -166,6 +168,28 @@ function sanitizeReply(text: string, baseUrl: string): string {
       return "";
     }
   });
+}
+
+// Turn a reply into something worth speaking aloud: drop URLs (useless in
+// audio), markdown, and most emojis, collapse whitespace, and cap length so
+// the voice note stays short. Returns "" if nothing speakable remains.
+function spokenSummary(reply: string): string {
+  let s = reply
+    .replace(/https?:\/\/\S+/g, "") // URLs
+    .replace(/[*_`#>]/g, "") // markdown
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, ". ")
+    // strip most emoji / symbol ranges (TTS reads them as noise)
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  // Cap to ~2 sentences / 300 chars so the clip is short.
+  if (s.length > 300) {
+    const cut = s.slice(0, 300);
+    const lastDot = cut.lastIndexOf(". ");
+    s = (lastDot > 80 ? cut.slice(0, lastDot + 1) : cut).trim();
+  }
+  return s;
 }
 
 const PREFS_INTENT_RE =
@@ -510,7 +534,11 @@ async function resolveIncomingText(
   phone_number_id: string,
   from: string,
   distinctId: string,
-): Promise<{ text: string; kind: "text" | "image" | "audio" } | null> {
+): Promise<{
+  text: string;
+  kind: "text" | "image" | "audio";
+  language?: string;
+} | null> {
   if (item.text) {
     return { text: item.text, kind: "text" };
   }
@@ -588,7 +616,7 @@ async function resolveIncomingText(
       });
       return null;
     }
-    return { text: transcript.text, kind: "audio" };
+    return { text: transcript.text, kind: "audio", language: transcript.language };
   } catch (err) {
     console.error("audio processing failed", err);
     await recordError(sql, "webhook:audio", err, { user_id: userId, media_id: media.media_id });
@@ -760,6 +788,9 @@ async function handleKapsoWebhook(
         // sourceKind reflects the last non-text item (analytics only).
         const fragments: string[] = [];
         let sourceKind: "text" | "image" | "audio" = "text";
+        // If the user spoke (voice note), we reply with a voice note too
+        // (mirror modality). Remember the spoken language for TTS.
+        let voiceReplyLang: string | undefined;
         for (const item of incoming) {
           const resolved = await resolveIncomingText(
             env,
@@ -773,6 +804,7 @@ async function handleKapsoWebhook(
           if (!resolved) continue;
           fragments.push(resolved.text);
           if (resolved.kind !== "text") sourceKind = resolved.kind;
+          if (resolved.kind === "audio") voiceReplyLang = resolved.language;
         }
 
         let resolvedText = fragments.join("\n").trim();
@@ -953,6 +985,23 @@ async function handleKapsoWebhook(
           await appendMessage(sql, user.id, "assistant", reply).catch((err) =>
             console.error("appendMessage assistant failed", err),
           );
+          // Voice-first: if the user sent a voice note, also reply with a
+          // short spoken summary (text already carries the full details +
+          // links). Non-blocking and cosmetic — never delays/fails the text.
+          if (voiceReplyLang) {
+            const spoken = spokenSummary(reply);
+            if (spoken) {
+              const mp3 = await generateSpeech(env, spoken, voiceReplyLang);
+              if (mp3) {
+                await sendKapsoAudio({
+                  apiKey: env.KAPSO_API_KEY,
+                  phoneNumberId: phone_number_id,
+                  to: from,
+                  mp3,
+                });
+              }
+            }
+          }
         }
       } catch (err) {
         console.error("kapso handler error", err);
