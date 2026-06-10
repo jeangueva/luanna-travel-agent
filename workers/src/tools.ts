@@ -12,6 +12,12 @@ import {
   type Sql,
 } from "./db";
 
+// Approximate USD→PEN rate for display only ("~S/ X aprox"). Travelpayouts
+// prices are in USD; we show an approximate soles figure alongside. Update
+// this when the rate drifts materially. Not used for any billing/logic.
+const USD_TO_PEN = 3.75;
+const usdToPen = (usd: number): number => Math.round(usd * USD_TO_PEN);
+
 function genClickId(): string {
   // URL-safe 8-char id from crypto-random bytes
   const bytes = new Uint8Array(6);
@@ -371,6 +377,15 @@ export function makeFlightSearchTool(
         .describe(
           "Código IATA de 2 letras de la aerolínea, SOLO si el usuario pide una específica. Ej: LATAM→LA, Avianca→AV, Sky→H2, JetSMART→JA, Iberia→IB, American→AA, Copa→CM, Aeroméxico→AM. Filtra los resultados a esa aerolínea.",
         ),
+      passengers: z
+        .number()
+        .int()
+        .min(1)
+        .max(9)
+        .optional()
+        .describe(
+          "Número de pasajeros, SOLO si el usuario lo menciona (ej '2 personas', 'somos 3'). Si se pasa, además del precio por persona se devuelve el total del grupo. Si se omite, el precio es por persona.",
+        ),
     }),
     execute: async ({
       origin,
@@ -380,6 +395,7 @@ export function makeFlightSearchTool(
       return_date,
       one_way,
       airline,
+      passengers,
     }) => {
       const baseHeaders = { "X-Access-Token": env.TRAVELPAYOUTS_TOKEN };
       // Default to round-trip. Aviasales returns round-trip itineraries (with
@@ -464,13 +480,24 @@ export function makeFlightSearchTool(
           source: "tool_search",
         }).catch(() => { /* never break the reply */ });
       }
+      const pax = passengers ?? 1;
       const flights = await Promise.all(
         raw.map(async (f) => {
           const longUrl = f.link
             ? `https://www.aviasales.com${f.link}${f.link.includes("?") ? "&" : "?"}marker=${env.TRAVELPAYOUTS_MARKER}`
             : null;
           return {
+            // Per-person price in both currencies (PEN is approximate, display-only).
             price_usd: f.price,
+            price_pen_approx: usdToPen(f.price),
+            // Group total only when the user specified passenger count (>1).
+            ...(pax > 1
+              ? {
+                  passengers: pax,
+                  total_usd: f.price * pax,
+                  total_pen_approx: usdToPen(f.price * pax),
+                }
+              : {}),
             airline: f.airline,
             flight_number: f.flight_number,
             departure_at: f.departure_at,
@@ -483,7 +510,11 @@ export function makeFlightSearchTool(
           };
         }),
       );
-      return { flights, scanned_months: departure ? 1 : 6 };
+      return {
+        flights,
+        scanned_months: departure ? 1 : 6,
+        currency_note: "price_pen_approx es aproximado (~3.75 PEN/USD), solo referencia.",
+      };
     },
   });
 }
@@ -577,11 +608,17 @@ export function makeHotelSearchTool(
           name: h.hotelName ?? null,
           stars: h.stars ?? null,
           price_from_usd: h.priceFrom ?? null,
+          price_from_pen_approx:
+            typeof h.priceFrom === "number" ? usdToPen(h.priceFrom) : null,
           price_avg_usd: h.priceAvg ?? null,
           location: h.location?.name ?? null,
           country: h.location?.country ?? null,
         }));
-      return { hotels, search_url };
+      return {
+        hotels,
+        search_url,
+        currency_note: "price_*_pen_approx es aproximado (~3.75 PEN/USD), solo referencia.",
+      };
     },
   });
 }
