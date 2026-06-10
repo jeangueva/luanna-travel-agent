@@ -189,11 +189,11 @@ export function makeSendStickerTool(args: {
 }) {
   return tool({
     description:
-      "Envía un sticker de Luanna para darle calidez al momento. Úsalo CON MODERACIÓN (máx 1 por conversación, no en cada mensaje): " +
-      "'deal' cuando muestras un vuelo/oferta muy barata 🔥; " +
-      "'alert' cuando confirmas que creaste una alerta de precio ✅; " +
-      "'thanks' cuando el usuario agradece o se despide 🙌. " +
-      "Llama esta tool ADEMÁS de tu mensaje de texto, no en vez de él.",
+      "Envía un sticker de Luanna. DEBES llamarla (además del texto) en estos momentos: " +
+      "mood 'thanks' cuando el usuario agradece o se despide (gracias / thank you / obrigado / chau); " +
+      "mood 'alert' cuando confirmas que creaste una alerta de precio; " +
+      "mood 'deal' cuando muestras un vuelo/oferta muy barata que entusiasma. " +
+      "Tope máx 1 por conversación, no repitas. Fuera de esos momentos no la uses.",
     inputSchema: z.object({
       mood: z
         .enum(STICKER_MOODS)
