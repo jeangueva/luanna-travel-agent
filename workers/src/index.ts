@@ -86,6 +86,7 @@ import {
   makeSendStickerTool,
   makeSuggestItineraryTool,
   makeTripPrepTool,
+  makeMyRewardsTool,
 } from "./tools";
 import {
   createChatToken,
@@ -327,6 +328,7 @@ function buildLLMArgs(
     get_package_link: makePackageLinkTool(tpEnv, clickCtx),
     suggest_itinerary: makeSuggestItineraryTool(),
     trip_prep: makeTripPrepTool(),
+    my_rewards: makeMyRewardsTool({ sql: ctx.sql, userId: ctx.userId }),
     ...(flowEnabled
       ? {
           open_preferences_form: makePreferencesFlowTool({

@@ -4,8 +4,11 @@ import { createWebviewToken } from "./auth";
 import { sendKapsoCtaUrl, sendKapsoFlow, sendKapsoSticker } from "./kapso";
 import {
   addWatchlistItem,
+  claimPromoForLevel,
   createClickRedirect,
+  getClaimedPromo,
   getPreferences,
+  getUserEngagement,
   recordPriceObservation,
   upsertPreferences,
   type ClickKind,
@@ -207,6 +210,40 @@ export function makeSendStickerTool(args: {
         link: `${args.baseUrl}/stickers/${mood}.webp`,
       });
       return { ok: true, mood };
+    },
+  });
+}
+
+export function makeMyRewardsTool(args: { sql: Sql; userId: number }) {
+  return tool({
+    description:
+      "Consulta los puntos, nivel y recompensas del usuario en el programa de viajero frecuente de Luanna. " +
+      "Úsala cuando pregunte por 'mis puntos', 'mi nivel', 'recompensas', 'premios', 'descuentos', 'promociones' o 'beneficios'. " +
+      "Los puntos se ganan usando Luanna: días activos (+2), clicks en vuelos/hoteles (+5) y alertas creadas (+10). " +
+      "Niveles: Explorador → Viajero (40 pts) → Trotamundos (120 pts). " +
+      "Si hay un código promo disponible para su nivel, la tool lo reclama y te lo devuelve para que se lo entregues con emoción (uno por usuario).",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const eng = await getUserEngagement(args.sql, args.userId);
+      const claimed = await getClaimedPromo(args.sql, args.userId);
+      const promo = claimed ?? (await claimPromoForLevel(args.sql, args.userId, eng.level));
+      return {
+        points: eng.points,
+        level: eng.level,
+        level_name: eng.level_name,
+        next_level_points: eng.next_level_points,
+        breakdown: {
+          active_days: eng.active_days,
+          flight_hotel_clicks: eng.clicks,
+          alerts_created: eng.alerts,
+        },
+        promo: promo
+          ? { code: promo.code, description: promo.description, already_claimed: !!claimed }
+          : null,
+        no_promo_note: promo
+          ? null
+          : "No hay códigos disponibles para su nivel ahora. Anímalo a seguir sumando puntos.",
+      };
     },
   });
 }

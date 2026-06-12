@@ -140,12 +140,18 @@ async function findCheapest(
   env: CronEnv,
   origin: string,
   destination: string,
+  dates?: { departureAt: string; returnAt?: string },
 ): Promise<CheapestFlight | null> {
   const url = new URL(
     "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
   );
   url.searchParams.set("origin", origin);
   url.searchParams.set("destination", destination);
+  if (dates?.departureAt) url.searchParams.set("departure_at", dates.departureAt);
+  if (dates?.returnAt) {
+    url.searchParams.set("return_at", dates.returnAt);
+    url.searchParams.set("one_way", "false");
+  }
   url.searchParams.set("currency", "usd");
   url.searchParams.set("sorting", "price");
   url.searchParams.set("limit", "1");
@@ -363,6 +369,38 @@ function formatOfferMessage(
   return lines.join("\n");
 }
 
+// ─── Weekend getaway mode (M4: proactive planner) ───────────────────────────
+// On Fridays the daily offer becomes a real bookable weekend escape: cheapest
+// round-trip leaving tomorrow (Saturday) and returning Sunday, from the user's
+// saved origin to one of their favorite destinations.
+
+/** Next Saturday and Sunday (UTC) as YYYY-MM-DD. Assumes today is Friday. */
+function upcomingWeekendDates(now: Date): { sat: string; sun: string } {
+  const day = now.getUTCDay(); // 5 = Friday
+  const toSat = (6 - day + 7) % 7 || 7; // days until next Saturday (>=1)
+  const sat = new Date(now.getTime() + toSat * 86400000);
+  const sun = new Date(sat.getTime() + 86400000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  return { sat: fmt(sat), sun: fmt(sun) };
+}
+
+function formatWeekendMessage(
+  user: OfferEligibleUser,
+  dest: ResolvedDestination,
+  flight: CheapestFlight,
+  dates: { sat: string; sun: string },
+): string {
+  const name = user.name ? `, ${user.name}` : "";
+  const lines = [
+    `🌴 ¡Escapada de finde${name}!`,
+    `Este sábado tienes ${user.origin} → ${dest.pretty} por $${flight.price} ida y vuelta`,
+    `${flight.airline} · sale sáb ${dates.sat.slice(8, 10)} · vuelve dom ${dates.sun.slice(8, 10)}`,
+  ];
+  if (flight.link) lines.push(flight.link);
+  lines.push("¿Te animas? También te puedo buscar hotel 🏨");
+  return lines.join("\n");
+}
+
 async function processOfferUser(
   env: CronEnv,
   user: OfferEligibleUser,
@@ -374,7 +412,21 @@ async function processOfferUser(
   if (!destination) return "skipped";
   if (originIata === destination.iata) return "skipped";
 
-  const flight = await findCheapest(env, originIata, destination.iata);
+  // Friday → weekend-getaway mode: a real bookable Sat→Sun round trip.
+  // Falls back to the regular open-dates offer when the weekend has nothing.
+  const now = new Date();
+  const isFriday = now.getUTCDay() === 5;
+  let weekend: { sat: string; sun: string } | null = null;
+  let flight: CheapestFlight | null = null;
+  if (isFriday) {
+    weekend = upcomingWeekendDates(now);
+    flight = await findCheapest(env, originIata, destination.iata, {
+      departureAt: weekend.sat,
+      returnAt: weekend.sun,
+    });
+    if (!flight) weekend = null; // nothing for the weekend → regular offer
+  }
+  if (!flight) flight = await findCheapest(env, originIata, destination.iata);
   if (!flight) return "skipped";
   if (user.budget_max && flight.price > user.budget_max) return "skipped";
 
@@ -391,7 +443,9 @@ async function processOfferUser(
   await sendProactive(env, {
     phoneNumberId: user.phone_number_id,
     to: user.phone,
-    body: formatOfferMessage(user, destination, flight),
+    body: weekend
+      ? formatWeekendMessage(user, destination, flight, weekend)
+      : formatOfferMessage(user, destination, flight),
     templateName: "alerta_precio",
     templateParams: {
       nombre: user.name || "viajero",

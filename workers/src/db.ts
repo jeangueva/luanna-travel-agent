@@ -1195,3 +1195,96 @@ export async function mergeWebUserInto(
   // Finally, drop the web user. CASCADE handles link_codes pointing here.
   await sql`DELETE FROM users WHERE id = ${webUserId}`;
 }
+
+// ─── Gamification: engagement points + partner promo codes ──────────────────
+//
+// Points are COMPUTED from activity we already record (no new write paths, so
+// there's nothing to farm): active days, link clicks, alerts created.
+// Levels: 1 Explorador (0+) · 2 Viajero (40+) · 3 Trotamundos (120+).
+
+export interface UserEngagement {
+  points: number;
+  level: number;
+  level_name: string;
+  next_level_points: number | null;
+  active_days: number;
+  clicks: number;
+  alerts: number;
+}
+
+const LEVELS: Array<{ level: number; name: string; min: number }> = [
+  { level: 3, name: "Trotamundos", min: 120 },
+  { level: 2, name: "Viajero", min: 40 },
+  { level: 1, name: "Explorador", min: 0 },
+];
+
+export async function getUserEngagement(
+  sql: Sql,
+  userId: number,
+): Promise<UserEngagement> {
+  const [days, clicks, alerts] = await Promise.all([
+    sql`SELECT COUNT(DISTINCT DATE(created_at))::int AS n FROM messages WHERE user_id = ${userId} AND role = 'user'`,
+    sql`SELECT COALESCE(SUM(click_count), 0)::int AS n FROM click_redirects WHERE user_id = ${userId}`,
+    sql`SELECT COUNT(*)::int AS n FROM watchlist WHERE user_id = ${userId}`,
+  ]) as Array<Array<{ n: number }>>;
+  const active_days = days[0]?.n ?? 0;
+  const clickCount = clicks[0]?.n ?? 0;
+  const alertCount = alerts[0]?.n ?? 0;
+  const points = active_days * 2 + clickCount * 5 + alertCount * 10;
+  const tier = LEVELS.find((l) => points >= l.min)!;
+  const nextTier = LEVELS.filter((l) => l.min > points).pop() ?? null;
+  return {
+    points,
+    level: tier.level,
+    level_name: tier.name,
+    next_level_points: nextTier ? nextTier.min : null,
+    active_days,
+    clicks: clickCount,
+    alerts: alertCount,
+  };
+}
+
+export interface PromoCode {
+  id: number;
+  code: string;
+  description: string;
+  min_level: number;
+}
+
+/** The promo the user already claimed, if any (one per user). */
+export async function getClaimedPromo(
+  sql: Sql,
+  userId: number,
+): Promise<PromoCode | null> {
+  const rows = (await sql`
+    SELECT id, code, description, min_level FROM promo_codes
+    WHERE claimed_by = ${userId} LIMIT 1
+  `) as PromoCode[];
+  return rows[0] ?? null;
+}
+
+/**
+ * Claim the best available promo for the user's level (one per user, atomic:
+ * the UPDATE only wins the row if it's still unclaimed). Returns null when
+ * none available or the user already claimed one.
+ */
+export async function claimPromoForLevel(
+  sql: Sql,
+  userId: number,
+  level: number,
+): Promise<PromoCode | null> {
+  const existing = await getClaimedPromo(sql, userId);
+  if (existing) return null;
+  const rows = (await sql`
+    UPDATE promo_codes SET claimed_by = ${userId}, claimed_at = NOW()
+    WHERE id = (
+      SELECT id FROM promo_codes
+      WHERE active = TRUE AND claimed_by IS NULL AND min_level <= ${level}
+      ORDER BY min_level DESC, id ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id, code, description, min_level
+  `) as PromoCode[];
+  return rows[0] ?? null;
+}
