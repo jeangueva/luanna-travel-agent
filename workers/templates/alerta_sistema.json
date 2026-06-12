@@ -1,0 +1,17 @@
+{
+  "name": "alerta_sistema",
+  "language": "es",
+  "category": "UTILITY",
+  "parameter_format": "NAMED",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "Reporte del sistema Luanna: {{resumen}}. Revisa el detalle en el panel de administración.",
+      "example": {
+        "body_text_named_params": [
+          { "param_name": "resumen", "example": "3 errores en la ultima hora (webhook:kapso)" }
+        ]
+      }
+    }
+  ]
+}

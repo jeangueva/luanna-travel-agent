@@ -526,16 +526,20 @@ export async function runErrorAlertCron(env: CronEnv): Promise<void> {
     }
   }
 
-  // Channel 2: WhatsApp to the owner via the bot itself. Caveat: Meta's 24h
-  // window applies — if the owner hasn't messaged Luanna in >24h this send
-  // fails (logged, not retried). The /admin dashboard remains the backstop.
+  // Channel 2: WhatsApp to the owner via the bot itself. Free-form first;
+  // outside Meta's 24h window it falls back to the UTILITY template
+  // `alerta_sistema` (utility templates deliver regardless of the window),
+  // so the owner always hears about failures.
   if (waAdmin) {
     try {
-      await sendKapsoText({
-        apiKey: env.KAPSO_API_KEY,
+      await sendProactive(env, {
         phoneNumberId: env.KAPSO_PHONE_NUMBER_ID!,
         to: env.ADMIN_ALERT_PHONE!,
         body: text,
+        templateName: "alerta_sistema",
+        templateParams: {
+          resumen: `${total} error${total === 1 ? "" : "es"} en la última hora (${top[0]?.context ?? "?"})`,
+        },
       });
       console.log(`alert cron: WhatsApp digest sent for ${total} errors`);
     } catch (err) {
