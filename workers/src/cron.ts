@@ -33,6 +33,10 @@ export interface CronEnv {
   ANTHROPIC_API_KEY?: string;
   LUANNA_MODEL?: string;
   ALERT_WEBHOOK_URL?: string;
+  /** Owner's WhatsApp (E.164 no +) — error digests go here when no webhook. */
+  ADMIN_ALERT_PHONE?: string;
+  /** The bot's Meta phone_number_id, needed to send the admin WhatsApp. */
+  KAPSO_PHONE_NUMBER_ID?: string;
   POSTHOG_API_KEY?: string;
   POSTHOG_HOST?: string;
   PUBLIC_BASE_URL?: string;
@@ -470,7 +474,8 @@ async function processOfferUser(
 }
 
 export async function runErrorAlertCron(env: CronEnv): Promise<void> {
-  if (!env.ALERT_WEBHOOK_URL) return;
+  const waAdmin = env.ADMIN_ALERT_PHONE && env.KAPSO_PHONE_NUMBER_ID;
+  if (!env.ALERT_WEBHOOK_URL && !waAdmin) return;
   const sql = getDb(env.DATABASE_URL);
   let groups;
   try {
@@ -496,26 +501,48 @@ export async function runErrorAlertCron(env: CronEnv): Promise<void> {
     "Query: GET https://luanna.app/admin/errors/recent (Bearer ADMIN_API_KEY)",
   ];
   const text = lines.join("\n");
-  try {
-    const res = await fetch(env.ALERT_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // Both keys for compat — Slack uses `text`, Discord uses `content`.
-      body: JSON.stringify({ text, content: text }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error(`alert webhook ${res.status}`, body.slice(0, 200));
-      await recordError(sql, "cron:alert", new Error(`webhook ${res.status}`), {
-        status: res.status,
-        body_preview: body.slice(0, 200),
+
+  // Channel 1: generic webhook (Slack `text` / Discord `content`).
+  if (env.ALERT_WEBHOOK_URL) {
+    try {
+      const res = await fetch(env.ALERT_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, content: text }),
       });
-    } else {
-      console.log(`alert cron: posted digest for ${total} errors`);
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        console.error(`alert webhook ${res.status}`, body.slice(0, 200));
+        await recordError(sql, "cron:alert", new Error(`webhook ${res.status}`), {
+          status: res.status,
+          body_preview: body.slice(0, 200),
+        });
+      } else {
+        console.log(`alert cron: posted digest for ${total} errors`);
+      }
+    } catch (err) {
+      console.error("alert webhook fetch error", err);
+      await recordError(sql, "cron:alert", err);
     }
-  } catch (err) {
-    console.error("alert webhook fetch error", err);
-    await recordError(sql, "cron:alert", err);
+  }
+
+  // Channel 2: WhatsApp to the owner via the bot itself. Caveat: Meta's 24h
+  // window applies — if the owner hasn't messaged Luanna in >24h this send
+  // fails (logged, not retried). The /admin dashboard remains the backstop.
+  if (waAdmin) {
+    try {
+      await sendKapsoText({
+        apiKey: env.KAPSO_API_KEY,
+        phoneNumberId: env.KAPSO_PHONE_NUMBER_ID!,
+        to: env.ADMIN_ALERT_PHONE!,
+        body: text,
+      });
+      console.log(`alert cron: WhatsApp digest sent for ${total} errors`);
+    } catch (err) {
+      // Don't recordError here — a failed alert about errors would feed
+      // itself into next hour's digest forever.
+      console.error("alert whatsapp send failed", err);
+    }
   }
 }
 
