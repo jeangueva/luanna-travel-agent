@@ -7,7 +7,7 @@
   <meta name="description" content="Luanna encuentra vuelos baratos, hoteles y paquetes — precios en dólares y soles. Chatea por WhatsApp con texto, foto o nota de voz, y te responde con voz. Habla español, inglés y portugués.">
   <link rel="canonical" href="https://luanna.app/">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <meta name="theme-color" content="#ff385c">
+  <meta name="theme-color" content="#0b2231">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://luanna.app/">
   <meta property="og:title" content="Luanna — Tu agente de viajes por WhatsApp">
@@ -21,7 +21,7 @@
   <meta name="twitter:image" content="https://luanna.app/og-image.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 
   <!-- Structured data: helps Google (and any AI surface that uses Google's
        search index) understand what Luanna is, how to contact it, and what
@@ -183,1117 +183,544 @@
     ]
   }
   </script>
+
   <style>
     :root {
       --rausch: #ff385c;
-      --rausch-dark: #e00b41;
-      --text: #222222;
-      --text-2: #6a6a6a;
-      --text-3: #929292;
+      --navy: #0b2231;
+      --ink: #0a0a0a;
+      --text: #1a1a1a;
+      --text-2: #6b7280;
+      --text-3: #9ca3af;
+      --line: #e5e7eb;
       --bg: #ffffff;
-      --surface: #f7f7f7;
-      --surface-2: #f2f2f2;
-      --border: rgba(0, 0, 0, 0.08);
-      --shadow-card: rgba(0, 0, 0, 0.02) 0px 0px 0px 1px,
-                     rgba(0, 0, 0, 0.04) 0px 2px 6px,
-                     rgba(0, 0, 0, 0.10) 0px 4px 8px;
-      --shadow-hover: rgba(0, 0, 0, 0.08) 0px 4px 12px;
-      --r-btn: 8px;
-      --r-badge: 14px;
-      --r-card: 20px;
-      --r-large: 32px;
-      --font: "Plus Jakarta Sans", "Airbnb Cereal VF", Circular, -apple-system,
-              BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --surface: #f7f7f8;
+      --green: #16a34a;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --radius: 24px;
+      --radius-sm: 16px;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-body); }
     html { scroll-behavior: smooth; }
-
     body {
-      font-family: var(--font);
-      font-weight: 500;
-      color: var(--text);
       background: var(--bg);
-      line-height: 1.5;
+      color: var(--text);
+      line-height: 1.55;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
-
     a { color: inherit; text-decoration: none; }
+    img, video { display: block; max-width: 100%; }
+    .serif { font-family: var(--font-display); font-style: italic; font-weight: 400; }
 
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
+    /* ─── Root frame ─── */
+    .frame { padding: 12px; }
+    @media (min-width: 640px) { .frame { padding: 16px; } }
+    @media (min-width: 900px) { .frame { padding: 24px; } }
 
-    /* ─── Typography ─── */
-    .t-display {
-      font-size: clamp(40px, 6vw, 64px);
-      font-weight: 700;
-      line-height: 1.05;
-      letter-spacing: -0.44px;
-    }
-    .t-section {
-      font-size: clamp(28px, 3.5vw, 40px);
-      font-weight: 700;
-      line-height: 1.15;
-      letter-spacing: -0.44px;
-    }
-    .t-feature {
-      font-size: 22px;
-      font-weight: 600;
-      line-height: 1.18;
-      letter-spacing: -0.44px;
-    }
-    .t-eyebrow {
-      font-size: 11px;
-      font-weight: 700;
-      line-height: 1.18;
-      letter-spacing: 0.32px;
-      text-transform: uppercase;
-      color: var(--rausch);
-    }
-    .t-body {
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--text-2);
-      line-height: 1.5;
-    }
-    .t-body-lg {
-      font-size: 18px;
-      font-weight: 500;
-      color: var(--text-2);
-      line-height: 1.55;
-    }
-    .t-small {
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-2);
-      line-height: 1.4;
-    }
-
-    /* ─── Buttons ─── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 14px 24px;
-      font-family: var(--font);
-      font-size: 16px;
-      font-weight: 600;
-      line-height: 1.25;
-      border-radius: var(--r-btn);
-      border: none;
-      cursor: pointer;
-      transition: all 0.18s ease;
-      white-space: nowrap;
-    }
-    .btn-primary {
-      background: var(--rausch);
-      color: #fff;
-    }
-    .btn-primary:hover {
-      background: var(--rausch-dark);
-      box-shadow: var(--shadow-hover);
-      transform: translateY(-1px);
-    }
-    .btn-dark {
-      background: var(--text);
-      color: #fff;
-    }
-    .btn-dark:hover {
-      background: #000;
-      box-shadow: var(--shadow-hover);
-    }
-    .btn-outlined {
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--text);
-    }
-    .btn-outlined:hover {
-      background: var(--text);
-      color: #fff;
-    }
-    .btn-lg { padding: 16px 28px; font-size: 17px; }
-
-    /* ─── Header ─── */
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      background: rgba(255, 255, 255, 0.92);
-      backdrop-filter: saturate(180%) blur(12px);
-      -webkit-backdrop-filter: saturate(180%) blur(12px);
-      border-bottom: 1px solid var(--border);
-    }
-    .nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 76px;
-    }
-    .logo {
-      font-size: 26px;
-      font-weight: 700;
-      color: var(--rausch);
-      letter-spacing: -0.5px;
-      display: inline-flex;
-      align-items: baseline;
-      gap: 2px;
-    }
-    .logo span { color: var(--text); }
-    .nav-links {
-      display: flex;
-      gap: 32px;
-    }
-    .nav-links a {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text);
-      transition: color 0.15s;
-    }
-    .nav-links a:hover { color: var(--rausch); }
-    .nav-cta { display: inline-flex; }
-
-    /* ─── Hero ─── */
-    .hero {
-      padding: 80px 0 96px;
+    /* ─── Hero card with video bg ─── */
+    .hero-card {
       position: relative;
+      border-radius: var(--radius);
       overflow: hidden;
-      isolation: isolate;
+      background: linear-gradient(160deg, #0b2231 0%, #11364d 45%, #0b2a3f 100%);
+      min-height: calc(100vh - 24px);
+      display: flex;
+      flex-direction: column;
     }
-    .hero .container { position: relative; z-index: 1; }
-    .hero-bg {
-      position: absolute;
-      inset: 0;
+    @media (min-width: 640px) { .hero-card { min-height: calc(100vh - 32px); border-radius: 28px; } }
+    @media (min-width: 900px) { .hero-card { min-height: calc(100vh - 48px); } }
+
+    .hero-video, .hero-video-b {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; z-index: 0;
+      opacity: 0; transition: opacity 1.6s ease;
+    }
+    .hero-video.on, .hero-video-b.on { opacity: 1; }
+    .hero-scrim {
+      position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(180deg, rgba(8,20,30,0.38) 0%, rgba(8,20,30,0.12) 38%, rgba(8,20,30,0.52) 100%);
       pointer-events: none;
-      z-index: 0;
     }
-    .blob {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(64px);
-      opacity: 0.55;
-      will-change: transform;
-    }
-    .blob-a {
-      top: -160px;
-      right: -120px;
-      width: 520px;
-      height: 520px;
-      background: radial-gradient(circle, #ff385c 0%, rgba(255, 56, 92, 0) 70%);
-      animation: blobDrift 22s ease-in-out infinite;
-    }
-    .blob-b {
-      bottom: -120px;
-      left: -100px;
-      width: 420px;
-      height: 420px;
-      background: radial-gradient(circle, #ffaba3 0%, rgba(255, 171, 163, 0) 70%);
-      animation: blobDrift 28s ease-in-out -7s infinite reverse;
-    }
-    .blob-c {
-      top: 40%;
-      left: 38%;
-      width: 320px;
-      height: 320px;
-      background: radial-gradient(circle, #ffd9e0 0%, rgba(255, 217, 224, 0) 70%);
-      animation: blobDrift 18s ease-in-out -3s infinite;
-    }
-    @keyframes blobDrift {
-      0%, 100% { transform: translate(0, 0) scale(1); }
-      33% { transform: translate(40px, -28px) scale(1.06); }
-      66% { transform: translate(-30px, 28px) scale(0.94); }
-    }
-    .hero-bg-grid {
-      position: absolute;
-      inset: 0;
-      background-image:
-        radial-gradient(rgba(255, 56, 92, 0.08) 1px, transparent 1px);
-      background-size: 28px 28px;
-      mask-image: radial-gradient(ellipse 60% 60% at 50% 40%, #000 30%, transparent 75%);
-      -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 40%, #000 30%, transparent 75%);
-      opacity: 0.45;
-    }
-    .hero-bg-flight {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      opacity: 0.55;
-    }
-    .hero-bg-flight .path-line {
-      fill: none;
-      stroke: url(#flightGrad);
-      stroke-width: 1.5;
-      stroke-dasharray: 6 10;
-      animation: dashSlide 24s linear infinite;
-    }
-    .hero-bg-flight .pin {
-      animation: pinPulse 2.4s ease-in-out infinite;
-      transform-origin: center;
-      transform-box: fill-box;
-    }
-    .hero-bg-flight .pin-2 { animation-delay: 1.2s; }
-    .hero-bg-flight .plane {
-      animation: planeFly 16s linear infinite;
-      transform-box: fill-box;
-      transform-origin: center;
-    }
-    @keyframes dashSlide {
-      0% { stroke-dashoffset: 0; }
-      100% { stroke-dashoffset: -240; }
-    }
-    @keyframes pinPulse {
-      0%, 100% { transform: scale(1); opacity: 0.7; }
-      50% { transform: scale(1.4); opacity: 1; }
-    }
-    @keyframes planeFly {
-      0% { offset-distance: 0%; opacity: 0; }
-      8% { opacity: 1; }
-      92% { opacity: 1; }
-      100% { offset-distance: 100%; opacity: 0; }
-    }
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1.1fr 1fr;
-      gap: 80px;
-      align-items: center;
-    }
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 14px;
-      background: #fff;
-      border-radius: 999px;
-      box-shadow: var(--shadow-card);
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 24px;
-    }
-    .hero-badge-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #25d366;
-      box-shadow: 0 0 0 4px rgba(37, 211, 102, 0.18);
-    }
-    .hero h1 { margin-bottom: 24px; }
-    .hero h1 .accent { color: var(--rausch); }
-    .hero-sub { max-width: 520px; margin-bottom: 32px; }
-    .hero-actions {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 32px;
-    }
-    .hero-proof {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .hero-avatars {
-      display: flex;
-    }
-    .hero-avatars .av {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: var(--surface-2);
-      border: 2px solid #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text);
-      margin-left: -8px;
-    }
-    .hero-avatars .av:first-child { margin-left: 0; }
-    .hero-avatars .av:nth-child(1) { background: #ffd9e0; }
-    .hero-avatars .av:nth-child(2) { background: #ffe4cc; }
-    .hero-avatars .av:nth-child(3) { background: #d6f0e0; }
-    .hero-avatars .av:nth-child(4) { background: #d6e4ff; }
-    .hero-proof-text { font-size: 13px; font-weight: 500; color: var(--text-2); }
-    .hero-proof-text strong { color: var(--text); font-weight: 700; }
 
-    /* Hero visual: chat mockup */
-    .hero-visual { position: relative; }
-    .chat {
-      background: #fff;
-      border-radius: var(--r-large);
-      box-shadow: var(--shadow-card);
-      overflow: hidden;
-      max-width: 420px;
-      margin: 0 auto;
+    .hero-content {
+      position: relative; z-index: 2;
+      flex: 1;
+      display: flex; flex-direction: column;
+      padding: 16px;
+      gap: 24px;
     }
-    .chat-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px 20px;
-      background: linear-gradient(180deg, #fff 0%, #fafafa 100%);
-      border-bottom: 1px solid var(--border);
-    }
-    .chat-avatar {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: var(--rausch);
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-    }
-    .chat-name { font-size: 15px; font-weight: 700; color: var(--text); }
-    .chat-status {
-      font-size: 12px;
-      font-weight: 500;
-      color: #25d366;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .chat-body {
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      background: #fafafa;
-      min-height: 320px;
-    }
-    .msg {
-      max-width: 80%;
-      padding: 10px 14px;
+    @media (min-width: 640px) { .hero-content { padding: 24px; } }
+    @media (min-width: 900px) { .hero-content { padding: 32px; } }
+
+    /* ─── Navbar pill ─── */
+    .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .nav-pill {
+      display: flex; align-items: center; gap: 20px;
+      background: rgba(255,255,255,0.62);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border-radius: 18px;
-      font-size: 14px;
-      font-weight: 500;
-      line-height: 1.4;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      padding: 10px 14px 10px 16px;
+      width: 100%;
     }
-    .msg-user {
-      background: var(--text);
-      color: #fff;
-      align-self: flex-end;
-      border-bottom-right-radius: 4px;
-    }
-    .msg-ai {
-      background: #fff;
-      color: var(--text);
-      align-self: flex-start;
-      border-bottom-left-radius: 4px;
-      box-shadow: var(--shadow-card);
-    }
-    .price-card {
-      align-self: flex-start;
-      max-width: 88%;
-      background: #fff;
-      border-radius: 16px;
-      padding: 14px;
-      box-shadow: var(--shadow-card);
-    }
-    .price-card .route { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
-    .price-card .price {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.44px;
-    }
-    .price-card .price sup { font-size: 16px; font-weight: 600; color: var(--text-2); }
-    .price-card .price span { font-size: 12px; font-weight: 500; color: var(--text-2); }
-    .price-card .meta { font-size: 12px; font-weight: 500; color: var(--text-2); margin-top: 4px; }
-
-    .float-badge {
-      position: absolute;
-      top: -16px;
-      left: -16px;
-      padding: 10px 16px;
-      background: #fff;
-      border-radius: var(--r-badge);
-      box-shadow: var(--shadow-card);
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text);
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .float-badge .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--rausch);
-    }
-
-    /* ─── Sections ─── */
-    .section {
-      padding: 96px 0;
-    }
-    .section-surface { background: var(--surface); }
-    .section-head {
-      max-width: 720px;
-      margin: 0 auto 56px;
-      text-align: center;
-    }
-    .section-head .t-eyebrow { display: inline-block; margin-bottom: 12px; }
-    .section-head h2 { margin-bottom: 16px; }
-    .section-head p {
-      font-size: 17px;
-      color: var(--text-2);
-      max-width: 560px;
-      margin: 0 auto;
-    }
-
-    /* ─── Steps ─── */
-    .steps {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-    }
-    .step {
-      background: #fff;
-      border-radius: var(--r-card);
-      padding: 32px 28px;
-      box-shadow: var(--shadow-card);
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .step:hover {
-      transform: translateY(-4px);
-      box-shadow: rgba(0, 0, 0, 0.02) 0px 0px 0px 1px,
-                  rgba(0, 0, 0, 0.06) 0px 8px 16px,
-                  rgba(0, 0, 0, 0.12) 0px 12px 24px;
-    }
-    .step-number {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.32px;
-      text-transform: uppercase;
-      color: var(--rausch);
-      margin-bottom: 16px;
-    }
-    .step-icon {
-      width: 56px;
-      height: 56px;
-      border-radius: 16px;
-      background: var(--surface-2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 28px;
-      margin-bottom: 20px;
-    }
-    .step h3 { font-size: 20px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.18px; }
-    .step p { font-size: 15px; font-weight: 500; color: var(--text-2); }
-
-    /* ─── Features ─── */
-    .features {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-    }
-    .feature {
-      background: #fff;
-      border-radius: var(--r-card);
-      padding: 32px;
-      box-shadow: var(--shadow-card);
-      transition: transform 0.2s ease;
-    }
-    .feature:hover { transform: translateY(-4px); }
-    .feature-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      background: rgba(255, 56, 92, 0.10);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 22px;
-      margin-bottom: 20px;
-    }
-    .feature h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.18px; }
-    .feature p { font-size: 14px; font-weight: 500; color: var(--text-2); line-height: 1.5; }
-
-    /* ─── Testimonials ─── */
-    .testimonials {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-    }
-    .testimonial {
-      background: #fff;
-      border-radius: var(--r-card);
-      padding: 28px;
-      box-shadow: var(--shadow-card);
-    }
-    .stars {
-      color: var(--rausch);
-      font-size: 14px;
-      margin-bottom: 14px;
-      letter-spacing: 2px;
-    }
-    .testimonial-quote {
+    @media (min-width: 760px) { .nav-pill { width: auto; } }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 19px; letter-spacing: -0.4px; color: #111; }
+    .brand .dot { color: var(--rausch); }
+    .brand-mark {
+      width: 30px; height: 30px; border-radius: 9px;
+      background: var(--rausch); color: #fff;
+      display: flex; align-items: center; justify-content: center;
       font-size: 15px;
-      font-weight: 500;
-      color: var(--text);
-      line-height: 1.55;
-      margin-bottom: 20px;
     }
-    .testimonial-user {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    .nav-links { display: none; align-items: center; gap: 18px; }
+    @media (min-width: 760px) { .nav-links { display: flex; } }
+    .nav-links a {
+      font-size: 13.5px; font-weight: 500; color: #1f2937; white-space: nowrap;
+      transition: opacity .2s ease;
     }
-    .testimonial-avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: var(--surface-2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text);
+    .nav-links a:hover { opacity: 0.55; }
+    .nav-cta {
+      margin-left: auto;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: #0a0a0a; color: #fff;
+      font-size: 13.5px; font-weight: 600;
+      padding: 10px 18px; border-radius: 14px;
+      white-space: nowrap;
+      transition: background .2s ease, transform .2s ease;
     }
-    .testimonial-name { font-size: 14px; font-weight: 700; color: var(--text); }
-    .testimonial-meta { font-size: 12px; font-weight: 500; color: var(--text-2); }
+    .nav-cta:hover { background: #262626; transform: scale(1.02); }
+    .nav-cta svg { flex: 0 0 auto; }
 
-    /* ─── Examples gallery ─── */
-    .examples {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
+    /* ─── Bottom row: headline + chat card ─── */
+    .hero-bottom {
+      margin-top: auto;
+      display: flex; flex-direction: column; gap: 24px;
     }
-    .ex-card {
-      background: #fff;
-      border-radius: var(--r-card);
-      padding: 18px;
-      box-shadow: var(--shadow-card);
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    @media (min-width: 1024px) {
+      .hero-bottom { flex-direction: row; align-items: flex-end; justify-content: space-between; }
     }
-    .ex-card:hover {
-      transform: translateY(-4px);
-      box-shadow: rgba(0, 0, 0, 0.02) 0px 0px 0px 1px,
-                  rgba(0, 0, 0, 0.06) 0px 8px 16px,
-                  rgba(0, 0, 0, 0.12) 0px 12px 24px;
-    }
-    .ex-tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      align-self: flex-start;
-      padding: 4px 10px;
-      background: rgba(255, 56, 92, 0.08);
-      color: var(--rausch);
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.24px;
-      text-transform: uppercase;
-    }
-    .ex-msg {
-      max-width: 92%;
-      padding: 9px 12px;
-      border-radius: 14px;
-      font-size: 13.5px;
-      font-weight: 500;
-      line-height: 1.4;
-    }
-    .ex-msg.user {
-      background: var(--text);
-      color: #fff;
-      align-self: flex-end;
-      border-bottom-right-radius: 4px;
-    }
-    .ex-msg.ai {
-      background: var(--surface);
-      color: var(--text);
-      align-self: flex-start;
-      border-bottom-left-radius: 4px;
-    }
-    .ex-photo {
-      align-self: flex-end;
-      width: 130px;
-      height: 90px;
-      border-radius: 12px;
-      background-size: cover;
-      background-position: center;
-      border: 2px solid #fff;
-      box-shadow: rgba(0,0,0,0.06) 0 2px 8px;
-    }
-    .ex-voice {
-      align-self: flex-end;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      background: var(--text);
-      color: #fff;
-      border-radius: 14px;
-      border-bottom-right-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .ex-voice-wave {
-      display: inline-flex;
-      align-items: center;
-      gap: 2px;
-    }
-    .ex-voice-wave span {
-      display: inline-block;
-      width: 2px;
-      background: #fff;
-      border-radius: 1px;
-    }
-    .ex-pricetag {
-      align-self: flex-start;
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 12px;
-      width: 92%;
-    }
-    .ex-pricetag .route {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-2);
-    }
-    .ex-pricetag .pri {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.32px;
-    }
-    .ex-pricetag .pri sup { font-size: 12px; font-weight: 600; color: var(--text-2); margin-right: 1px; }
-    .ex-pricetag .meta { font-size: 11px; color: var(--text-2); }
 
-    /* ─── Pricing ─── */
-    .price-box {
-      max-width: 480px;
-      margin: 0 auto;
-      background: #fff;
-      border-radius: var(--r-large);
-      padding: 48px 40px;
-      box-shadow: var(--shadow-card);
-      text-align: center;
-    }
-    .price-tag { display: inline-block; padding: 6px 14px; background: rgba(255, 56, 92, 0.10); color: var(--rausch); font-size: 12px; font-weight: 700; border-radius: 999px; margin-bottom: 20px; letter-spacing: 0.32px; text-transform: uppercase; }
-    .price-amount {
-      font-size: 64px;
-      font-weight: 700;
-      letter-spacing: -1.2px;
-      line-height: 1;
-      margin-bottom: 8px;
-    }
-    .price-amount sup { font-size: 24px; font-weight: 600; color: var(--text-2); margin-right: 4px; }
-    .price-amount .per { font-size: 16px; font-weight: 500; color: var(--text-2); }
-    .price-list {
-      list-style: none;
-      text-align: left;
-      margin: 32px 0;
-      padding: 0;
-    }
-    .price-list li {
-      padding: 10px 0;
-      font-size: 15px;
+    .headline { color: #fff; max-width: 640px; flex-shrink: 0; }
+    .headline h1 {
+      font-family: var(--font-body);
       font-weight: 500;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      font-size: clamp(34px, 5.4vw, 56px);
+      line-height: 1.08;
+      letter-spacing: -1.4px;
+      text-shadow: 0 2px 18px rgba(0,0,0,0.35);
+      animation: fade-rise .8s ease-out both;
     }
-    .price-list li::before {
-      content: "✓";
-      color: var(--rausch);
-      font-weight: 700;
+    .headline h1 .serif { font-size: 1.06em; }
+    .headline p {
+      margin-top: 16px;
       font-size: 16px;
+      color: rgba(255,255,255,0.86);
+      max-width: 480px;
+      text-shadow: 0 1px 10px rgba(0,0,0,0.35);
+      animation: fade-rise .8s ease-out .2s both;
+    }
+    .headline .hl-badges {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px;
+      animation: fade-rise .8s ease-out .35s both;
+    }
+    .hl-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12.5px; font-weight: 500; color: #fff;
+      background: rgba(255,255,255,0.14);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.22);
+      padding: 7px 12px; border-radius: 999px;
     }
 
-    /* Pricing alt-link */
-    .price-alt {
-      margin-top: 14px;
-      font-size: 13px;
-      color: var(--text-2);
-      text-align: center;
-    }
-    .price-alt a {
-      color: var(--rausch);
-      font-weight: 600;
-      text-decoration: none;
-      transition: color 0.15s;
-    }
-    .price-alt a:hover { color: var(--rausch-dark); }
-
-    /* ─── FAQ ─── */
-    .faq-list {
-      max-width: 760px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .faq-item {
+    /* ─── Chat card (the white zone) ─── */
+    .chat-card-wrap { width: 100%; flex-shrink: 0; animation: fade-rise .8s ease-out .4s both; }
+    @media (min-width: 1024px) { .chat-card-wrap { width: min(480px, 45%); } }
+    .chat-card {
       background: #fff;
-      border-radius: var(--r-card);
-      box-shadow: var(--shadow-card);
+      border-radius: var(--radius);
+      box-shadow: 0 24px 64px rgba(0,0,0,0.35);
       overflow: hidden;
-    }
-    .faq-item summary {
-      list-style: none;
-      cursor: pointer;
-      padding: 20px 24px;
-      font-size: 17px;
-      font-weight: 600;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      transition: color 0.15s;
-    }
-    .faq-item summary::-webkit-details-marker { display: none; }
-    .faq-item summary:hover { color: var(--rausch); }
-    .faq-item summary::after {
-      content: "+";
-      font-size: 22px;
-      font-weight: 400;
-      color: var(--text-2);
-      transition: transform 0.2s ease;
-      line-height: 1;
-    }
-    .faq-item[open] summary::after { transform: rotate(45deg); color: var(--rausch); }
-    .faq-item .faq-answer {
-      padding: 0 24px 22px;
-      font-size: 15px;
-      font-weight: 500;
-      color: var(--text-2);
-      line-height: 1.6;
-    }
-    .faq-item .faq-answer a { color: var(--rausch); font-weight: 600; }
-
-    /* ─── Final CTA ─── */
-    .cta-banner {
-      padding: 96px 0;
-      background: var(--text);
-      color: #fff;
-      text-align: center;
-    }
-    .cta-actions {
-      display: inline-flex;
+      display: flex; flex-direction: column;
+      padding: 18px 18px 14px;
       gap: 12px;
-      flex-wrap: wrap;
-      justify-content: center;
     }
-    .btn-cta-ghost {
-      background: transparent;
-      color: #fff;
-      border: 1px solid rgba(255, 255, 255, 0.32);
-    }
-    .btn-cta-ghost:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: #fff;
-      transform: translateY(-1px);
-    }
-    .cta-banner h2 {
-      font-size: clamp(32px, 4vw, 48px);
-      font-weight: 700;
-      letter-spacing: -0.44px;
-      line-height: 1.1;
-      margin-bottom: 20px;
-    }
-    .cta-banner h2 span { color: var(--rausch); }
-    .cta-banner p {
+    @media (min-width: 640px) { .chat-card { padding: 22px 22px 16px; border-radius: 26px; } }
+
+    .chat-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .chat-card-title { display: flex; align-items: center; gap: 10px; }
+    .chat-ava {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--rausch), #ff7d95);
+      color: #fff; display: flex; align-items: center; justify-content: center;
       font-size: 17px;
-      color: rgba(255, 255, 255, 0.7);
-      max-width: 520px;
-      margin: 0 auto 32px;
     }
+    .chat-card-title h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; color: #000; }
+    .chat-status { font-size: 12px; color: var(--green); font-weight: 500; }
+    .chat-wa-row {
+      display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px;
+      background: var(--surface); border-radius: 16px; padding: 9px 14px;
+    }
+    .chat-wa-row .lbl { font-size: 11.5px; color: var(--text-3); }
+    .chat-wa-row a.wa {
+      font-size: 13.5px; font-weight: 600; color: #16a34a;
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    }
+    .chat-wa-row a.wa:hover { text-decoration: underline; }
 
-    /* ─── Footer ─── */
-    footer {
-      padding: 48px 0 32px;
-      background: #fff;
-      border-top: 1px solid var(--border);
+    .chat-log {
+      height: 240px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 4px 2px;
+      scrollbar-width: thin;
     }
-    .footer-grid {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 24px;
-      margin-bottom: 32px;
+    @media (min-width: 640px) { .chat-log { height: 270px; } }
+    .bubble {
+      max-width: 86%;
+      padding: 9px 13px; border-radius: 16px;
+      font-size: 13.8px; line-height: 1.45;
+      white-space: pre-wrap; word-wrap: break-word;
     }
-    .footer-links {
-      display: flex;
-      gap: 28px;
-    }
-    .footer-links a {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text-2);
-      transition: color 0.15s;
-    }
-    .footer-links a:hover { color: var(--rausch); }
-    .footer-bottom {
-      padding-top: 24px;
-      border-top: 1px solid var(--border);
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-3);
-      text-align: center;
-    }
+    .bubble a { color: var(--rausch); font-weight: 600; text-decoration: underline; }
+    .bubble.user { align-self: flex-end; background: #0a0a0a; color: #fff; border-bottom-right-radius: 6px; }
+    .bubble.ai { align-self: flex-start; background: var(--surface); color: var(--text); border-bottom-left-radius: 6px; }
+    .typing { align-self: flex-start; display: inline-flex; gap: 4px; padding: 12px 14px; background: var(--surface); border-radius: 16px; border-bottom-left-radius: 6px; }
+    .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: blink 1.2s infinite ease-in-out; }
+    .typing i:nth-child(2) { animation-delay: .18s; }
+    .typing i:nth-child(3) { animation-delay: .36s; }
+    @keyframes blink { 0%, 70%, 100% { opacity: .25; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-3px); } }
 
-    /* ─── Scroll-triggered animations ─── */
-    .reveal {
-      opacity: 0;
-      transform: translateY(24px);
-      transition: opacity 0.7s cubic-bezier(0.2, 0.8, 0.3, 1),
-                  transform 0.7s cubic-bezier(0.2, 0.8, 0.3, 1);
-      will-change: opacity, transform;
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      font-size: 12px; font-weight: 500;
+      border: 1px solid var(--line); background: #fff; color: #374151;
+      padding: 7px 11px; border-radius: 10px; cursor: pointer;
+      transition: border-color .15s ease, background .15s ease;
     }
-    .reveal.in {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    .reveal-stagger > * {
-      opacity: 0;
-      transform: translateY(16px);
-      transition: opacity 0.6s cubic-bezier(0.2, 0.8, 0.3, 1),
-                  transform 0.6s cubic-bezier(0.2, 0.8, 0.3, 1);
-    }
-    .reveal-stagger.in > *:nth-child(1) { transition-delay: 0.05s; opacity: 1; transform: translateY(0); }
-    .reveal-stagger.in > *:nth-child(2) { transition-delay: 0.12s; opacity: 1; transform: translateY(0); }
-    .reveal-stagger.in > *:nth-child(3) { transition-delay: 0.19s; opacity: 1; transform: translateY(0); }
-    .reveal-stagger.in > *:nth-child(4) { transition-delay: 0.26s; opacity: 1; transform: translateY(0); }
-    .reveal-stagger.in > *:nth-child(5) { transition-delay: 0.33s; opacity: 1; transform: translateY(0); }
-    .reveal-stagger.in > *:nth-child(6) { transition-delay: 0.40s; opacity: 1; transform: translateY(0); }
+    .chip:hover { border-color: #9ca3af; background: var(--surface); }
 
-    /* Hero entrance (immediate, no scroll trigger) */
-    .hero-grid > * {
-      opacity: 0;
-      transform: translateY(20px);
-      animation: heroIn 0.8s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+    .chat-form { display: flex; gap: 8px; }
+    .chat-input {
+      flex: 1; min-width: 0;
+      font-size: 14px; color: var(--text);
+      padding: 11px 14px; border-radius: 14px;
+      border: 1px solid var(--line); background: transparent;
+      outline: none;
+      transition: box-shadow .15s ease, border-color .15s ease;
     }
-    .hero-grid > *:nth-child(1) { animation-delay: 0.1s; }
-    .hero-grid > *:nth-child(2) { animation-delay: 0.25s; }
-    @keyframes heroIn {
+    .chat-input::placeholder { color: var(--text-3); }
+    .chat-input:focus { border-color: transparent; box-shadow: 0 0 0 2px #111; }
+    .chat-send {
+      flex-shrink: 0;
+      background: #0a0a0a; color: #fff; border: none; cursor: pointer;
+      width: 44px; height: 44px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s ease;
+    }
+    .chat-send:hover { background: #262626; }
+    .chat-send:disabled { opacity: .5; cursor: default; }
+    .chat-foot { font-size: 11px; color: var(--text-3); text-align: center; }
+    .chat-foot a { color: var(--text-2); font-weight: 600; text-decoration: underline; }
+
+    @keyframes fade-rise {
+      from { opacity: 0; transform: translateY(24px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Float badge gentle bob */
-    .float-badge {
-      animation: floatBob 3.5s ease-in-out infinite;
-    }
-    @keyframes floatBob {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-6px); }
-    }
+    /* ─── Content sections below the hero ─── */
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+    .section { padding: 72px 0; }
+    .section.alt { background: var(--surface); border-radius: var(--radius); margin: 12px; }
+    @media (min-width: 900px) { .section.alt { margin: 24px; } }
 
-    /* Hero badge dot pulse */
-    .hero-badge-dot { animation: dotPulse 1.8s ease-in-out infinite; }
-    @keyframes dotPulse {
-      0%, 100% { box-shadow: 0 0 0 4px rgba(37, 211, 102, 0.18); }
-      50% { box-shadow: 0 0 0 8px rgba(37, 211, 102, 0.05); }
+    .sec-head { text-align: center; max-width: 640px; margin: 0 auto 44px; }
+    .eyebrow {
+      display: inline-block; font-size: 12px; font-weight: 600;
+      letter-spacing: 1.6px; text-transform: uppercase; color: var(--rausch);
+      margin-bottom: 12px;
     }
+    .sec-head h2 {
+      font-size: clamp(26px, 3.6vw, 38px); font-weight: 600; letter-spacing: -1px;
+      line-height: 1.15; color: var(--ink);
+    }
+    .sec-head h2 .serif { color: var(--text-2); }
+    .sec-head p { margin-top: 12px; color: var(--text-2); font-size: 15.5px; }
 
-    /* Section eyebrow subtle accent */
-    .t-eyebrow {
-      position: relative;
-      padding-left: 28px;
-    }
-    .t-eyebrow::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 50%;
-      width: 18px;
-      height: 1.5px;
-      background: var(--rausch);
-      transform: translateY(-50%);
-    }
+    .reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s ease; }
+    .reveal.in { opacity: 1; transform: translateY(0); }
 
-    /* Respect reduced motion */
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-      }
-      .reveal, .reveal-stagger > * { opacity: 1; transform: none; }
+    /* steps */
+    .steps { display: grid; gap: 16px; }
+    @media (min-width: 760px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+    .step {
+      background: #fff; border: 1px solid var(--line); border-radius: 20px;
+      padding: 26px 22px;
     }
+    .step .n { font-size: 11.5px; font-weight: 600; letter-spacing: 1.2px; color: var(--text-3); text-transform: uppercase; }
+    .step .ic { font-size: 26px; margin: 14px 0 10px; }
+    .step h3 { font-size: 16.5px; font-weight: 600; letter-spacing: -0.3px; margin-bottom: 6px; }
+    .step p { font-size: 14px; color: var(--text-2); }
 
-    /* ─── Responsive ─── */
-    @media (max-width: 950px) {
-      .hero { padding: 56px 0 72px; }
-      .hero-grid {
-        grid-template-columns: 1fr;
-        gap: 56px;
-      }
-      .hero-visual { order: -1; }
-      .float-badge { display: none; }
-      .nav-links { display: none; }
-      .steps, .features, .testimonials, .examples {
-        grid-template-columns: 1fr;
-      }
-      .section { padding: 72px 0; }
+    /* features */
+    .features { display: grid; gap: 14px; }
+    @media (min-width: 640px) { .features { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 1000px) { .features { grid-template-columns: repeat(4, 1fr); } }
+    .feature {
+      background: #fff; border: 1px solid var(--line); border-radius: 20px;
+      padding: 22px 20px;
     }
-    @media (max-width: 540px) {
-      .container { padding: 0 20px; }
-      .hero-actions { flex-direction: column; align-items: stretch; }
-      .hero-actions .btn { justify-content: center; }
-      .footer-grid { flex-direction: column; align-items: flex-start; }
-      .footer-links { flex-wrap: wrap; }
+    .feature .ic { font-size: 24px; margin-bottom: 10px; }
+    .feature h3 { font-size: 15px; font-weight: 600; letter-spacing: -0.2px; margin-bottom: 5px; }
+    .feature p { font-size: 13.2px; color: var(--text-2); }
+
+    /* examples */
+    .examples { display: grid; gap: 14px; }
+    @media (min-width: 640px) { .examples { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 1000px) { .examples { grid-template-columns: repeat(3, 1fr); } }
+    .ex {
+      background: #fff; border: 1px solid var(--line); border-radius: 20px;
+      padding: 18px; display: flex; flex-direction: column; gap: 9px; align-items: flex-start;
     }
+    .ex-tag {
+      font-size: 11.5px; font-weight: 600; color: var(--text-2);
+      background: var(--surface); padding: 5px 10px; border-radius: 999px;
+    }
+    .ex-msg { font-size: 13.4px; line-height: 1.45; padding: 8px 12px; border-radius: 14px; max-width: 100%; }
+    .ex-msg.u { background: #0a0a0a; color: #fff; align-self: flex-end; border-bottom-right-radius: 5px; }
+    .ex-msg.a { background: var(--surface); color: var(--text); border-bottom-left-radius: 5px; }
+    .ex-price {
+      width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px;
+    }
+    .ex-price .r { font-size: 11.5px; color: var(--text-3); font-weight: 500; }
+    .ex-price .p { font-size: 22px; font-weight: 700; letter-spacing: -0.6px; color: var(--ink); }
+    .ex-price .p sup { font-size: 12px; font-weight: 600; }
+    .ex-price .p span { font-size: 11px; font-weight: 500; color: var(--text-2); }
+    .ex-price .m { font-size: 11.5px; color: var(--text-2); }
+    .ex-photo { width: 100%; height: 84px; border-radius: 12px; }
+    .ex-voice {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: #0a0a0a; color: #fff; border-radius: 14px; border-bottom-right-radius: 5px;
+      padding: 9px 13px; font-size: 12px; align-self: flex-end;
+    }
+    .ex-voice .wave { display: inline-flex; align-items: center; gap: 2px; }
+    .ex-voice .wave span { width: 3px; border-radius: 2px; background: rgba(255,255,255,0.85); display: inline-block; }
+
+    /* testimonials */
+    .testis { display: grid; gap: 14px; }
+    @media (min-width: 760px) { .testis { grid-template-columns: repeat(3, 1fr); } }
+    .testi { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 22px 20px; }
+    .testi .stars { color: #f59e0b; font-size: 13px; letter-spacing: 2px; margin-bottom: 10px; }
+    .testi .q { font-size: 14px; color: var(--text); margin-bottom: 14px; }
+    .testi .who { display: flex; align-items: center; gap: 10px; }
+    .testi .av {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--navy); color: #fff; font-size: 13px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .testi .nm { font-size: 13.5px; font-weight: 600; }
+    .testi .mt { font-size: 12px; color: var(--text-3); }
+
+    /* pricing */
+    .price-box {
+      max-width: 460px; margin: 0 auto;
+      background: #fff; border: 1px solid var(--line); border-radius: 24px;
+      padding: 32px 28px; text-align: center;
+      box-shadow: 0 18px 48px rgba(0,0,0,0.07);
+    }
+    .price-tag {
+      display: inline-block; font-size: 12px; font-weight: 600; color: var(--green);
+      background: #f0fdf4; padding: 6px 12px; border-radius: 999px; margin-bottom: 14px;
+    }
+    .price-amount { font-size: 56px; font-weight: 700; letter-spacing: -2px; color: var(--ink); line-height: 1; }
+    .price-amount sup { font-size: 22px; font-weight: 600; }
+    .price-amount .per { font-size: 14px; font-weight: 500; color: var(--text-3); letter-spacing: 0; }
+    .price-box > p { font-size: 14px; color: var(--text-2); margin: 10px 0 16px; }
+    .price-list { list-style: none; text-align: left; margin-bottom: 22px; }
+    .price-list li {
+      font-size: 13.8px; color: var(--text); padding: 8px 0 8px 26px; position: relative;
+      border-bottom: 1px solid var(--surface);
+    }
+    .price-list li::before { content: '✓'; position: absolute; left: 2px; color: var(--green); font-weight: 700; }
+    .btn-block {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; background: #0a0a0a; color: #fff;
+      font-size: 14.5px; font-weight: 600; padding: 14px; border-radius: 16px;
+      transition: background .2s ease;
+    }
+    .btn-block:hover { background: #262626; }
+    .price-alt { margin-top: 14px; font-size: 13px; color: var(--text-2); }
+    .price-alt a { color: var(--rausch); font-weight: 600; }
+
+    /* faq */
+    .faq-list { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+    .faq-item {
+      background: #fff; border: 1px solid var(--line); border-radius: 16px;
+      padding: 4px 18px;
+    }
+    .faq-item summary {
+      cursor: pointer; font-size: 14.5px; font-weight: 600; padding: 14px 0;
+      list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item summary::after { content: '+'; font-size: 19px; color: var(--text-3); transition: transform .2s ease; }
+    .faq-item[open] summary::after { transform: rotate(45deg); }
+    .faq-a { padding: 0 0 16px; font-size: 13.8px; color: var(--text-2); }
+    .faq-a a { color: var(--rausch); font-weight: 600; }
+
+    /* final CTA */
+    .cta-final {
+      margin: 12px; border-radius: var(--radius);
+      background: var(--navy);
+      padding: 72px 24px; text-align: center; color: #fff;
+      position: relative; overflow: hidden;
+    }
+    @media (min-width: 900px) { .cta-final { margin: 24px; } }
+    .cta-final h2 { font-size: clamp(28px, 4.4vw, 44px); font-weight: 500; letter-spacing: -1.2px; line-height: 1.1; }
+    .cta-final h2 .serif { color: #ffb3c1; }
+    .cta-final p { margin: 14px auto 26px; color: rgba(255,255,255,0.78); font-size: 15.5px; max-width: 440px; }
+    .cta-final .acts { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+    .btn-wa {
+      display: inline-flex; align-items: center; gap: 9px;
+      background: #fff; color: #0a0a0a;
+      font-size: 14.5px; font-weight: 600; padding: 14px 26px; border-radius: 16px;
+      transition: transform .2s ease;
+    }
+    .btn-wa:hover { transform: scale(1.03); }
+    .btn-ghost {
+      display: inline-flex; align-items: center; gap: 9px;
+      border: 1px solid rgba(255,255,255,0.35); color: #fff;
+      font-size: 14.5px; font-weight: 600; padding: 14px 26px; border-radius: 16px;
+      transition: background .2s ease;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+
+    /* footer */
+    footer { padding: 40px 0 28px; }
+    .foot-grid { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px; }
+    .foot-links { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--text-2); }
+    .foot-links a:hover { color: var(--ink); }
+    .foot-bottom { margin-top: 22px; font-size: 12.5px; color: var(--text-3); }
   </style>
 </head>
 <body>
 
-  <!-- ───── Header ───── -->
-  <header>
-    <div class="container">
-      <nav class="nav">
-        <a href="/" class="logo">luanna<span>.</span></a>
-        <div class="nav-links">
-          <a href="#como-funciona">Cómo funciona</a>
-          <a href="#ejemplos">Ejemplos</a>
-          <a href="#features">Características</a>
-          <a href="#precios">Precio</a>
-          <a href="#faq">FAQ</a>
-          <a href="/chat">Probar en web</a>
-        </div>
-        <a href="https://wa.me/12024908102" class="btn btn-primary nav-cta" target="_blank" rel="noopener">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-          </svg>
-          Hablar con Luanna
-        </a>
-      </nav>
-    </div>
-  </header>
+  <!-- ───── Hero: full-bleed travel video card ───── -->
+  <div class="frame">
+    <div class="hero-card">
+      <video id="heroVid" class="hero-video" autoplay muted loop playsinline aria-hidden="true"></video>
+      <video id="heroVidB" class="hero-video-b" autoplay muted loop playsinline aria-hidden="true"></video>
+      <div class="hero-scrim" aria-hidden="true"></div>
 
-  <main>
-  <!-- ───── Hero ───── -->
-  <section class="hero">
-    <div class="hero-bg" aria-hidden="true">
-      <div class="blob blob-a"></div>
-      <div class="blob blob-b"></div>
-      <div class="blob blob-c"></div>
-      <div class="hero-bg-grid"></div>
-      <svg class="hero-bg-flight" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <linearGradient id="flightGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stop-color="#ff385c" stop-opacity="0"/>
-            <stop offset="50%" stop-color="#ff385c" stop-opacity="0.55"/>
-            <stop offset="100%" stop-color="#ff385c" stop-opacity="0"/>
-          </linearGradient>
-          <path id="flightPath" d="M 80 440 Q 600 80 1120 360"/>
-        </defs>
-        <use href="#flightPath" class="path-line"/>
-        <circle class="pin pin-1" cx="80" cy="440" r="5" fill="#ff385c"/>
-        <circle class="pin pin-2" cx="1120" cy="360" r="5" fill="#ff385c"/>
-        <g class="plane" style="offset-path: path('M 80 440 Q 600 80 1120 360'); offset-rotate: auto;">
-          <path d="M -10 0 L 12 -4 L 12 4 Z M -2 -2 L -2 2 L -10 4 L -10 -4 Z" fill="#ff385c"/>
-        </g>
-      </svg>
-    </div>
-    <div class="container">
-      <div class="hero-grid">
-        <div>
-          <div class="hero-badge">
-            <span class="hero-badge-dot"></span>
-            En WhatsApp ahora mismo
-          </div>
-          <h1 class="t-display">
-            Viaja más.<br><span class="accent">Paga menos.</span>
-          </h1>
-          <p class="t-body-lg hero-sub">
-            Luanna es tu agente de viajes personal en WhatsApp. Vuelos baratos, hoteles, paquetes y alertas — chatea con texto, foto o nota de voz.
-          </p>
-          <div class="hero-actions">
-            <a href="https://wa.me/12024908102" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-              </svg>
+      <div class="hero-content">
+        <!-- Navbar pill -->
+        <div class="nav-row">
+          <nav class="nav-pill" aria-label="principal">
+            <a href="/" class="brand">
+              <span class="brand-mark">✈</span>
+              luanna<span class="dot">.</span>
+            </a>
+            <div class="nav-links">
+              <a href="#como-funciona">Cómo funciona</a>
+              <a href="#features">Características</a>
+              <a href="#ejemplos">Ejemplos</a>
+              <a href="#precios">Precio</a>
+              <a href="#faq">FAQ</a>
+            </div>
+            <a href="https://wa.me/12024908102" class="nav-cta" target="_blank" rel="noopener">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Hablar con Luanna
             </a>
-            <a href="/chat" class="btn btn-outlined btn-lg">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-              Probar en el chat web
-            </a>
-          </div>
-          <div class="hero-proof">
-            <div class="hero-avatars">
-              <div class="av">M</div>
-              <div class="av">S</div>
-              <div class="av">A</div>
-              <div class="av">R</div>
-            </div>
-            <p class="hero-proof-text">
-              <strong>+2,400 viajeros</strong> ya ahorraron con Luanna
-            </p>
-          </div>
+          </nav>
         </div>
 
-        <div class="hero-visual">
-          <div class="float-badge"><span class="dot"></span>Vuelo encontrado · $187</div>
-          <div class="chat">
-            <div class="chat-header">
-              <div class="chat-avatar">✈</div>
-              <div>
-                <div class="chat-name">Luanna</div>
-                <div class="chat-status">● En línea ahora</div>
-              </div>
+        <!-- Bottom: headline + live chat card -->
+        <div class="hero-bottom">
+          <div class="headline">
+            <h1>Viaja más,<br>paga <span class="serif">menos.</span></h1>
+            <p>Luanna es tu agente de viajes personal en WhatsApp. Vuelos, hoteles y alertas de precio — le escribes, le hablas o le mandas una foto, y te responde al toque.</p>
+            <div class="hl-badges">
+              <span class="hl-badge">💸 Dólares y soles</span>
+              <span class="hl-badge">🎙️ Responde con voz</span>
+              <span class="hl-badge">🌎 ES · EN · PT</span>
+              <span class="hl-badge">⚡ 24/7</span>
             </div>
-            <div class="chat-body">
-              <div class="msg msg-user">Quiero ir a Cancún en agosto, budget $300 por persona</div>
-              <div class="msg msg-ai">¡Encontré varias opciones! La mejor de hoy ✈️</div>
-              <div class="price-card">
-                <div class="route">MIA → CUN · Agosto 14–21</div>
-                <div class="price"><sup>$</sup>187 <span>/ ida y vuelta</span></div>
-                <div class="meta">Aeromexico · 3h 20min · Sin escalas</div>
+          </div>
+
+          <!-- The white zone: live chat with Luanna -->
+          <div class="chat-card-wrap">
+            <div class="chat-card">
+              <div class="chat-card-head">
+                <div class="chat-card-title">
+                  <div class="chat-ava">✈</div>
+                  <div>
+                    <h2>Habla con Luanna 👋</h2>
+                    <div class="chat-status">● En línea ahora</div>
+                  </div>
+                </div>
               </div>
-              <div class="msg msg-ai">También tengo paquete <strong>vuelo + hotel</strong> por $412 total. ¿Lo reservo? 🏨</div>
+
+              <div class="chat-wa-row">
+                <span class="lbl">¿Prefieres WhatsApp?</span>
+                <a class="wa" href="https://wa.me/12024908102" target="_blank" rel="noopener">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  Abrir WhatsApp
+                </a>
+              </div>
+
+              <div id="chatLog" class="chat-log" aria-live="polite">
+                <div class="bubble ai">¡Hola! ✈️ Soy Luanna, tu agente de viajes. Dime a dónde quieres ir y desde qué ciudad sales, ¡y te busco vuelos al toque! 🔎</div>
+              </div>
+
+              <div class="chips" id="chatChips">
+                <button class="chip" type="button" data-q="Vuelos Lima a Madrid en agosto">✈️ Lima → Madrid</button>
+                <button class="chip" type="button" data-q="Hoteles en Cancún para 2 personas">🏨 Hotel en Cancún</button>
+                <button class="chip" type="button" data-q="Avísame si bajan los vuelos a Buenos Aires">🔔 Alerta de precio</button>
+              </div>
+
+              <form class="chat-form" id="chatForm">
+                <input id="chatInput" class="chat-input" type="text" placeholder="Escríbele a Luanna…" autocomplete="off" maxlength="600" />
+                <button class="chat-send" id="chatSend" type="submit" aria-label="Enviar">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                </button>
+              </form>
+              <div class="chat-foot">Mismo cerebro que en WhatsApp · <a href="/chat">chat completo con foto y voz →</a></div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </section>
+  </div>
+
+  <main>
 
   <!-- ───── How it works ───── -->
-  <section class="section section-surface" id="como-funciona">
+  <section class="section" id="como-funciona">
     <div class="container">
-      <div class="section-head reveal">
-        <span class="t-eyebrow">Cómo funciona</span>
-        <h2 class="t-section">Tan fácil como mandar un mensaje.</h2>
+      <div class="sec-head reveal">
+        <span class="eyebrow">Cómo funciona</span>
+        <h2>Tan fácil como mandar <span class="serif">un mensaje.</span></h2>
         <p>Sin apps que descargar. Sin cuentas que crear. Solo escríbele a Luanna en WhatsApp.</p>
       </div>
-      <div class="steps reveal-stagger reveal">
+      <div class="steps reveal">
         <div class="step">
-          <div class="step-number">Paso 01</div>
-          <div class="step-icon">💬</div>
-          <h3>Escríbele, hablale o mándale una foto</h3>
+          <div class="n">Paso 01</div>
+          <div class="ic">💬</div>
+          <h3>Escríbele, háblale o mándale una foto</h3>
           <p>Cuéntale a dónde quieres ir, cuándo y cuánto puedes gastar. Texto, nota de voz o una foto del lugar — lo que prefieras.</p>
         </div>
         <div class="step">
-          <div class="step-number">Paso 02</div>
-          <div class="step-icon">🔍</div>
+          <div class="n">Paso 02</div>
+          <div class="ic">🔍</div>
           <h3>Busca por ti</h3>
           <p>Compara vuelos, hoteles y paquetes en cientos de aerolíneas y portales para darte la mejor opción.</p>
         </div>
         <div class="step">
-          <div class="step-number">Paso 03</div>
-          <div class="step-icon">🎉</div>
+          <div class="n">Paso 03</div>
+          <div class="ic">🎉</div>
           <h3>Reserva en segundos</h3>
           <p>Te envía el link directo para reservar al mejor precio. Sin redirecciones raras ni letra chica.</p>
         </div>
@@ -1302,45 +729,50 @@
   </section>
 
   <!-- ───── Features ───── -->
-  <section class="section" id="features">
+  <section class="section alt" id="features">
     <div class="container">
-      <div class="section-head reveal">
-        <span class="t-eyebrow">Características</span>
-        <h2 class="t-section">Todo lo que necesitas para viajar inteligente.</h2>
+      <div class="sec-head reveal">
+        <span class="eyebrow">Características</span>
+        <h2>Todo para viajar <span class="serif">inteligente.</span></h2>
       </div>
-      <div class="features reveal-stagger reveal">
+      <div class="features reveal">
         <div class="feature">
-          <div class="feature-icon">✈️</div>
+          <div class="ic">✈️</div>
           <h3>Vuelos baratos</h3>
-          <p>Compara precios en tiempo real entre cientos de aerolíneas para encontrar la mejor tarifa — en dólares y soles, lo más barato primero.</p>
+          <p>Compara precios en tiempo real entre cientos de aerolíneas — en dólares y soles, lo más barato primero.</p>
         </div>
         <div class="feature">
-          <div class="feature-icon">🏨</div>
+          <div class="ic">🏨</div>
           <h3>Hoteles y estadías</h3>
           <p>Encuentra hospedaje al precio justo: hoteles, hostales o departamentos según tu estilo de viaje.</p>
         </div>
         <div class="feature">
-          <div class="feature-icon">📦</div>
+          <div class="ic">📦</div>
           <h3>Paquetes todo incluido</h3>
           <p>Vuelo + hotel + traslados en un solo precio. Más simple, normalmente más barato.</p>
         </div>
         <div class="feature">
-          <div class="feature-icon">🔔</div>
+          <div class="ic">🔔</div>
           <h3>Alertas de precio</h3>
           <p>Te avisa cuando bajan los vuelos a tus destinos favoritos. Solo cuando vale la pena.</p>
         </div>
         <div class="feature">
-          <div class="feature-icon">📸</div>
+          <div class="ic">📸</div>
           <h3>Mándale una foto</h3>
-          <p>Ves un lugar lindo en Instagram? Mándale la foto y Luanna reconoce el destino y te arma el viaje.</p>
+          <p>¿Ves un lugar lindo en Instagram? Mándale la foto y Luanna reconoce el destino y te arma el viaje.</p>
         </div>
         <div class="feature">
-          <div class="feature-icon">🎙️</div>
+          <div class="ic">🎙️</div>
           <h3>O una nota de voz</h3>
           <p>Cuéntale tu viaje hablando, como si fuera una amiga. Te entiende en español, inglés o portugués y te responde al toque — con voz.</p>
         </div>
         <div class="feature">
-          <div class="feature-icon">⚡</div>
+          <div class="ic">🗺️</div>
+          <h3>Tips de viaje</h3>
+          <p>Visa, mejor época para ir, clima y presupuesto diario del destino que quieras. Pregúntale lo que sea.</p>
+        </div>
+        <div class="feature">
+          <div class="ic">⚡</div>
           <h3>Respuestas en segundos</h3>
           <p>No esperas días. Luanna responde al instante, 24/7, en WhatsApp o en el chat web.</p>
         </div>
@@ -1349,65 +781,65 @@
   </section>
 
   <!-- ───── Examples gallery ───── -->
-  <section class="section section-surface" id="ejemplos">
+  <section class="section" id="ejemplos">
     <div class="container">
-      <div class="section-head reveal">
-        <span class="t-eyebrow">Lo que puedes pedirle</span>
-        <h2 class="t-section">Habla como con una amiga. Luanna entiende todo.</h2>
+      <div class="sec-head reveal">
+        <span class="eyebrow">Lo que puedes pedirle</span>
+        <h2>Habla como con una amiga. <span class="serif">Luanna entiende todo.</span></h2>
         <p>Texto, foto o nota de voz. Estos son ejemplos reales de cómo la gente la usa.</p>
       </div>
-      <div class="examples reveal-stagger reveal">
+      <div class="examples reveal">
 
-        <div class="ex-card">
+        <div class="ex">
           <span class="ex-tag">✈️ Vuelos</span>
-          <div class="ex-msg user">Vuelos Lima → Madrid en agosto, máximo $700</div>
-          <div class="ex-msg ai">¡Encontré varias opciones! 🙌</div>
-          <div class="ex-pricetag">
-            <div class="route">LIM → MAD · 12–22 ago</div>
-            <div class="pri"><sup>$</sup>624</div>
-            <div class="meta">Iberia · 1 escala · ida y vuelta</div>
+          <div class="ex-msg u">Vuelos Lima → Madrid en agosto, máximo $700</div>
+          <div class="ex-msg a">¡Encontré varias opciones! 🙌</div>
+          <div class="ex-price">
+            <div class="r">LIM → MAD · 12–22 ago</div>
+            <div class="p"><sup>$</sup>624 <span>(~S/2,340)</span></div>
+            <div class="m">Iberia · 1 escala · ida y vuelta</div>
           </div>
         </div>
 
-        <div class="ex-card">
+        <div class="ex">
           <span class="ex-tag">📸 Foto</span>
-          <div class="ex-photo" style="background:linear-gradient(135deg,#5fb1e8 0%,#1f6fb4 60%,#0c3a66 100%);background-image:radial-gradient(circle at 30% 70%, #ffd9a8 0 18%, transparent 19%), linear-gradient(135deg, #5fb1e8 0%, #1f6fb4 60%, #0c3a66 100%);"></div>
-          <div class="ex-msg user">¿Qué playa es esta?</div>
-          <div class="ex-msg ai">¡Es Positano, Italia! 🇮🇹 ¿Te armo el viaje desde Lima? Hay vuelos desde $890.</div>
+          <div class="ex-photo" style="background:radial-gradient(circle at 30% 70%, #ffd9a8 0 18%, transparent 19%), linear-gradient(135deg, #5fb1e8 0%, #1f6fb4 60%, #0c3a66 100%);"></div>
+          <div class="ex-msg u">¿Qué playa es esta?</div>
+          <div class="ex-msg a">¡Es Positano, Italia! 🇮🇹 ¿Te armo el viaje desde Lima? Hay vuelos desde $890.</div>
         </div>
 
-        <div class="ex-card">
+        <div class="ex">
           <span class="ex-tag">🎙️ Nota de voz</span>
           <div class="ex-voice">
-            <span class="ex-voice-wave">
+            <span class="wave">
               <span style="height:6px"></span><span style="height:14px"></span><span style="height:10px"></span><span style="height:18px"></span><span style="height:8px"></span><span style="height:12px"></span><span style="height:16px"></span><span style="height:7px"></span><span style="height:11px"></span>
             </span>
             0:08
           </div>
-          <div class="ex-msg ai">Te entendí: Tokio en marzo, presupuesto $1,200. Busco vuelos + hotel ya 🇯🇵</div>
+          <div class="ex-msg a">Te entendí: Tokio en marzo, presupuesto $1,200. Busco vuelos + hotel ya 🇯🇵 (y te respondo con voz 🎙️)</div>
         </div>
 
-        <div class="ex-card">
+        <div class="ex">
           <span class="ex-tag">🔔 Alerta</span>
-          <div class="ex-msg user">Avísame si bajan vuelos a Cancún de menos de $300</div>
-          <div class="ex-msg ai">Listo! ✅ Te aviso por WhatsApp cuando LIM→CUN baje de $300. Reviso cada 6 horas.</div>
+          <div class="ex-msg u">Avísame si bajan vuelos a Cancún de menos de $300</div>
+          <div class="ex-msg a">Listo! ✅ Te aviso por WhatsApp cuando LIM→CUN baje de $300. Reviso cada 6 horas.</div>
         </div>
 
-        <div class="ex-card">
+        <div class="ex">
           <span class="ex-tag">📦 Paquete</span>
-          <div class="ex-msg user">Vuelo + hotel a Cartagena, 3 noches</div>
-          <div class="ex-msg ai">Te armo el combo 🏨✈️</div>
-          <div class="ex-pricetag">
-            <div class="route">LIM → CTG · 15–18 oct</div>
-            <div class="pri"><sup>$</sup>412 <span style="font-size:11px;font-weight:500;color:var(--text-2)">/ pp todo</span></div>
-            <div class="meta">Vuelo + hotel 4★ · sin escalas</div>
+          <div class="ex-msg u">Vuelo + hotel a Cartagena, 3 noches</div>
+          <div class="ex-msg a">Te armo el combo 🏨✈️</div>
+          <div class="ex-price">
+            <div class="r">LIM → CTG · 15–18 oct</div>
+            <div class="p"><sup>$</sup>412 <span>/ pp todo</span></div>
+            <div class="m">Vuelo + hotel 4★ · sin escalas</div>
           </div>
         </div>
 
-        <div class="ex-card">
+        <div class="ex">
           <span class="ex-tag">🗺️ Tips</span>
-          <div class="ex-msg user">¿Qué hacer en Tokio en 4 días?</div>
-          <div class="ex-msg ai">🍣 Tsukiji al amanecer, Shibuya de noche, día completo en Nikko, y Akihabara una tarde. Te paso el itinerario completo 👇</div>
+          <div class="ex-msg u">¿Qué hacer en Tokio en 4 días?</div>
+          <div class="ex-msg a">🍣 Tsukiji al amanecer, Shibuya de noche, día completo en Nikko, y Akihabara una tarde. Te paso el itinerario completo 👇</div>
         </div>
 
       </div>
@@ -1415,43 +847,43 @@
   </section>
 
   <!-- ───── Testimonials ───── -->
-  <section class="section section-surface">
+  <section class="section alt">
     <div class="container">
-      <div class="section-head reveal">
-        <span class="t-eyebrow">Testimonios</span>
-        <h2 class="t-section">Viajeros que ya ahorraron con Luanna.</h2>
+      <div class="sec-head reveal">
+        <span class="eyebrow">Testimonios</span>
+        <h2>Viajeros que ya <span class="serif">ahorraron.</span></h2>
       </div>
-      <div class="testimonials reveal-stagger reveal">
-        <div class="testimonial">
+      <div class="testis reveal">
+        <div class="testi">
           <div class="stars">★★★★★</div>
-          <p class="testimonial-quote">"Le pedí un viaje a Madrid y en 2 minutos me mandó 4 opciones. Reservé la de $480 ida y vuelta. Increíble."</p>
-          <div class="testimonial-user">
-            <div class="testimonial-avatar">M</div>
+          <p class="q">"Le pedí un viaje a Madrid y en 2 minutos me mandó 4 opciones. Reservé la de $480 ida y vuelta. Increíble."</p>
+          <div class="who">
+            <div class="av">M</div>
             <div>
-              <div class="testimonial-name">María C.</div>
-              <div class="testimonial-meta">Bogotá → Madrid</div>
+              <div class="nm">María C.</div>
+              <div class="mt">Bogotá → Madrid</div>
             </div>
           </div>
         </div>
-        <div class="testimonial">
+        <div class="testi">
           <div class="stars">★★★★★</div>
-          <p class="testimonial-quote">"Más fácil que cualquier app. Le escribo como si fuera una amiga y resuelve todo. Mi nueva agencia."</p>
-          <div class="testimonial-user">
-            <div class="testimonial-avatar">S</div>
+          <p class="q">"Más fácil que cualquier app. Le escribo como si fuera una amiga y resuelve todo. Mi nueva agencia."</p>
+          <div class="who">
+            <div class="av">S</div>
             <div>
-              <div class="testimonial-name">Sofía R.</div>
-              <div class="testimonial-meta">Lima → Cancún</div>
+              <div class="nm">Sofía R.</div>
+              <div class="mt">Lima → Cancún</div>
             </div>
           </div>
         </div>
-        <div class="testimonial">
+        <div class="testi">
           <div class="stars">★★★★★</div>
-          <p class="testimonial-quote">"La alerta de precios me salvó: bajó el vuelo a Buenos Aires $200 de un día a otro y compré justo a tiempo."</p>
-          <div class="testimonial-user">
-            <div class="testimonial-avatar">A</div>
+          <p class="q">"La alerta de precios me salvó: bajó el vuelo a Buenos Aires $200 de un día a otro y compré justo a tiempo."</p>
+          <div class="who">
+            <div class="av">A</div>
             <div>
-              <div class="testimonial-name">Andrés P.</div>
-              <div class="testimonial-meta">Santiago → Buenos Aires</div>
+              <div class="nm">Andrés P.</div>
+              <div class="mt">Santiago → Buenos Aires</div>
             </div>
           </div>
         </div>
@@ -1462,105 +894,79 @@
   <!-- ───── Pricing ───── -->
   <section class="section" id="precios">
     <div class="container">
-      <div class="section-head reveal">
-        <span class="t-eyebrow">Precio</span>
-        <h2 class="t-section">Simple. Transparente. Sin letra chica.</h2>
+      <div class="sec-head reveal">
+        <span class="eyebrow">Precio</span>
+        <h2>Simple. Transparente. <span class="serif">Sin letra chica.</span></h2>
         <p>Luanna es gratis. Ganamos una pequeña comisión cuando reservas — sale del proveedor, no de tu bolsillo.</p>
       </div>
       <div class="price-box reveal">
         <span class="price-tag">Gratis para siempre</span>
         <div class="price-amount"><sup>$</sup>0<span class="per"> / siempre</span></div>
-        <p class="t-body" style="margin-bottom: 8px;">Tu agente de viajes personal, sin suscripción.</p>
+        <p>Tu agente de viajes personal, sin suscripción.</p>
         <ul class="price-list">
           <li>Búsqueda ilimitada de vuelos, hoteles y paquetes</li>
           <li>Alertas cuando bajan los precios de tus destinos</li>
-          <li>Chat por texto, foto o nota de voz</li>
+          <li>Chat por texto, foto o nota de voz — te responde con voz</li>
+          <li>Precios en dólares y soles</li>
           <li>Ofertas diarias según tus gustos</li>
           <li>Soporte 24/7 en español, inglés y portugués</li>
         </ul>
-        <a href="https://wa.me/12024908102" class="btn btn-primary btn-lg" target="_blank" rel="noopener" style="width: 100%;">
-          Empezar ahora
-        </a>
-        <p class="price-alt">
-          ¿Sin WhatsApp a mano? <a href="/chat">Pruébala en el chat web →</a>
-        </p>
+        <a href="https://wa.me/12024908102" class="btn-block" target="_blank" rel="noopener">Empezar ahora</a>
+        <p class="price-alt">¿Sin WhatsApp a mano? <a href="/chat">Pruébala en el chat web →</a></p>
       </div>
     </div>
   </section>
 
   <!-- ───── FAQ ───── -->
-  <section class="section section-surface" id="faq" aria-labelledby="faq-title">
+  <section class="section alt" id="faq" aria-labelledby="faq-title">
     <div class="container">
-      <div class="section-head reveal">
-        <span class="t-eyebrow">Preguntas frecuentes</span>
-        <h2 id="faq-title" class="t-section">Lo que la gente nos pregunta antes de usarla.</h2>
+      <div class="sec-head reveal">
+        <span class="eyebrow">Preguntas frecuentes</span>
+        <h2 id="faq-title">Lo que la gente pregunta <span class="serif">antes de usarla.</span></h2>
       </div>
       <div class="faq-list reveal">
         <details class="faq-item">
           <summary>¿Cuánto cuesta usar Luanna?</summary>
-          <div class="faq-answer">
-            Luanna es gratis. Ganamos una pequeña comisión cuando reservas vuelos u hoteles a través de los links que te enviamos — sale del proveedor, no de tu bolsillo. No hay suscripción ni comisión extra.
-          </div>
+          <div class="faq-a">Luanna es gratis. Ganamos una pequeña comisión cuando reservas vuelos u hoteles a través de los links que te enviamos — sale del proveedor, no de tu bolsillo. No hay suscripción ni comisión extra.</div>
         </details>
         <details class="faq-item">
           <summary>¿Cómo le hablo a Luanna?</summary>
-          <div class="faq-answer">
-            Escríbele en WhatsApp como si fuera una amiga. Le puedes mandar texto ("vuelos Lima a Madrid en agosto"), una foto del lugar al que quieres ir, o una nota de voz. Te responde en segundos, 24/7, en tu idioma (español, inglés o portugués).
-          </div>
+          <div class="faq-a">Escríbele en WhatsApp como si fuera una amiga. Le puedes mandar texto ("vuelos Lima a Madrid en agosto"), una foto del lugar al que quieres ir, o una nota de voz. Te responde en segundos, 24/7, en tu idioma (español, inglés o portugués).</div>
         </details>
         <details class="faq-item">
           <summary>¿Dónde se reserva el vuelo o el hotel?</summary>
-          <div class="faq-answer">
-            Luanna te manda el link directo al proveedor (aerolínea, Booking, Hotellook, etc.) para que reserves ahí. Nunca te pide datos de tarjeta — la reserva la haces tú en el sitio del proveedor.
-          </div>
+          <div class="faq-a">Luanna te manda el link directo al proveedor (aerolínea, Booking, Hotellook, etc.) para que reserves ahí. Nunca te pide datos de tarjeta — la reserva la haces tú en el sitio del proveedor.</div>
         </details>
         <details class="faq-item">
           <summary>¿Cómo funcionan las alertas de precio?</summary>
-          <div class="faq-answer">
-            Le dices a Luanna que quieres monitorear una ruta (ej. "avísame si bajan vuelos a Cancún de menos de $300"). Cada 6 horas chequea precios. Cuando detecta una caída real (más del 10% bajo el promedio reciente), te avisa por WhatsApp.
-          </div>
+          <div class="faq-a">Le dices a Luanna que quieres monitorear una ruta (ej. "avísame si bajan vuelos a Cancún de menos de $300"). Cada 6 horas chequea precios. Cuando detecta una caída real (más del 10% bajo el promedio reciente), te avisa por WhatsApp.</div>
         </details>
         <details class="faq-item">
           <summary>¿En qué idiomas habla?</summary>
-          <div class="faq-answer">
-            Luanna habla español, inglés y portugués, y entiende variantes regionales (LatAm, España, Brasil). Le hablas por texto o por nota de voz, y te responde con voz si tú le hablas con voz.
-          </div>
+          <div class="faq-a">Luanna habla español, inglés y portugués, y entiende variantes regionales (LatAm, España, Brasil). Le hablas por texto o por nota de voz, y te responde con voz si tú le hablas con voz.</div>
         </details>
         <details class="faq-item">
           <summary>¿Puedo probarla sin WhatsApp?</summary>
-          <div class="faq-answer">
-            Sí. Tenemos un <a href="/chat">chat web en luanna.app/chat</a> con las mismas funcionalidades (texto, foto y nota de voz). Si después quieres vincularlo a tu WhatsApp, lo puedes hacer desde el botón Vincular.
-          </div>
+          <div class="faq-a">Sí. Tenemos un <a href="/chat">chat web en luanna.app/chat</a> con las mismas funcionalidades (texto, foto y nota de voz). Si después quieres vincularlo a tu WhatsApp, lo puedes hacer desde el botón Vincular.</div>
         </details>
         <details class="faq-item">
           <summary>¿Cómo elimino mis datos?</summary>
-          <div class="faq-answer">
-            Visita <a href="/data-deletion">luanna.app/data-deletion</a> y haz la solicitud con tu número. Procesamos la eliminación de mensajes, preferencias, alertas y datos asociados en menos de 30 días.
-          </div>
+          <div class="faq-a">Visita <a href="/data-deletion">luanna.app/data-deletion</a> y haz la solicitud con tu número. Procesamos la eliminación de mensajes, preferencias, alertas y datos asociados en menos de 30 días.</div>
         </details>
       </div>
     </div>
   </section>
 
   <!-- ───── Final CTA ───── -->
-  <section class="cta-banner">
-    <div class="container">
-      <h2>¿Listo para viajar<br>más por <span>menos</span>?</h2>
-      <p>Escríbele a Luanna ahora mismo y dile a dónde quieres ir.</p>
-      <div class="cta-actions">
-        <a href="https://wa.me/12024908102" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-          </svg>
-          Hablar con Luanna
-        </a>
-        <a href="/chat" class="btn btn-cta-ghost btn-lg">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          Probar en el chat
-        </a>
-      </div>
+  <section class="cta-final">
+    <h2>¿Listo para viajar más<br>por <span class="serif">menos</span>?</h2>
+    <p>Escríbele a Luanna ahora mismo y dile a dónde quieres ir.</p>
+    <div class="acts">
+      <a href="https://wa.me/12024908102" class="btn-wa" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Hablar con Luanna
+      </a>
+      <a href="/chat" class="btn-ghost">Probar en el chat web</a>
     </div>
   </section>
   </main>
@@ -1568,9 +974,12 @@
   <!-- ───── Footer ───── -->
   <footer>
     <div class="container">
-      <div class="footer-grid">
-        <a href="/" class="logo">luanna<span>.</span></a>
-        <div class="footer-links">
+      <div class="foot-grid">
+        <a href="/" class="brand" style="color: var(--ink);">
+          <span class="brand-mark">✈</span>
+          luanna<span class="dot">.</span>
+        </a>
+        <div class="foot-links">
           <a href="#como-funciona">Cómo funciona</a>
           <a href="#features">Características</a>
           <a href="#precios">Precio</a>
@@ -1581,19 +990,191 @@
           <a href="/data-deletion">Eliminación de datos</a>
         </div>
       </div>
-      <div class="footer-bottom">
-        © 2026 Luanna · Tu agente de viajes en WhatsApp
-      </div>
+      <div class="foot-bottom">© 2026 Luanna · Tu agente de viajes en WhatsApp</div>
     </div>
   </footer>
 
   <script>
+    // ─── Travel video background: random pick + periodic crossfade rotation.
+    // Defensive: a video that errors is dropped from the pool; if the whole
+    // pool dies we keep the navy gradient (hero-card background) — no broken UI.
+    (function () {
+      var POOL = [
+        // beach / ocean / mountains / city travel loops (Pexels CDN, free license)
+        'https://videos.pexels.com/video-files/2169880/2169880-uhd_2560_1440_30fps.mp4',
+        'https://videos.pexels.com/video-files/1739010/1739010-hd_1920_1080_30fps.mp4',
+        'https://videos.pexels.com/video-files/3015510/3015510-hd_1920_1080_24fps.mp4',
+        'https://videos.pexels.com/video-files/2257010/2257010-hd_1920_1080_24fps.mp4'
+      ];
+      var a = document.getElementById('heroVid');
+      var b = document.getElementById('heroVidB');
+      if (!a || !b || !POOL.length) return;
+      // Respect reduced motion & save-data.
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var conn = navigator.connection || {};
+      if (conn.saveData) return;
+
+      var pool = POOL.slice();
+      var current = a, next = b, idx = Math.floor(Math.random() * pool.length);
+
+      function load(el, url, onOk, onFail) {
+        el.onerror = null;
+        el.oncanplay = null;
+        var failed = false;
+        el.onerror = function () { if (!failed) { failed = true; onFail(url); } };
+        el.oncanplay = function () { if (!failed) onOk(); };
+        el.src = url;
+        el.load();
+        var p = el.play();
+        if (p && p.catch) p.catch(function () {});
+      }
+      function dropUrl(url) {
+        pool = pool.filter(function (u) { return u !== url; });
+      }
+      function showFirst() {
+        if (!pool.length) return;
+        idx = idx % pool.length;
+        load(current, pool[idx], function () { current.classList.add('on'); }, function (url) {
+          dropUrl(url); showFirst();
+        });
+      }
+      function rotate() {
+        if (pool.length < 2) return;
+        idx = (idx + 1 + Math.floor(Math.random() * (pool.length - 1))) % pool.length;
+        load(next, pool[idx], function () {
+          next.classList.add('on');
+          current.classList.remove('on');
+          var t = current; current = next; next = t;
+        }, function (url) { dropUrl(url); });
+      }
+      showFirst();
+      setInterval(rotate, 28000);
+    })();
+
+    // ─── Live chat with Luanna (same brain + session as /chat) ───
+    (function () {
+      var log = document.getElementById('chatLog');
+      var form = document.getElementById('chatForm');
+      var input = document.getElementById('chatInput');
+      var send = document.getElementById('chatSend');
+      var chips = document.getElementById('chatChips');
+      if (!log || !form) return;
+      var busy = false;
+
+      function getOrCreateSession() {
+        var s = null;
+        try { s = localStorage.getItem('luanna_session_id'); } catch (e) {}
+        if (!s) {
+          s = 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+          try { localStorage.setItem('luanna_session_id', s); } catch (e) {}
+        }
+        return s;
+      }
+      function esc(t) {
+        return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      function render(t) {
+        var h = esc(t);
+        h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        h = h.replace(/(https?:\/\/[^\s<]+)/g, function (u) {
+          return '<a href="' + u + '" target="_blank" rel="noopener">' + u.replace(/^https?:\/\//, '') + '</a>';
+        });
+        return h;
+      }
+      function bubble(cls, text) {
+        var d = document.createElement('div');
+        d.className = 'bubble ' + cls;
+        d.innerHTML = render(text);
+        log.appendChild(d);
+        log.scrollTop = log.scrollHeight;
+        return d;
+      }
+      function typing() {
+        var d = document.createElement('div');
+        d.className = 'typing';
+        d.innerHTML = '<i></i><i></i><i></i>';
+        log.appendChild(d);
+        log.scrollTop = log.scrollHeight;
+        return d;
+      }
+
+      async function sendMessage(text) {
+        if (busy || !text.trim()) return;
+        busy = true;
+        send.disabled = true;
+        if (chips) chips.style.display = 'none';
+        bubble('user', text.trim());
+        input.value = '';
+        var t = typing();
+        try {
+          var payload = { message: text.trim(), session_id: getOrCreateSession() };
+          try {
+            var rawRef = sessionStorage.getItem('luanna_ref');
+            if (rawRef) { payload.ref = rawRef; sessionStorage.removeItem('luanna_ref'); }
+          } catch (e) {}
+          var res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          var ct = res.headers.get('content-type') || '';
+          if (!res.ok) {
+            t.remove();
+            var msg = res.status === 429
+              ? '⚠️ Demasiados mensajes seguidos. Espera unos segundos.'
+              : '⚠️ Hubo un problema. Inténtalo de nuevo.';
+            bubble('ai', msg);
+          } else if (ct.indexOf('text/plain') === 0 && res.body) {
+            var reader = res.body.getReader();
+            var dec = new TextDecoder();
+            var el = null, full = '';
+            while (true) {
+              var r = await reader.read();
+              if (r.done) break;
+              var chunk = dec.decode(r.value, { stream: true });
+              if (!chunk) continue;
+              if (!el) { t.remove(); el = bubble('ai', ''); }
+              full += chunk;
+              el.innerHTML = render(full);
+              log.scrollTop = log.scrollHeight;
+            }
+            if (!el) { t.remove(); bubble('ai', '...'); }
+          } else {
+            var data = await res.json().catch(function () { return null; });
+            t.remove();
+            if (data && data.reply) bubble('ai', data.reply);
+            else if (data && data.error) bubble('ai', '⚠️ ' + data.error);
+            else bubble('ai', '...');
+          }
+        } catch (e) {
+          t.remove();
+          bubble('ai', '⚠️ Sin conexión. Inténtalo de nuevo.');
+        } finally {
+          busy = false;
+          send.disabled = false;
+          input.focus();
+        }
+      }
+
+      form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        sendMessage(input.value);
+      });
+      if (chips) {
+        chips.addEventListener('click', function (ev) {
+          var btn = ev.target.closest('.chip');
+          if (btn && btn.dataset.q) sendMessage(btn.dataset.q);
+        });
+      }
+    })();
+
+    // ─── Scroll reveal ───
     (function () {
       if (!('IntersectionObserver' in window)) {
         document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
         return;
       }
-      const io = new IntersectionObserver(function (entries) {
+      var io = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {
           if (entry.isIntersecting) {
             entry.target.classList.add('in');
@@ -1604,9 +1185,8 @@
       document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
     })();
 
-    // Referral: read ?ref=<code>, persist in localStorage (24h), and inject
-    // "ref:<code>" as the pre-filled text in every WhatsApp CTA on the page
-    // so the first message to Luanna includes the link.
+    // ─── Referral: read ?ref=<code>, persist (24h), inject "ref:<code>" into
+    // every WhatsApp CTA and tag /chat links + the embedded chat session. ───
     (function () {
       var params = new URLSearchParams(location.search);
       var fromUrl = (params.get('ref') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
@@ -1621,15 +1201,11 @@
         }
       } catch (e) {}
       var code = fromUrl || stored;
-      if (fromUrl) {
-        try {
-          localStorage.setItem('luanna_ref', JSON.stringify({
-            code: fromUrl,
-            exp: Date.now() + 24 * 60 * 60 * 1000,
-          }));
-        } catch (e) {}
-      }
       if (!code) return;
+      try {
+        localStorage.setItem('luanna_ref', JSON.stringify({ code: code, exp: Date.now() + 24 * 3600 * 1000 }));
+        sessionStorage.setItem('luanna_ref', code);
+      } catch (e) {}
       document.querySelectorAll('a[href^="https://wa.me/"]').forEach(function (a) {
         try {
           var u = new URL(a.href);
@@ -1640,7 +1216,6 @@
           a.href = u.toString();
         } catch (e) {}
       });
-      // Also tag any /chat link so the web chat picks up the ref code.
       document.querySelectorAll('a[href="/chat"]').forEach(function (a) {
         a.href = '/chat?ref=' + encodeURIComponent(code);
       });
