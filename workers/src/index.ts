@@ -42,6 +42,7 @@ import {
   getOrCreateUser,
   getPreferences,
   getRecentMessages,
+  getMessagesSince,
   getUserWatchlist,
   completeLinkCode,
   createLinkCode,
@@ -2244,6 +2245,44 @@ async function handleChatWhoami(
   return Response.json({ linked: true, name: u.name ?? null });
 }
 
+// M2 — real-time sync: the web chat polls this for messages newer than
+// `since`. Resolves the same user as /api/chat (cookie-linked WhatsApp user,
+// else web:session), so a linked user's WhatsApp turns show up in the web UI.
+async function handleChatHistory(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const linkedUserId = await readChatCookieUserId(request, env);
+  const session_id = (url.searchParams.get("session_id") || "")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 64);
+  if (!linkedUserId && !session_id) {
+    return Response.json({ error: "missing 'session_id'" }, { status: 400 });
+  }
+  const sinceRaw = url.searchParams.get("since") || "";
+  // Default: only messages from the last 2 minutes, so a fresh poller doesn't
+  // replay the whole conversation.
+  const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw))
+    ? new Date(sinceRaw).toISOString()
+    : new Date(Date.now() - 120000).toISOString();
+
+  const sql = getDb(env.DATABASE_URL);
+  let user: { id: number } | null = null;
+  if (linkedUserId) {
+    user = await loadUserById(sql, linkedUserId);
+  } else {
+    const rows = (await sql`
+      SELECT id FROM users WHERE phone = ${`web:${session_id}`} LIMIT 1
+    `) as Array<{ id: number }>;
+    user = rows[0] ?? null;
+  }
+  const now = new Date().toISOString();
+  if (!user) return Response.json({ messages: [], server_time: now });
+  const messages = await getMessagesSince(sql, user.id, since);
+  return Response.json({ messages, server_time: now });
+}
+
 async function handleChatLogout(): Promise<Response> {
   // Clear the chat-session cookie. The web user will need to vincular again
   // (or just chat normally as a brand-new web session) on the next message.
@@ -2409,6 +2448,9 @@ async function routeFetch(
   }
   if (request.method === "GET" && url.pathname === "/api/chat/link/status") {
     return handleChatLinkStatus(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/chat/history") {
+    return handleChatHistory(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/chat/whoami") {
     return handleChatWhoami(request, env);

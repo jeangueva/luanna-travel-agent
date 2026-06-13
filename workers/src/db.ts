@@ -60,6 +60,30 @@ export async function getRecentMessages(
   return rows.reverse();
 }
 
+export interface StampedMessage {
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+// Messages strictly newer than `sinceIso`, oldest first. Powers the web
+// chat's real-time sync polling (M2): a linked user sees their WhatsApp
+// turns appear in the web chat within the poll interval.
+export async function getMessagesSince(
+  sql: Sql,
+  userId: number,
+  sinceIso: string,
+  limit = 40,
+): Promise<StampedMessage[]> {
+  return (await sql`
+    SELECT role, content, created_at
+    FROM messages
+    WHERE user_id = ${userId} AND created_at > ${sinceIso}
+    ORDER BY created_at ASC
+    LIMIT ${limit}
+  `) as StampedMessage[];
+}
+
 export interface Preferences {
   origin: string | null;
   countries: string[];

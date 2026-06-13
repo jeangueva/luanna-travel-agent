@@ -784,7 +784,20 @@
         return linked.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
       }
 
+      // Dedup signatures shared between local renders and the sync poll, so a
+      // message rendered locally isn't re-appended when the poll fetches it.
+      var seenSig = [];
+      function msgSig(role, content) {
+        var r = role === 'ai' ? 'assistant' : role;
+        return r + '|' + (content || '').trim().slice(0, 160);
+      }
+      function remember(role, content) {
+        seenSig.push(msgSig(role, content));
+        if (seenSig.length > 50) seenSig.shift();
+      }
+
       function appendMessage(role, text) {
+        remember(role, text);
         if (welcome && welcome.parentNode) welcome.remove();
         const row = document.createElement('div');
         row.className = 'msg-row ' + role;
@@ -963,6 +976,7 @@
               removeTyping();
               appendMessage('ai', '...');
             } else if (fullText.trim()) {
+              remember('ai', fullText);
               fetchShareUrl();
               aiReplyCount++;
               maybeShowEmailBanner();
@@ -1326,6 +1340,36 @@
         input.focus();
       }
       getOrCreateSession();
+
+      // ── M2: real-time sync ──────────────────────────────────────────────
+      // Poll for messages that arrived on OTHER channels (mainly WhatsApp,
+      // when this web session is linked) and render them live. Dedup via
+      // seenSig so locally-sent turns never double up. Only runs while the
+      // tab is visible, and pauses during an in-flight local send.
+      var lastSyncTs = new Date().toISOString();
+      async function syncPoll() {
+        if (document.hidden || busy) return;
+        try {
+          var sid = getOrCreateSession();
+          var res = await fetch(
+            '/api/chat/history?since=' + encodeURIComponent(lastSyncTs) +
+              '&session_id=' + encodeURIComponent(sid),
+            { credentials: 'include' }
+          );
+          if (!res.ok) return;
+          var data = await res.json();
+          if (data.server_time) lastSyncTs = data.server_time;
+          (data.messages || []).forEach(function (m) {
+            var sig = msgSig(m.role, m.content);
+            if (seenSig.indexOf(sig) !== -1) return; // already shown locally
+            appendMessage(m.role === 'assistant' ? 'ai' : 'user', m.content);
+          });
+        } catch (e) { /* network blip — try next tick */ }
+      }
+      setInterval(syncPoll, 6000);
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) syncPoll();
+      });
     })();
   </script>
 
