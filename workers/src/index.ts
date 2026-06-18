@@ -213,6 +213,30 @@ function buildFirstContactWelcome(): string {
   ].join("\n");
 }
 
+// Bound any promise so a hung LLM call or runaway search fan-out can't run
+// past the point where the Workers runtime silently kills our ctx.waitUntil
+// (#3). On timeout we throw a tagged error; the webhook catch then sends the
+// deterministic fallback, so the user always gets a reply instead of silence.
+class TimeoutError extends Error {}
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new TimeoutError(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 async function generateReply(
   env: Env,
   userMessage: string,
@@ -962,17 +986,23 @@ async function handleKapsoWebhook(
           appendMessage(sql, user.id, "user", resolvedText),
           getPreferences(sql, user.id).catch(() => null),
         ]);
-        const reply = await generateReply(env, resolvedText, {
-          userId: user.id,
-          baseUrl,
-          history,
-          sql,
-          to: from,
-          phoneNumberId: phone_number_id,
-          userName: user.name,
-          isFirstContact,
-          userPrefs,
-        });
+        const reply = await withTimeout(
+          generateReply(env, resolvedText, {
+            userId: user.id,
+            baseUrl,
+            history,
+            sql,
+            to: from,
+            phoneNumberId: phone_number_id,
+            userName: user.name,
+            isFirstContact,
+            userPrefs,
+          }),
+          // Generous bound: legit flight fan-outs run ~10-20s. Cut only true
+          // hangs, before the runtime kills the invocation with no reply.
+          26_000,
+          "generateReply",
+        );
         if (reply.trim()) {
           // Send the reply FIRST (user sees it immediately), then persist the
           // assistant turn. We MUST await the persist: a fire-and-forget write
@@ -1015,6 +1045,24 @@ async function handleKapsoWebhook(
           phone_number_id,
           message_id,
         });
+        // Never leave the user staring at vanishing typing dots. Even if the
+        // LLM/DB failed or the turn timed out (#3), send a deterministic
+        // fallback so every message gets a reply — critical for first-contact
+        // strangers, and the only thing we can do when Neon is down (#4) since
+        // this path needs no DB. Best-effort: if the send itself fails (Kapso
+        // down), there's nothing more we can do.
+        const fallbackBody =
+          err instanceof TimeoutError
+            ? "Uf, esa búsqueda me está tomando más de lo normal 🐢 Escríbeme de nuevo en un momentito y lo retomo, porfa."
+            : "Uy, se me cruzó un cable 😅 Dame un segundo y escríbeme de nuevo, porfa.";
+        await sendKapsoText({
+          apiKey: env.KAPSO_API_KEY,
+          phoneNumberId: phone_number_id,
+          to: from,
+          body: fallbackBody,
+        }).catch((sendErr) =>
+          console.error("kapso fallback send failed", sendErr),
+        );
       }
     })(),
   );
