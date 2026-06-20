@@ -5,6 +5,7 @@ import { sendKapsoCtaUrl, sendKapsoFlow, sendKapsoSticker } from "./kapso";
 import {
   addWatchlistItem,
   createClickRedirect,
+  createTrip,
   getPreferences,
   getUserEngagement,
   recordPriceObservation,
@@ -12,6 +13,7 @@ import {
   type ClickKind,
   type Sql,
 } from "./db";
+import { ItinerarySchema, makeTripSlug } from "./itinerary";
 
 // Approximate USD→PEN rate for display only ("~S/ X aprox"). Travelpayouts
 // prices are in USD; we show an approximate soles figure alongside. Update
@@ -174,6 +176,55 @@ export function makeSuggestItineraryTool() {
           "Devuelve al usuario un plan ${days} días en ${destination} con bullets cortos (máx 1 línea por día), 1 tip de comida típica, 1 de transporte, y rango de presupuesto en USD. Mantén el tono cómplice y warm de Luanna. Usa emojis 🗺️ 🍝 🚇 💸.",
         format_example:
           "Día 1: barrio histórico + atardecer\\nDía 2: museo + parque\\n...\\n🍝 No te pierdas la X\\n🚇 Usa la app Y para metro\\n💸 Presupuesto: $A-$B/día",
+      };
+    },
+  });
+}
+
+// Builds and persists a FULL multi-day trip itinerary as a shareable document
+// (web view + PDF). This is the heavy "create my travel plan" action modeled
+// on Planny's "Crear viaje". Luanna composes the structured itinerary herself
+// and passes it as input; we validate, store it, and return the public link.
+//
+// OPT-IN ONLY: the model must call this ONLY after the user explicitly asks for
+// / confirms they want the full itinerary generated ("sí, ármame el plan",
+// "genérame el itinerario completo"). Never call it speculatively — a quick
+// chat suggestion uses suggest_itinerary instead.
+export function makeCreateItineraryTool(args: {
+  sql: Sql;
+  userId: number;
+  baseUrl: string;
+  // Called with the new slug right after persistence (sync). The WhatsApp path
+  // uses it to deliver the PDF document AFTER the text reply, so generating the
+  // plan never blocks/delays the chat message.
+  onCreated?: (slug: string) => void;
+}) {
+  return tool({
+    description:
+      "Crea y guarda el ITINERARIO COMPLETO de viaje del usuario como documento (página web compartible + PDF). " +
+      "Úsala SOLO cuando el usuario confirma explícitamente que quiere generar su plan completo ('sí, ármame el itinerario', 'genérame el viaje completo'). " +
+      "NO la uses para una sugerencia rápida en el chat (para eso está suggest_itinerary). " +
+      "TÚ compones el itinerario estructurado: días en orden, lugares reales con categoría/rating/tiempo/tips, hotel y comidas por día, resumen y presupuesto. " +
+      "Devuelve un link; en WhatsApp además se envía el PDF automáticamente.",
+    inputSchema: ItinerarySchema,
+    execute: async (itinerary) => {
+      if (args.userId <= 0) {
+        return {
+          ok: false,
+          error: "no_user",
+          hint: "No pude identificar al usuario para guardar el itinerario.",
+        };
+      }
+      const slug = makeTripSlug();
+      await createTrip(args.sql, { userId: args.userId, slug, itinerary });
+      args.onCreated?.(slug);
+      return {
+        ok: true,
+        slug,
+        url: `${args.baseUrl}/trip/${slug}`,
+        hint:
+          "Itinerario guardado. Dile al usuario que ya está listo y comparte el link tal cual (no lo acortes). " +
+          "Menciona que puede verlo en el navegador y exportarlo a PDF. En WhatsApp el PDF le llega aparte.",
       };
     },
   });

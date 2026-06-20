@@ -1,4 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import type { BrowserWorker } from "@cloudflare/puppeteer";
 import {
   generateText,
   stepCountIs,
@@ -16,6 +17,7 @@ import {
   type MediaMessage,
   sendKapsoAudio,
   sendKapsoCtaUrl,
+  sendKapsoDocument,
   sendKapsoSticker,
   sendKapsoFlow,
   sendKapsoText,
@@ -43,7 +45,9 @@ import {
   getPreferences,
   getRecentMessages,
   getMessagesSince,
+  getTripBySlug,
   getUserWatchlist,
+  updateTripContent,
   completeLinkCode,
   createLinkCode,
   findLinkCode,
@@ -76,6 +80,7 @@ import { buildLuannaSystemPrompt } from "./prompt";
 import {
   makeAddFavoritePlacesTool,
   makeAddWatchlistTool,
+  makeCreateItineraryTool,
   makeFlightSearchTool,
   makeHotelSearchTool,
   makePackageLinkTool,
@@ -96,6 +101,10 @@ import {
   verifyWebviewToken,
 } from "./auth";
 import { renderPreferencesPage } from "./webview";
+import puppeteer from "@cloudflare/puppeteer";
+import { enrichItineraryPhotos } from "./wikimedia";
+import { renderItineraryHtml } from "./itinerary_html";
+import type { Itinerary } from "./itinerary";
 import {
   runCleanupCron,
   runDailyOffersCron,
@@ -124,6 +133,9 @@ export interface Env {
   LUANNA_WHATSAPP_NUMBER?: string;
   ASSETS: Fetcher;
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
+  // Browser Rendering binding (headless Chromium) for trip-itinerary PDF export.
+  // Optional so the worker still typechecks/runs in environments without it.
+  BROWSER?: BrowserWorker;
 }
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
@@ -138,6 +150,10 @@ interface ReplyContext {
   userName?: string | null;
   isFirstContact?: boolean;
   userPrefs?: Preferences | null;
+  // Mutable holder: the create-itinerary tool writes the new trip slug here so
+  // the WhatsApp path can deliver the PDF AFTER the text reply (never blocking
+  // the message). Null when no itinerary was generated this turn.
+  tripCreated?: { slug: string | null };
 }
 
 const TRAVELPAYOUTS_HOSTS = new Set([
@@ -352,6 +368,14 @@ function buildLLMArgs(
     search_hotels: makeHotelSearchTool(tpEnv, clickCtx),
     get_package_link: makePackageLinkTool(tpEnv, clickCtx),
     suggest_itinerary: makeSuggestItineraryTool(),
+    create_itinerary: makeCreateItineraryTool({
+      sql: ctx.sql,
+      userId: ctx.userId,
+      baseUrl: ctx.baseUrl,
+      onCreated: (slug) => {
+        if (ctx.tripCreated) ctx.tripCreated.slug = slug;
+      },
+    }),
     trip_prep: makeTripPrepTool(),
     my_rewards: makeMyRewardsTool({ sql: ctx.sql, userId: ctx.userId }),
     ...(flowEnabled
@@ -697,6 +721,126 @@ async function handleLocationMessage(
   }
 }
 
+// ── Trip itinerary: shared load+enrich, PDF render, WhatsApp delivery ─────────
+
+// Load a trip by slug and lazily fill in place photos (Wikipedia) the first
+// time, caching the enriched itinerary back to the row. Web view and PDF render
+// both go through here, so photos appear consistently and the Wikipedia fetch
+// cost is paid once per trip.
+async function loadAndEnrichTrip(
+  env: Env,
+  slug: string,
+): Promise<Itinerary | null> {
+  const sql = getDb(env.DATABASE_URL);
+  const row = await getTripBySlug(sql, slug);
+  if (!row) return null;
+  const itinerary = row.content;
+  try {
+    const changed = await enrichItineraryPhotos(itinerary);
+    if (changed) {
+      await updateTripContent(sql, slug, itinerary).catch((err) =>
+        console.error("updateTripContent (enrich) failed", err),
+      );
+    }
+  } catch (err) {
+    console.error("enrichItineraryPhotos failed", err);
+  }
+  return itinerary;
+}
+
+// Render a trip's web page to a PDF via Browser Rendering. Drives the headless
+// browser to the trip's own public URL with ?print=1 (hides web chrome, applies
+// print CSS). Returns null if the binding is absent or the render fails.
+async function renderTripPdf(
+  env: Env,
+  baseUrl: string,
+  slug: string,
+): Promise<Uint8Array | null> {
+  if (!env.BROWSER) {
+    console.error("renderTripPdf: BROWSER binding missing");
+    return null;
+  }
+  let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
+  try {
+    browser = await puppeteer.launch(env.BROWSER);
+    const page = await browser.newPage();
+    await page.goto(`${baseUrl}/trip/${slug}?print=1`, {
+      waitUntil: "networkidle0",
+      timeout: 25_000,
+    });
+    const pdf = await page.pdf({ format: "A4", printBackground: true });
+    return pdf as Uint8Array;
+  } catch (err) {
+    console.error("renderTripPdf failed", err);
+    return null;
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
+// WhatsApp delivery: enrich photos, render the PDF, send it as a document.
+async function deliverItineraryPdf(
+  env: Env,
+  baseUrl: string,
+  args: { slug: string; to: string; phoneNumberId: string },
+): Promise<void> {
+  const itinerary = await loadAndEnrichTrip(env, args.slug);
+  const pdf = await renderTripPdf(env, baseUrl, args.slug);
+  if (!pdf) return;
+  const dest = itinerary?.destination ?? "viaje";
+  const filename = `Itinerario-${dest.replace(/[^A-Za-z0-9]+/g, "-")}.pdf`;
+  await sendKapsoDocument({
+    apiKey: env.KAPSO_API_KEY,
+    phoneNumberId: args.phoneNumberId,
+    to: args.to,
+    pdf,
+    filename,
+    caption: "Tu itinerario completo 📄✨",
+  });
+}
+
+// GET /trip/:slug         → shareable HTML view (web + WhatsApp link target)
+// GET /trip/:slug?print=1 → same view with print CSS (used by Browser Rendering)
+// GET /trip/:slug.pdf     → on-demand PDF (web "Exportar PDF" button)
+async function handleTripView(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const baseUrl = url.origin;
+  let slug = url.pathname.slice("/trip/".length);
+  const isPdf = slug.endsWith(".pdf");
+  if (isPdf) slug = slug.slice(0, -4);
+  slug = slug.replace(/[^A-Za-z0-9]/g, "");
+  if (!slug) return new Response("not found", { status: 404 });
+
+  if (isPdf) {
+    await loadAndEnrichTrip(env, slug); // cache photos before the browser render
+    const pdf = await renderTripPdf(env, baseUrl, slug);
+    if (!pdf) return new Response("pdf unavailable", { status: 503 });
+    return new Response(pdf, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="itinerario-${slug}.pdf"`,
+        "Cache-Control": "public, max-age=300",
+      },
+    });
+  }
+
+  const print = url.searchParams.get("print") === "1";
+  const itinerary = await loadAndEnrichTrip(env, slug);
+  if (!itinerary) {
+    return new Response("<h1>Itinerario no encontrado</h1>", {
+      status: 404,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  }
+  const html = renderItineraryHtml(itinerary, { baseUrl, slug, print });
+  return new Response(html, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=120",
+    },
+  });
+}
+
 async function handleKapsoWebhook(
   request: Request,
   env: Env,
@@ -986,6 +1130,7 @@ async function handleKapsoWebhook(
           appendMessage(sql, user.id, "user", resolvedText),
           getPreferences(sql, user.id).catch(() => null),
         ]);
+        const tripCreated = { slug: null as string | null };
         const reply = await withTimeout(
           generateReply(env, resolvedText, {
             userId: user.id,
@@ -997,6 +1142,7 @@ async function handleKapsoWebhook(
             userName: user.name,
             isFirstContact,
             userPrefs,
+            tripCreated,
           }),
           // Generous bound: legit flight fan-outs run ~10-20s. Cut only true
           // hangs, before the runtime kills the invocation with no reply.
@@ -1037,6 +1183,20 @@ async function handleKapsoWebhook(
               }
             }
           }
+        }
+        // If the user generated a full itinerary this turn, deliver the PDF as
+        // a WhatsApp document AFTER the text reply — rendering + upload can take
+        // several seconds and must never delay the message. Best-effort: the
+        // web link is already in the text, so a PDF failure still leaves the
+        // user with a working itinerary.
+        if (tripCreated.slug) {
+          await deliverItineraryPdf(env, baseUrl, {
+            slug: tripCreated.slug,
+            to: from,
+            phoneNumberId: phone_number_id,
+          }).catch((err) =>
+            console.error("deliverItineraryPdf failed", err),
+          );
         }
       } catch (err) {
         console.error("kapso handler error", err);
@@ -2458,6 +2618,9 @@ async function routeFetch(
   }
   if (request.method === "GET" && url.pathname === "/webview/prefs") {
     return handleWebviewPrefs(request, env);
+  }
+  if (request.method === "GET" && url.pathname.startsWith("/trip/")) {
+    return handleTripView(request, env);
   }
   if (
     (request.method === "GET" || request.method === "PUT") &&

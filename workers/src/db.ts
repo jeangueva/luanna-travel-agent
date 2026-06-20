@@ -1,4 +1,5 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import type { Itinerary } from "./itinerary";
 
 export type Sql = NeonQueryFunction<false, false>;
 
@@ -1164,6 +1165,7 @@ export async function mergeWebUserInto(
   await sql`UPDATE watchlist SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
   await sql`UPDATE click_redirects SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
   await sql`UPDATE feedback SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
+  await sql`UPDATE trips SET user_id = ${targetUserId} WHERE user_id = ${webUserId}`;
 
   // Merge preferences: COALESCE picks the target's existing value first,
   // falling back to the web user's. Then drop the web row so the FK CASCADE
@@ -1266,5 +1268,102 @@ export async function getUserEngagement(
     clicks: clickCount,
     alerts: alertCount,
   };
+}
+
+// ─── Trip itineraries (generated plans, rendered as web + PDF) ───────────────
+
+export interface TripRow {
+  id: number;
+  user_id: number;
+  slug: string;
+  title: string;
+  destination: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  total_days: number | null;
+  content: Itinerary;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TripSummaryRow {
+  slug: string;
+  title: string;
+  destination: string | null;
+  total_days: number | null;
+  created_at: string;
+}
+
+// Persist a generated itinerary. `slug` is the caller-supplied public id
+// (makeTripSlug). Returns the new row id.
+export async function createTrip(
+  sql: Sql,
+  args: {
+    userId: number;
+    slug: string;
+    itinerary: Itinerary;
+    startDate?: string | null;
+    endDate?: string | null;
+  },
+): Promise<number> {
+  const rows = (await sql`
+    INSERT INTO trips (
+      user_id, slug, title, destination, start_date, end_date, total_days, content
+    )
+    VALUES (
+      ${args.userId},
+      ${args.slug},
+      ${args.itinerary.title},
+      ${args.itinerary.destination},
+      ${args.startDate ?? null},
+      ${args.endDate ?? null},
+      ${args.itinerary.total_days},
+      ${JSON.stringify(args.itinerary)}::jsonb
+    )
+    RETURNING id
+  `) as Array<{ id: number }>;
+  return rows[0].id;
+}
+
+export async function getTripBySlug(
+  sql: Sql,
+  slug: string,
+): Promise<TripRow | null> {
+  const rows = (await sql`
+    SELECT id, user_id, slug, title, destination,
+           start_date, end_date, total_days, content, created_at, updated_at
+    FROM trips
+    WHERE slug = ${slug}
+    LIMIT 1
+  `) as TripRow[];
+  return rows[0] ?? null;
+}
+
+export async function listUserTrips(
+  sql: Sql,
+  userId: number,
+  limit = 20,
+): Promise<TripSummaryRow[]> {
+  return (await sql`
+    SELECT slug, title, destination, total_days, created_at
+    FROM trips
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `) as TripSummaryRow[];
+}
+
+// Replace the stored itinerary (used by the Wikimedia photo-enrichment pass
+// after generation, and any later edits).
+export async function updateTripContent(
+  sql: Sql,
+  slug: string,
+  itinerary: Itinerary,
+): Promise<void> {
+  await sql`
+    UPDATE trips
+    SET content = ${JSON.stringify(itinerary)}::jsonb, updated_at = NOW()
+    WHERE slug = ${slug}
+  `;
 }
 

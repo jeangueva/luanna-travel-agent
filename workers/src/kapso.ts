@@ -438,6 +438,70 @@ export async function sendKapsoAudio(params: {
 }
 
 /**
+ * Send a PDF as a WhatsApp document. Uploads the bytes to Kapso media first,
+ * then sends by id (more reliable than document-by-link, which depends on Meta
+ * fetching our URL within a tight timeout). Best-effort: returns true on
+ * success so the caller can fall back to a plain link on failure.
+ */
+export async function sendKapsoDocument(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  pdf: Uint8Array;
+  filename: string;
+  caption?: string;
+}): Promise<boolean> {
+  try {
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "application/pdf");
+    form.append(
+      "file",
+      new Blob([params.pdf.buffer as ArrayBuffer], { type: "application/pdf" }),
+      params.filename,
+    );
+    const upRes = await fetch(
+      `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/media`,
+      { method: "POST", headers: { "X-API-Key": params.apiKey }, body: form },
+    );
+    if (!upRes.ok) {
+      console.error(`sendKapsoDocument upload failed ${upRes.status}: ${(await upRes.text().catch(() => "")).slice(0, 200)}`);
+      return false;
+    }
+    const up = (await upRes.json().catch(() => null)) as { id?: string } | null;
+    if (!up?.id) {
+      console.error("sendKapsoDocument: no media id in upload response");
+      return false;
+    }
+    const sendRes = await fetch(
+      `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": params.apiKey },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: params.to,
+          type: "document",
+          document: {
+            id: up.id,
+            filename: params.filename,
+            ...(params.caption ? { caption: params.caption.slice(0, 1024) } : {}),
+          },
+        }),
+      },
+    );
+    if (!sendRes.ok) {
+      console.error(`sendKapsoDocument send failed ${sendRes.status}: ${(await sendRes.text().catch(() => "")).slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("sendKapsoDocument error", err);
+    return false;
+  }
+}
+
+/**
  * Send a WhatsApp sticker by public link. The link must point to a static
  * .webp (512x512, <100KB) — we serve ours from luanna.app/stickers/*.webp.
  * Stickers are cosmetic: never let a failure break the conversation.
