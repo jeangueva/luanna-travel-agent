@@ -490,17 +490,27 @@ export async function runErrorAlertCron(env: CronEnv): Promise<void> {
   }
   const total = groups.reduce((acc, g) => acc + g.count, 0);
   const top = groups.slice(0, 5);
-  const lines = [
-    `🚨 Luanna worker: ${total} error${total === 1 ? "" : "s"} en la última hora`,
+  // SECURITY: never put raw error messages or admin credentials/endpoints in an
+  // alert that lands in a WhatsApp chat. Raw messages can contain access tokens
+  // (e.g. Kapso 403 bodies) or DB connection details, and the chat history
+  // lives on Meta's servers / screenshots. We send ONLY the error CONTEXT name
+  // (e.g. "webhook:kapso") and a count — safe, non-sensitive identifiers. Full
+  // details stay behind the authenticated /admin panel; we don't name it here.
+  const waLines = [
+    `🚨 Luanna: ${total} error${total === 1 ? "" : "es"} en la última hora`,
+    "",
+    ...top.map((g) => `• ${g.context} (${g.count})`),
+  ];
+  const text = waLines.join("\n");
+  // The generic webhook (Slack/Discord) goes to a private ops channel, so it
+  // can safely carry the latest message for triage.
+  const webhookText = [
+    waLines[0],
     "",
     ...top.map(
-      (g) =>
-        `• ${g.context} (${g.count}) — ${g.latest_message.slice(0, 120)}`,
+      (g) => `• ${g.context} (${g.count}) — ${g.latest_message.slice(0, 120)}`,
     ),
-    "",
-    "Query: GET https://luanna.app/admin/errors/recent (Bearer ADMIN_API_KEY)",
-  ];
-  const text = lines.join("\n");
+  ].join("\n");
 
   // Channel 1: generic webhook (Slack `text` / Discord `content`).
   if (env.ALERT_WEBHOOK_URL) {
@@ -508,7 +518,7 @@ export async function runErrorAlertCron(env: CronEnv): Promise<void> {
       const res = await fetch(env.ALERT_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, content: text }),
+        body: JSON.stringify({ text: webhookText, content: webhookText }),
       });
       if (!res.ok) {
         const body = await res.text().catch(() => "");

@@ -36,6 +36,7 @@ import {
   consumeClickRedirect,
   countReferralsFor,
   createDataDeletionRequest,
+  createTrip,
   deleteWatchlistItem,
   ensureReferralCode,
   findReferrerByCode,
@@ -80,7 +81,7 @@ import { buildLuannaSystemPrompt } from "./prompt";
 import {
   makeAddFavoritePlacesTool,
   makeAddWatchlistTool,
-  makeCreateItineraryTool,
+  makeStartItineraryTool,
   makeFlightSearchTool,
   makeHotelSearchTool,
   makePackageLinkTool,
@@ -93,6 +94,7 @@ import {
   makeSuggestItineraryTool,
   makeTripPrepTool,
   makeMyRewardsTool,
+  type ItineraryRequest,
 } from "./tools";
 import {
   createChatToken,
@@ -104,7 +106,7 @@ import { renderPreferencesPage } from "./webview";
 import puppeteer from "@cloudflare/puppeteer";
 import { enrichItineraryPhotos } from "./wikimedia";
 import { renderItineraryHtml } from "./itinerary_html";
-import type { Itinerary } from "./itinerary";
+import { ItinerarySchema, makeTripSlug, type Itinerary } from "./itinerary";
 import {
   runCleanupCron,
   runDailyOffersCron,
@@ -150,10 +152,11 @@ interface ReplyContext {
   userName?: string | null;
   isFirstContact?: boolean;
   userPrefs?: Preferences | null;
-  // Mutable holder: the create-itinerary tool writes the new trip slug here so
-  // the WhatsApp path can deliver the PDF AFTER the text reply (never blocking
-  // the message). Null when no itinerary was generated this turn.
-  tripCreated?: { slug: string | null };
+  // Mutable holder: start_itinerary writes the user's itinerary request here so
+  // the caller can build + deliver the plan in the BACKGROUND after the reply
+  // (heavy generation must never block/timeout the message). Null when no
+  // itinerary was requested this turn.
+  itineraryRequest?: { value: ItineraryRequest | null };
 }
 
 const TRAVELPAYOUTS_HOSTS = new Set([
@@ -172,6 +175,39 @@ const TRAVELPAYOUTS_HOSTS = new Set([
  * safe default — a missing URL is recoverable, a 200-char Aviasales URL
  * blasted to WhatsApp is not.
  */
+// Repair fabricated click-tracking links. Cheap models sometimes transcribe the
+// opaque random /r/<id> codes wrong, producing luanna.app/r/<id> URLs that
+// 404. We extract the REAL /r/ URLs the tools actually created this turn (from
+// the tool-call results) and, when the count matches, replace the in-text /r/
+// links positionally. Both the search tools and the model order results
+// cheapest-first, so position aligns price↔link. Conservative: if every in-text
+// link is already real, or counts differ, we leave the text untouched.
+const R_URL_RE = /https?:\/\/[^\s"'<>)]+\/r\/[A-Za-z0-9_-]{4,32}/g;
+const R_URL_CAPTURE_RE = /(https?:\/\/[^\s"'<>)]+\/r\/)([A-Za-z0-9_-]{4,32})/g;
+
+function repairTrackedLinks(text: string, steps: unknown): string {
+  if (!text.includes("/r/")) return text;
+  const blob = JSON.stringify(steps ?? "");
+  const realUrls: string[] = [];
+  const seen = new Set<string>();
+  for (const m of blob.matchAll(R_URL_RE)) {
+    if (!seen.has(m[0])) {
+      seen.add(m[0]);
+      realUrls.push(m[0]);
+    }
+  }
+  if (realUrls.length === 0) return text;
+  const realIds = new Set(realUrls.map((u) => u.split("/r/")[1]));
+
+  const textMatches = [...text.matchAll(R_URL_CAPTURE_RE)];
+  if (textMatches.length === 0) return text;
+  if (textMatches.every((m) => realIds.has(m[2]))) return text; // all valid
+  if (textMatches.length !== realUrls.length) return text; // can't map safely
+
+  let i = 0;
+  return text.replace(R_URL_CAPTURE_RE, () => realUrls[i++] ?? "");
+}
+
 function sanitizeReply(text: string, baseUrl: string): string {
   const allowedHost = new URL(baseUrl).host;
   return text.replace(/https?:\/\/[^\s)]+/g, (url) => {
@@ -335,7 +371,11 @@ async function generateReply(
       );
     }
   }
-  return sanitizeReply(result.text, ctx.baseUrl).trim();
+  const repaired = repairTrackedLinks(
+    result.text,
+    (result as unknown as { steps?: unknown }).steps,
+  );
+  return sanitizeReply(repaired, ctx.baseUrl).trim();
 }
 
 /**
@@ -368,12 +408,9 @@ function buildLLMArgs(
     search_hotels: makeHotelSearchTool(tpEnv, clickCtx),
     get_package_link: makePackageLinkTool(tpEnv, clickCtx),
     suggest_itinerary: makeSuggestItineraryTool(),
-    create_itinerary: makeCreateItineraryTool({
-      sql: ctx.sql,
-      userId: ctx.userId,
-      baseUrl: ctx.baseUrl,
-      onCreated: (slug) => {
-        if (ctx.tripCreated) ctx.tripCreated.slug = slug;
+    start_itinerary: makeStartItineraryTool({
+      onRequest: (req) => {
+        if (ctx.itineraryRequest) ctx.itineraryRequest.value = req;
       },
     }),
     trip_prep: makeTripPrepTool(),
@@ -476,6 +513,7 @@ function streamReply(
   env: Env,
   userMessage: string,
   ctx: ReplyContext,
+  exec: ExecutionContext,
 ): Response {
   const flowEnabled =
     env.KAPSO_PREFS_FLOWS_ENABLED === "1" &&
@@ -487,13 +525,29 @@ function streamReply(
   const baseUrl = ctx.baseUrl;
   const sql = ctx.sql;
   const userId = ctx.userId;
+  const history = ctx.history;
   const result = streamText({
     ...args,
     onFinish: ({ text, steps }) => {
-      const sanitized = sanitizeReply(text, baseUrl).trim();
+      const repaired = repairTrackedLinks(text, steps);
+      const sanitized = sanitizeReply(repaired, baseUrl).trim();
       if (sanitized && userId > 0) {
         appendMessage(sql, userId, "assistant", sanitized).catch((err) =>
           console.error("appendMessage assistant (stream) failed", err),
+        );
+      }
+      // Background itinerary generation (web): the user already saw the "lo
+      // estoy armando ⏳" ack in the stream; the finished plan is appended as a
+      // new assistant message and surfaces in the web client via history polling.
+      if (userId > 0 && ctx.itineraryRequest?.value) {
+        exec.waitUntil(
+          generateAndDeliverItinerary(env, {
+            sql,
+            userId,
+            baseUrl,
+            history,
+            request: ctx.itineraryRequest.value,
+          }),
         );
       }
       if (userId > 0) {
@@ -718,6 +772,169 @@ async function handleLocationMessage(
     await recordError(getDb(env.DATABASE_URL), "webhook:location", err, {
       from: loc.from,
     });
+  }
+}
+
+// ── Trip itinerary: background generation + delivery ─────────────────────────
+
+const ITINERARY_BUILDER_SYSTEM = [
+  "Eres la planificadora de viajes de Luanna. Construyes un itinerario COMPLETO,",
+  "realista y bien organizado para el destino y los días pedidos.",
+  "Reglas:",
+  "- Usa SOLO lugares REALES y reconocibles del destino (atracciones, barrios,",
+  "  miradores, museos, restaurantes típicos). NUNCA inventes lugares.",
+  "- Ordena los días de forma lógica y geográfica (no saltes de un lado a otro).",
+  "- Por cada lugar: categoría, rating 1-5, tiempo de visita aprox y 1-2 tips.",
+  "- Por cada día: un título, una línea de contexto (clima/dificultad/transporte",
+  "  cuando aplique), hotel sugerido y comida típica.",
+  "- Incluye un resumen ejecutivo (grupo, fechas, presupuesto, clima) y un",
+  "  presupuesto aproximado por persona, en la moneda más relevante.",
+  "- Respeta el estilo del usuario (fotografía, aventura, comida, económico,",
+  "  relajado). Ajusta el número de días a lo que pidió.",
+  "- Todo en español, cálido pero conciso. NO incluyas URLs ni links.",
+].join("\n");
+
+// Compact shape hint appended to the prompt so the model returns JSON that
+// validates against ItinerarySchema on the first try.
+const ITINERARY_JSON_SHAPE =
+  '{"title":str,"subtitle"?:str,"destination":str,"dates_label"?:str,' +
+  '"total_days":int,"route_label"?:str,"style":[str],' +
+  '"summary":[{"label":str,"value":str}],' +
+  '"parts":[{"title"?:str,"subtitle"?:str,"days":[{"number":int,"title":str,' +
+  '"header"?:str,"places":[{"name":str,"category"?:str,"rating"?:int(1-5),' +
+  '"time"?:str,"description"?:str,"tips":[str],"maps_query"?:str}],' +
+  '"meals"?:str,"hotel"?:str,"notes":[str]}]}],' +
+  '"budget"?:{"intro"?:str,"rows":[{"label":str,"value":str}],"total"?:str},' +
+  '"notes":[str]}';
+
+// Extract a JSON object from model text: strip markdown fences, then take the
+// outermost {...}. Throws if no object is present.
+function extractJsonObject(text: string): unknown {
+  let s = text.trim();
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) s = fence[1].trim();
+  const first = s.indexOf("{");
+  const last = s.lastIndexOf("}");
+  if (first === -1 || last <= first) throw new Error("no JSON object in output");
+  return JSON.parse(s.slice(first, last + 1));
+}
+
+// Ask the model for the itinerary as raw JSON and validate with Zod. One retry
+// feeding back the validation error. Throws if it still fails.
+async function composeItinerary(
+  model: Parameters<typeof generateText>[0]["model"],
+  basePrompt: string,
+): Promise<Itinerary> {
+  const system =
+    ITINERARY_BUILDER_SYSTEM +
+    "\n\nResponde ÚNICAMENTE con UN objeto JSON válido (sin markdown, sin texto " +
+    "antes ni después) con exactamente esta forma:\n" +
+    ITINERARY_JSON_SHAPE;
+  const first = await generateText({ model, system, prompt: basePrompt });
+  let parsed = ItinerarySchema.safeParse(safeExtract(first.text));
+  if (!parsed.success) {
+    const retry = await generateText({
+      model,
+      system,
+      prompt:
+        basePrompt +
+        "\n\nTu respuesta anterior no fue un JSON válido para el formato pedido" +
+        ` (${parsed.error.issues.slice(0, 4).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}).` +
+        " Devuelve SOLO el JSON corregido, completo y válido.",
+    });
+    parsed = ItinerarySchema.safeParse(safeExtract(retry.text));
+  }
+  if (!parsed.success) {
+    throw new Error(
+      "itinerary schema invalid: " +
+        parsed.error.issues
+          .slice(0, 4)
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("; "),
+    );
+  }
+  return parsed.data;
+}
+
+function safeExtract(text: string): unknown {
+  try {
+    return extractJsonObject(text);
+  } catch {
+    return null;
+  }
+}
+
+// Build the full itinerary in the background (heavy: 10-40s), persist it, append
+// the link as an assistant message (so the web client sees it via history
+// polling), and on WhatsApp push the link + PDF document. Never throws — a
+// failure appends a friendly retry message instead of leaving the user hanging.
+async function generateAndDeliverItinerary(
+  env: Env,
+  args: {
+    sql: ReturnType<typeof getDb>;
+    userId: number;
+    baseUrl: string;
+    history: Message[];
+    request: ItineraryRequest;
+    whatsapp?: { to: string; phoneNumberId: string };
+  },
+): Promise<void> {
+  const { sql, userId, baseUrl, history, request, whatsapp } = args;
+  const wa = whatsapp;
+  try {
+    const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const model = anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL);
+    const convo = history
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n")
+      .slice(-6000);
+    const basePrompt =
+      `Conversación reciente con el usuario:\n${convo}\n\n` +
+      `Arma el itinerario COMPLETO para: destino=${request.destination}; ` +
+      `días=${request.days ?? "decide según el contexto (3-7 si no se sabe)"}; ` +
+      `estilo=${(request.style ?? []).join(", ") || "mixto"}. ` +
+      `Notas del usuario: ${request.notes ?? "ninguna"}.`;
+    // We DON'T use generateObject here: Anthropic's constrained-decoding grammar
+    // compiler times out on this large nested schema. Instead we ask for raw
+    // JSON and validate it ourselves with Zod, retrying once on a parse miss.
+    const object = await composeItinerary(model, basePrompt);
+    const slug = makeTripSlug();
+    await createTrip(sql, { userId, slug, itinerary: object });
+    const url = `${baseUrl}/trip/${slug}`;
+    const msg =
+      `¡Tu itinerario está listo! 🗺️✨\n${url}\n` +
+      `Ábrelo en el navegador y, si quieres, expórtalo a PDF 📄`;
+    await appendMessage(sql, userId, "assistant", msg).catch(() => {});
+    if (wa) {
+      await sendKapsoText({
+        apiKey: env.KAPSO_API_KEY,
+        phoneNumberId: wa.phoneNumberId,
+        to: wa.to,
+        body: msg,
+      });
+      await deliverItineraryPdf(env, baseUrl, {
+        slug,
+        to: wa.to,
+        phoneNumberId: wa.phoneNumberId,
+      }).catch((err) => console.error("deliverItineraryPdf failed", err));
+    }
+  } catch (err) {
+    console.error("generateAndDeliverItinerary failed", err);
+    await recordError(getDb(env.DATABASE_URL), "itinerary:generate", err, {
+      user_id: userId,
+      destination: request.destination,
+    });
+    const failMsg =
+      "Uy, no pude terminar de armar tu itinerario esta vez 😞 ¿Lo intentamos de nuevo en un momentito?";
+    await appendMessage(sql, userId, "assistant", failMsg).catch(() => {});
+    if (wa) {
+      await sendKapsoText({
+        apiKey: env.KAPSO_API_KEY,
+        phoneNumberId: wa.phoneNumberId,
+        to: wa.to,
+        body: failMsg,
+      }).catch(() => {});
+    }
   }
 }
 
@@ -1130,7 +1347,7 @@ async function handleKapsoWebhook(
           appendMessage(sql, user.id, "user", resolvedText),
           getPreferences(sql, user.id).catch(() => null),
         ]);
-        const tripCreated = { slug: null as string | null };
+        const itineraryRequest = { value: null as ItineraryRequest | null };
         const reply = await withTimeout(
           generateReply(env, resolvedText, {
             userId: user.id,
@@ -1142,7 +1359,7 @@ async function handleKapsoWebhook(
             userName: user.name,
             isFirstContact,
             userPrefs,
-            tripCreated,
+            itineraryRequest,
           }),
           // Generous bound: legit flight fan-outs run ~10-20s. Cut only true
           // hangs, before the runtime kills the invocation with no reply.
@@ -1184,18 +1401,20 @@ async function handleKapsoWebhook(
             }
           }
         }
-        // If the user generated a full itinerary this turn, deliver the PDF as
-        // a WhatsApp document AFTER the text reply — rendering + upload can take
-        // several seconds and must never delay the message. Best-effort: the
-        // web link is already in the text, so a PDF failure still leaves the
-        // user with a working itinerary.
-        if (tripCreated.slug) {
-          await deliverItineraryPdf(env, baseUrl, {
-            slug: tripCreated.slug,
-            to: from,
-            phoneNumberId: phone_number_id,
-          }).catch((err) =>
-            console.error("deliverItineraryPdf failed", err),
+        // If the user asked for a full itinerary this turn, build + deliver it
+        // in the BACKGROUND after the ack reply. Generation is heavy (10-40s)
+        // and must never block the message or trip the reply timeout. Scheduled
+        // as its own keepalive so it survives this turn's IIFE settling.
+        if (itineraryRequest.value) {
+          ctx.waitUntil(
+            generateAndDeliverItinerary(env, {
+              sql,
+              userId: user.id,
+              baseUrl,
+              history,
+              request: itineraryRequest.value,
+              whatsapp: { to: from, phoneNumberId: phone_number_id },
+            }),
           );
         }
       } catch (err) {
@@ -1952,7 +2171,11 @@ function asUploadedFile(value: unknown): UploadedFile | null {
   return null;
 }
 
-async function handleChat(request: Request, env: Env): Promise<Response> {
+async function handleChat(
+  request: Request,
+  env: Env,
+  exec: ExecutionContext,
+): Promise<Response> {
   const contentType = request.headers.get("content-type") || "";
   let message: string | undefined;
   let rawSession = "";
@@ -2207,18 +2430,26 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   // not a first-contact welcome (handled deterministically), and not a
   // preferences-intent reply (also deterministic). Streaming wins ~1-3s of
   // perceived latency because tokens land in the bubble as they're produced.
+  // Holder for a background itinerary request triggered by start_itinerary.
+  const itineraryRequest = { value: null as ItineraryRequest | null };
   const canStream =
     sourceKind === "text" && !isFirstContact && !PREFS_INTENT_RE.test(resolvedText);
   if (canStream) {
-    return streamReply(env, resolvedText, {
-      userId: user.id,
-      baseUrl: new URL(request.url).origin,
-      history,
-      sql,
-      userName: user.name,
-      isFirstContact,
-      userPrefs,
-    });
+    return streamReply(
+      env,
+      resolvedText,
+      {
+        userId: user.id,
+        baseUrl: new URL(request.url).origin,
+        history,
+        sql,
+        userName: user.name,
+        isFirstContact,
+        userPrefs,
+        itineraryRequest,
+      },
+      exec,
+    );
   }
   const reply = await generateReply(env, resolvedText, {
     userId: user.id,
@@ -2228,12 +2459,25 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     userName: user.name,
     isFirstContact,
     userPrefs,
+    itineraryRequest,
   });
   if (reply.trim()) {
     // Persist the assistant turn in the background — the web client
     // already has the JSON response, so we don't gate on the DB write.
     appendMessage(sql, user.id, "assistant", reply).catch((err) =>
       console.error("appendMessage assistant (web) failed", err),
+    );
+  }
+  // Background itinerary generation (web, non-streaming path).
+  if (user.id > 0 && itineraryRequest.value) {
+    exec.waitUntil(
+      generateAndDeliverItinerary(env, {
+        sql,
+        userId: user.id,
+        baseUrl: new URL(request.url).origin,
+        history,
+        request: itineraryRequest.value,
+      }),
     );
   }
   return Response.json({ reply });
@@ -2509,7 +2753,9 @@ async function handleClickRedirect(url: URL, env: Env): Promise<Response> {
   const sql = getDb(env.DATABASE_URL);
   try {
     const row = await consumeClickRedirect(sql, id);
-    if (!row) return new Response("not found", { status: 404 });
+    // Unknown id (e.g. a mistyped/expired link): send the user to the homepage
+    // instead of a blank "not found" — far better UX than a dead end.
+    if (!row) return Response.redirect(`${url.origin}/`, 302);
     void track(env, {
       event: "link_clicked",
       distinct_id: row.user_id ? distinctIdForUser(row.user_id) : "anon",
@@ -2643,7 +2889,7 @@ async function routeFetch(
     return handleApiWatchlist(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/chat") {
-    return handleChat(request, env);
+    return handleChat(request, env, ctx);
   }
   if (request.method === "GET" && url.pathname === "/api/chat/share") {
     return handleChatShare(request, env);

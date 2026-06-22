@@ -10,8 +10,9 @@ export const ItineraryPlaceSchema = z.object({
   name: z.string().min(1),
   // Planny shows a category chip per place ("Monument", "Museo", "Mirador").
   category: z.string().optional(),
-  // Reference PDF rates each place 1-5 (rendered as [+++++]).
-  rating: z.number().int().min(1).max(5).optional(),
+  // Reference PDF rates each place 1-5 (rendered as [+++++]). No min/max here:
+  // Anthropic structured output rejects integer min/max — the renderer clamps.
+  rating: z.number().int().optional().describe("Calificación 1-5"),
   // Free-text dwell time, e.g. "2-3 horas", "45-60 min".
   time: z.string().optional(),
   description: z.string().optional(),
@@ -24,7 +25,7 @@ export const ItineraryPlaceSchema = z.object({
 export type ItineraryPlace = z.infer<typeof ItineraryPlaceSchema>;
 
 export const ItineraryDaySchema = z.object({
-  number: z.number().int().min(1),
+  number: z.number().int().describe("Número de día, empieza en 1"),
   title: z.string().min(1),
   // The PDF's per-day line: transit + weather + difficulty, e.g.
   // "Aeropuerto → Centro · 11-19°C · Nivel 2/5 - Fácil".
@@ -52,7 +53,7 @@ export const ItinerarySchema = z.object({
   subtitle: z.string().optional(),
   destination: z.string().min(1),
   dates_label: z.string().optional(), // "Agosto - Septiembre 2025"
-  total_days: z.number().int().min(1).max(60),
+  total_days: z.number().int().describe("Total de días del viaje (1-60)"),
   route_label: z.string().optional(), // "Edimburgo → Highlands → Skye → Londres"
   // Planny's optional chips: fotografia | viaje_pausado | comida | aventura | economico.
   style: z.array(z.string()).default([]),

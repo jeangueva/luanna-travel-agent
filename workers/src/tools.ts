@@ -5,7 +5,6 @@ import { sendKapsoCtaUrl, sendKapsoFlow, sendKapsoSticker } from "./kapso";
 import {
   addWatchlistItem,
   createClickRedirect,
-  createTrip,
   getPreferences,
   getUserEngagement,
   recordPriceObservation,
@@ -13,7 +12,6 @@ import {
   type ClickKind,
   type Sql,
 } from "./db";
-import { ItinerarySchema, makeTripSlug } from "./itinerary";
 
 // Approximate USD→PEN rate for display only ("~S/ X aprox"). Travelpayouts
 // prices are in USD; we show an approximate soles figure alongside. Update
@@ -181,50 +179,62 @@ export function makeSuggestItineraryTool() {
   });
 }
 
-// Builds and persists a FULL multi-day trip itinerary as a shareable document
-// (web view + PDF). This is the heavy "create my travel plan" action modeled
-// on Planny's "Crear viaje". Luanna composes the structured itinerary herself
-// and passes it as input; we validate, store it, and return the public link.
+// Requests a FULL multi-day itinerary (web page + PDF), modeled on Planny's
+// "Crear viaje". This tool is LIGHTWEIGHT on purpose: it only captures WHAT to
+// build and returns immediately. Composing the full plan is heavy (10-40s) and
+// would blow the synchronous reply budget, so the actual generation +
+// persistence + PDF delivery runs in the BACKGROUND after this turn's reply
+// (see generateAndDeliverItinerary). The user gets an instant "lo estoy
+// armando ⏳" and the link/PDF arrive a moment later (WhatsApp: pushed; web:
+// appears via history polling).
 //
-// OPT-IN ONLY: the model must call this ONLY after the user explicitly asks for
-// / confirms they want the full itinerary generated ("sí, ármame el plan",
-// "genérame el itinerario completo"). Never call it speculatively — a quick
-// chat suggestion uses suggest_itinerary instead.
-export function makeCreateItineraryTool(args: {
-  sql: Sql;
-  userId: number;
-  baseUrl: string;
-  // Called with the new slug right after persistence (sync). The WhatsApp path
-  // uses it to deliver the PDF document AFTER the text reply, so generating the
-  // plan never blocks/delays the chat message.
-  onCreated?: (slug: string) => void;
+// OPT-IN ONLY: call ONLY after the user explicitly confirms they want the full
+// itinerary ("sí, ármame el plan", "genérame el viaje completo"). A quick chat
+// suggestion uses suggest_itinerary instead.
+export interface ItineraryRequest {
+  destination: string;
+  days?: number;
+  style?: string[];
+  notes?: string;
+}
+
+export function makeStartItineraryTool(args: {
+  onRequest: (req: ItineraryRequest) => void;
 }) {
   return tool({
     description:
-      "Crea y guarda el ITINERARIO COMPLETO de viaje del usuario como documento (página web compartible + PDF). " +
-      "Úsala SOLO cuando el usuario confirma explícitamente que quiere generar su plan completo ('sí, ármame el itinerario', 'genérame el viaje completo'). " +
-      "NO la uses para una sugerencia rápida en el chat (para eso está suggest_itinerary). " +
-      "TÚ compones el itinerario estructurado: días en orden, lugares reales con categoría/rating/tiempo/tips, hotel y comidas por día, resumen y presupuesto. " +
-      "Devuelve un link; en WhatsApp además se envía el PDF automáticamente.",
-    inputSchema: ItinerarySchema,
-    execute: async (itinerary) => {
-      if (args.userId <= 0) {
-        return {
-          ok: false,
-          error: "no_user",
-          hint: "No pude identificar al usuario para guardar el itinerario.",
-        };
-      }
-      const slug = makeTripSlug();
-      await createTrip(args.sql, { userId: args.userId, slug, itinerary });
-      args.onCreated?.(slug);
+      "Inicia la generación del ITINERARIO COMPLETO de viaje (página web + PDF). " +
+      "Úsala SOLO cuando el usuario confirma explícitamente que quiere su plan completo ('sí, ármame el itinerario', 'genérame el viaje'). " +
+      "NO la uses para una sugerencia rápida (para eso está suggest_itinerary). " +
+      "El plan se arma en segundo plano y el link + PDF llegan en un momento; NO inventes ni incluyas ningún link tú mismo.",
+    inputSchema: z.object({
+      destination: z
+        .string()
+        .min(2)
+        .describe("Destino principal del viaje, ej 'Cusco', 'París'"),
+      days: z
+        .number()
+        .int()
+        .min(1)
+        .max(60)
+        .optional()
+        .describe("Cuántos días dura el viaje (si el usuario lo dijo)"),
+      style: z
+        .array(z.string())
+        .optional()
+        .describe("Estilo/preferencias: fotografia, aventura, comida, economico, relajado"),
+      notes: z
+        .string()
+        .optional()
+        .describe("Cualquier detalle relevante del usuario (fechas, grupo, presupuesto, intereses)"),
+    }),
+    execute: async (req) => {
+      args.onRequest(req);
       return {
         ok: true,
-        slug,
-        url: `${args.baseUrl}/trip/${slug}`,
         hint:
-          "Itinerario guardado. Dile al usuario que ya está listo y comparte el link tal cual (no lo acortes). " +
-          "Menciona que puede verlo en el navegador y exportarlo a PDF. En WhatsApp el PDF le llega aparte.",
+          "Dile al usuario, cálida y MUY breve, que ya estás armando su itinerario completo y que se lo mandas en un momentito ⏳. " +
+          "NO incluyas ningún link todavía — el link real y el PDF llegan aparte cuando termine.",
       };
     },
   });

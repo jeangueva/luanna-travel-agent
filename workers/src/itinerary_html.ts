@@ -20,8 +20,10 @@ function esc(s: string): string {
 
 function ratingDots(rating?: number): string {
   if (!rating) return "";
-  const full = "●".repeat(rating);
-  const empty = "○".repeat(5 - rating);
+  const r = Math.max(0, Math.min(5, Math.round(rating)));
+  if (r === 0) return "";
+  const full = "●".repeat(r);
+  const empty = "○".repeat(5 - r);
   return `<span class="rating">${full}<span class="rating-empty">${empty}</span></span>`;
 }
 
