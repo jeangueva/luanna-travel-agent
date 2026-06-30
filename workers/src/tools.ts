@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { createWebviewToken } from "./auth";
+import { fetchWithTimeout } from "./http";
 import { sendKapsoCtaUrl, sendKapsoFlow, sendKapsoSticker } from "./kapso";
 import {
   addWatchlistItem,
@@ -494,6 +495,42 @@ interface TravelpayoutsFlight {
   link?: string;
 }
 
+// Resolve a user-supplied place (city name OR IATA, any language) to a
+// Travelpayouts city/airport code via the public autocomplete. The model is
+// unreliable at IATA for secondary cities (Cusco→CUZ, Punta Cana→PUJ) and
+// multi-airport metros (Buenos Aires, London), which is a top cause of empty
+// flight results. Canonicalizing server-side removes that guesswork. Prefers a
+// city (metro) code so multi-airport cities resolve to the whole metro. Returns
+// null when nothing matches. Bounded + best-effort — never throws.
+async function resolvePlaceCode(query: string): Promise<string | null> {
+  const q = query.trim();
+  if (!q) return null;
+  const url = new URL("https://autocomplete.travelpayouts.com/places2");
+  url.searchParams.set("term", q);
+  url.searchParams.set("locale", "es");
+  url.searchParams.append("types[]", "city");
+  url.searchParams.append("types[]", "airport");
+  try {
+    const res = await fetchWithTimeout(
+      url.toString(),
+      {},
+      { dep: "travelpayouts:autocomplete", timeoutMs: 4000 },
+    );
+    if (!res.ok) return null;
+    const arr = (await res.json()) as Array<{ code?: string; type?: string }>;
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const city = arr.find((p) => p.type === "city" && p.code);
+    return city?.code ?? arr.find((p) => p.code)?.code ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Already a clean 3-letter code? Use it directly if autocomplete is unreachable.
+function fallbackIata(raw: string): string | null {
+  return /^[A-Za-z]{3}$/.test(raw.trim()) ? raw.trim().toUpperCase() : null;
+}
+
 export function makeFlightSearchTool(
   env: TravelpayoutsEnv,
   click?: ClickContext,
@@ -501,14 +538,14 @@ export function makeFlightSearchTool(
   return tool({
     description:
       "Busca vuelos baratos. Devuelve hasta 5 opciones ordenadas por precio (USD). " +
-      "Usa códigos IATA de 3 letras para origen y destino (ej: LIM, MAD, BCN, MEX, BOG, MIA, JFK). " +
+      "Para origen y destino pasa la CIUDAD tal como la dijo el usuario (ej: 'Lima', 'Madrid', 'Cusco', 'Punta Cana') o un código IATA si lo sabes — el tool resuelve el código correcto solo. " +
       "Si NO sabes las fechas, NO pases ni departure_date ni departure_month — el tool escanea los próximos 6 meses solo. " +
       "Si el usuario menciona un mes específico, pasa 'departure_month' (YYYY-MM). " +
       "Si tiene fecha exacta, pasa 'departure_date' (YYYY-MM-DD). " +
       "Para vuelo redondo, agrega 'return_date' (YYYY-MM-DD).",
     inputSchema: z.object({
-      origin: z.string().length(3).describe("IATA code, 3 letras"),
-      destination: z.string().length(3).describe("IATA code, 3 letras"),
+      origin: z.string().min(2).describe("Ciudad o código IATA del origen (ej: 'Lima' o 'LIM')"),
+      destination: z.string().min(2).describe("Ciudad o código IATA del destino (ej: 'Madrid' o 'MAD')"),
       departure_date: z
         .string()
         .optional()
@@ -552,6 +589,24 @@ export function makeFlightSearchTool(
       passengers,
     }) => {
       const baseHeaders = { "X-Access-Token": env.TRAVELPAYOUTS_TOKEN };
+
+      // Canonicalize origin/destination to real IATA/metro codes before
+      // searching. Removes the "wrong code → empty results" failure mode.
+      const [originResolved, destResolved] = await Promise.all([
+        resolvePlaceCode(origin),
+        resolvePlaceCode(destination),
+      ]);
+      const originIata = originResolved ?? fallbackIata(origin);
+      const destIata = destResolved ?? fallbackIata(destination);
+      if (!originIata || !destIata) {
+        const which = !originIata ? "el origen" : "el destino";
+        return {
+          flights: [],
+          error: "place_unresolved",
+          note: `No pude identificar ${which} ("${!originIata ? origin : destination}"). Pídele al usuario que confirme la ciudad o el aeropuerto.`,
+        };
+      }
+
       // Default to round-trip. Aviasales returns round-trip itineraries (with
       // a return_at it picks) when one_way=false, even if the user didn't give
       // a return date. Only search one-way when explicitly requested.
@@ -563,8 +618,8 @@ export function makeFlightSearchTool(
         const url = new URL(
           "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
         );
-        url.searchParams.set("origin", origin.toUpperCase());
-        url.searchParams.set("destination", destination.toUpperCase());
+        url.searchParams.set("origin", originIata);
+        url.searchParams.set("destination", destIata);
         if (departureAt) url.searchParams.set("departure_at", departureAt);
         if (return_date) url.searchParams.set("return_at", return_date);
         url.searchParams.set("one_way", oneWay ? "true" : "false");
@@ -583,22 +638,35 @@ export function makeFlightSearchTool(
       const fetchOne = async (
         departureAt: string | undefined,
       ): Promise<TravelpayoutsFlight[]> => {
-        const res = await fetch(buildUrl(departureAt), { headers: baseHeaders });
-        if (!res.ok) return [];
-        const json = (await res.json()) as { data?: TravelpayoutsFlight[] };
-        return json.data ?? [];
+        // Bounded per window: the no-date path fans out to 6 of these in
+        // parallel, so one slow Travelpayouts response must not stall the whole
+        // turn. A timed-out/failed window degrades to no results for that month
+        // instead of hanging — the other windows still return.
+        try {
+          const res = await fetchWithTimeout(
+            buildUrl(departureAt),
+            { headers: baseHeaders },
+            { dep: "travelpayouts:flights", timeoutMs: 8000 },
+          );
+          if (!res.ok) return [];
+          const json = (await res.json()) as { data?: TravelpayoutsFlight[] };
+          return json.data ?? [];
+        } catch {
+          return [];
+        }
       };
 
-      // ── Resolve which date windows to query ──────────────────────────
-      // 1. Exact date / single month → one call
-      // 2. No date hint at all → fan out to next 6 months, merge, pick top 5
-      let raw: TravelpayoutsFlight[];
-      const departure = departure_date ?? departure_month;
-      if (departure) {
-        raw = byAirline(await fetchOne(departure))
+      // ── Resolve which date windows to query, widening on empty ─────────
+      // prices_for_dates is a CACHED endpoint: a specific exact date often hits
+      // an empty cache cell even when flights exist. So we cascade:
+      //   exact date → its month → full 6-month scan
+      // Only the first non-empty step is used. This is the other top cause of
+      // "no encontré vuelos" — a single empty cell, never widened.
+      const single = async (dep: string): Promise<TravelpayoutsFlight[]> =>
+        byAirline(await fetchOne(dep))
           .sort((a, b) => a.price - b.price)
           .slice(0, 5);
-      } else {
+      const scanSixMonths = async (): Promise<TravelpayoutsFlight[]> => {
         const now = new Date();
         const months: string[] = [];
         for (let i = 0; i < 6; i++) {
@@ -609,17 +677,36 @@ export function makeFlightSearchTool(
         }
         const batches = await Promise.all(months.map((m) => fetchOne(m)));
         const merged = byAirline(batches.flat());
-        // De-dup by (price, departure_at, airline) and sort by price
         const seen = new Set<string>();
-        const unique = merged
+        return merged
           .sort((a, b) => a.price - b.price)
           .filter((f) => {
             const k = `${f.price}|${f.departure_at}|${f.airline}|${f.flight_number}`;
             if (seen.has(k)) return false;
             seen.add(k);
             return true;
-          });
-        raw = unique.slice(0, 5);
+          })
+          .slice(0, 5);
+      };
+
+      let raw: TravelpayoutsFlight[] = [];
+      let scannedMonths = 1;
+      let widened = false;
+      if (departure_date) {
+        raw = await single(departure_date);
+        if (raw.length === 0) {
+          // Exact date empty → widen to the whole month.
+          raw = await single(departure_date.slice(0, 7));
+          widened = raw.length > 0;
+        }
+      } else if (departure_month) {
+        raw = await single(departure_month);
+      }
+      if (raw.length === 0) {
+        // Still nothing (or no date given) → scan the next 6 months.
+        raw = await scanSixMonths();
+        scannedMonths = 6;
+        widened = widened || !!(departure_date || departure_month);
       }
 
       // Record the cheapest observation for the route so the watchlist cron
@@ -628,8 +715,8 @@ export function makeFlightSearchTool(
       const cheapest = raw[0];
       if (cheapest && click?.sql) {
         recordPriceObservation(click.sql, {
-          originIata: origin.toUpperCase(),
-          destinationIata: destination.toUpperCase(),
+          originIata,
+          destinationIata: destIata,
           priceUsd: cheapest.price,
           source: "tool_search",
         }).catch(() => { /* never break the reply */ });
@@ -666,7 +753,16 @@ export function makeFlightSearchTool(
       );
       return {
         flights,
-        scanned_months: departure ? 1 : 6,
+        resolved_origin: originIata,
+        resolved_destination: destIata,
+        scanned_months: scannedMonths,
+        // True when the user's exact date/month had nothing and we broadened the
+        // window. The model should tell the user the shown options are for other
+        // dates, not their requested one.
+        widened_search: widened,
+        ...(flights.length === 0
+          ? { note: "No hay precios en cache para esta ruta ni en los próximos 6 meses. Sugiérele al usuario otra fecha, un aeropuerto cercano, o confirmar origen/destino." }
+          : {}),
         currency_note: "price_pen_approx es aproximado (~3.75 PEN/USD), solo referencia.",
       };
     },
@@ -744,7 +840,18 @@ export function makeHotelSearchTool(
       });
       const search_url = await wrapClickUrl(click ?? null, "hotel", longSearch);
 
-      const res = await fetch(url.toString());
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(
+          url.toString(),
+          {},
+          { dep: "hotellook:cache", timeoutMs: 8000 },
+        );
+      } catch {
+        // Slow/failed upstream: still hand back the search link so the user
+        // gets a usable reply instead of a hung turn.
+        return { hotels: [], search_url };
+      }
       if (!res.ok) {
         return { error: `hotellook ${res.status}`, hotels: [], search_url };
       }

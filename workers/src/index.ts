@@ -106,6 +106,7 @@ import { renderPreferencesPage } from "./webview";
 import puppeteer from "@cloudflare/puppeteer";
 import { enrichItineraryPhotos } from "./wikimedia";
 import { renderItineraryHtml } from "./itinerary_html";
+import { fetchWithTimeout } from "./http";
 import { ItinerarySchema, makeTripSlug, type Itinerary } from "./itinerary";
 import {
   runCleanupCron,
@@ -127,6 +128,13 @@ export interface Env {
   TRAVELPAYOUTS_MARKER: string;
   WEBVIEW_SIGNING_KEY: string;
   LUANNA_MODEL?: string;
+  // LLM provider switch. "minimax" routes the bot through MiniMax's
+  // OpenAI-compatible API; anything else (default) uses Anthropic/Claude.
+  // Lets us A/B in prod and roll back instantly without a code change.
+  LLM_PROVIDER?: string;
+  MINIMAX_API_KEY?: string;
+  MINIMAX_MODEL?: string;
+  MINIMAX_BASE_URL?: string;
   ADMIN_API_KEY?: string;
   ALERT_WEBHOOK_URL?: string;
   POSTHOG_API_KEY?: string;
@@ -202,10 +210,21 @@ function repairTrackedLinks(text: string, steps: unknown): string {
   const textMatches = [...text.matchAll(R_URL_CAPTURE_RE)];
   if (textMatches.length === 0) return text;
   if (textMatches.every((m) => realIds.has(m[2]))) return text; // all valid
-  if (textMatches.length !== realUrls.length) return text; // can't map safely
 
-  let i = 0;
-  return text.replace(R_URL_CAPTURE_RE, () => realUrls[i++] ?? "");
+  // Counts match → positionally remap (search + model both order results
+  // cheapest-first, so price↔link alignment holds).
+  if (textMatches.length === realUrls.length) {
+    let i = 0;
+    return text.replace(R_URL_CAPTURE_RE, () => realUrls[i++] ?? "");
+  }
+
+  // Counts differ → can't remap by position. Strip any /r/ link whose code
+  // isn't one the tools actually created this turn: a fabricated/mistyped
+  // code is a guaranteed 404 dead-end, worse than a missing link. Real codes
+  // pass through untouched.
+  return text.replace(R_URL_CAPTURE_RE, (full, _prefix, id) =>
+    realIds.has(id) ? full : "",
+  );
 }
 
 function sanitizeReply(text: string, baseUrl: string): string {
@@ -383,6 +402,28 @@ async function generateReply(
  * model / tools / system / messages plumbing so the streaming and non-
  * streaming paths can't drift apart.
  */
+// Single source of truth for which LLM the bot talks to. Swappable at runtime
+// via env.LLM_PROVIDER so MiniMax can be trialed (and rolled back) without a
+// deploy. MiniMax speaks the OpenAI-compatible protocol; tool calling + the
+// multi-step loop must hold up there or flight/hotel search degrades.
+function getModel(env: Env) {
+  if (env.LLM_PROVIDER === "minimax") {
+    // MiniMax exposes an Anthropic-compatible endpoint, so we reuse the same
+    // provider as Claude and only swap baseURL + key. The wire protocol is
+    // identical (Anthropic Messages API), which preserves tool calling, the
+    // multi-step loop, and streaming — no OpenAI-protocol translation risk.
+    const minimax = createAnthropic({
+      apiKey: env.MINIMAX_API_KEY ?? "",
+      // Note the trailing /v1: the AI SDK appends only "/messages", unlike the
+      // official Anthropic SDK which adds "/v1/messages". So baseURL must end /v1.
+      baseURL: env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic/v1",
+    });
+    return minimax(env.MINIMAX_MODEL ?? "MiniMax-M3");
+  }
+  const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  return anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL);
+}
+
 function buildLLMArgs(
   env: Env,
   userMessage: string,
@@ -390,8 +431,7 @@ function buildLLMArgs(
   flowEnabled: boolean,
   inWhatsApp: boolean,
 ) {
-  const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const model = anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL);
+  const model = getModel(env);
   const messages: ModelMessage[] = [
     ...ctx.history.map((m) => ({ role: m.role, content: m.content })),
     { role: "user" as const, content: userMessage },
@@ -882,8 +922,7 @@ async function generateAndDeliverItinerary(
   const { sql, userId, baseUrl, history, request, whatsapp } = args;
   const wa = whatsapp;
   try {
-    const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
-    const model = anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL);
+    const model = getModel(env);
     const convo = history
       .map((m) => `${m.role}: ${m.content}`)
       .join("\n")
@@ -1026,7 +1065,7 @@ async function handleTripView(request: Request, env: Env): Promise<Response> {
   const isPdf = slug.endsWith(".pdf");
   if (isPdf) slug = slug.slice(0, -4);
   slug = slug.replace(/[^A-Za-z0-9]/g, "");
-  if (!slug) return new Response("not found", { status: 404 });
+  if (!slug) return Response.redirect(`${baseUrl}/`, 302);
 
   if (isPdf) {
     await loadAndEnrichTrip(env, slug); // cache photos before the browser render
@@ -2748,7 +2787,9 @@ async function handleChatLogout(): Promise<Response> {
 async function handleClickRedirect(url: URL, env: Env): Promise<Response> {
   const id = url.pathname.slice(3).replace(/[^A-Za-z0-9_-]/g, "");
   if (!id || id.length < 4 || id.length > 32) {
-    return new Response("not found", { status: 404 });
+    // Malformed/fabricated code: send home instead of a blank "not found"
+    // dead-end, same as the unknown-id case below.
+    return Response.redirect(`${url.origin}/`, 302);
   }
   const sql = getDb(env.DATABASE_URL);
   try {
@@ -2795,28 +2836,80 @@ async function handleInviteRedirect(url: URL, env: Env): Promise<Response> {
   }
 }
 
-async function handleHealth(env: Env): Promise<Response> {
+// One dependency probe: ok flag + latency. Never throws.
+interface DepProbe {
+  ok: boolean;
+  latency_ms: number;
+  detail?: string;
+}
+
+async function probe(fn: () => Promise<void>): Promise<DepProbe> {
   const started = Date.now();
   try {
+    await fn();
+    return { ok: true, latency_ms: Date.now() - started };
+  } catch (err) {
+    return {
+      ok: false,
+      latency_ms: Date.now() - started,
+      detail: (err instanceof Error ? err.message : String(err)).slice(0, 120),
+    };
+  }
+}
+
+// GET /health        → liveness: DB only. Cheap, safe to hit every minute.
+// GET /health?deep=1 → also pings Anthropic + Travelpayouts (the two upstreams
+//   a reply can't survive without). Costs a little quota/latency, so the uptime
+//   monitor should poll the cheap form and reserve deep checks for low frequency
+//   or manual verification.
+async function handleHealth(env: Env, deep: boolean): Promise<Response> {
+  const db = await probe(async () => {
     const sql = getDb(env.DATABASE_URL);
     await sql`SELECT 1 AS ping`;
-    return Response.json({
-      ok: true,
-      db: "ok",
-      latency_ms: Date.now() - started,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return Response.json(
-      {
-        ok: false,
-        db: "unreachable",
-        latency_ms: Date.now() - started,
-        error: message.slice(0, 200),
-      },
-      { status: 503 },
-    );
+  });
+
+  const deps: Record<string, DepProbe> = { db };
+
+  if (deep) {
+    const [anthropic, travelpayouts] = await Promise.all([
+      // Auth + reachability check, no token cost (model list is free).
+      probe(async () => {
+        const res = await fetchWithTimeout(
+          "https://api.anthropic.com/v1/models?limit=1",
+          {
+            headers: {
+              "x-api-key": env.ANTHROPIC_API_KEY,
+              "anthropic-version": "2023-06-01",
+            },
+          },
+          { dep: "anthropic:models", timeoutMs: 6000 },
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+      }),
+      // Minimal real query (limit=1) validates the token + the flight upstream.
+      probe(async () => {
+        const u = new URL(
+          "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
+        );
+        u.searchParams.set("origin", "LIM");
+        u.searchParams.set("destination", "MAD");
+        u.searchParams.set("one_way", "true");
+        u.searchParams.set("currency", "usd");
+        u.searchParams.set("limit", "1");
+        const res = await fetchWithTimeout(
+          u.toString(),
+          { headers: { "X-Access-Token": env.TRAVELPAYOUTS_TOKEN } },
+          { dep: "travelpayouts:health", timeoutMs: 6000 },
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+      }),
+    ]);
+    deps.anthropic = anthropic;
+    deps.travelpayouts = travelpayouts;
   }
+
+  const ok = Object.values(deps).every((d) => d.ok);
+  return Response.json({ ok, deps }, { status: ok ? 200 : 503 });
 }
 
 async function dispatchFetch(
@@ -2851,7 +2944,7 @@ async function routeFetch(
   }
 
   if (request.method === "GET" && url.pathname === "/health") {
-    return handleHealth(env);
+    return handleHealth(env, url.searchParams.get("deep") === "1");
   }
   if (request.method === "GET" && url.pathname.startsWith("/r/")) {
     return handleClickRedirect(url, env);

@@ -16,6 +16,14 @@ PUBLIC_BASE_URL = "https://luanna.app"
 # disable the "Vincular con WhatsApp" feature.
 LUANNA_WHATSAPP_NUMBER = "12024908102"
 
+# ── LLM provider ───────────────────────────────────────────────────────────
+# "anthropic" (default, Claude) or "minimax". Flip to "minimax" + deploy to
+# route the bot through MiniMax's OpenAI-compatible API. Needs the
+# MINIMAX_API_KEY secret. Roll back instantly: set back to "anthropic" + deploy.
+LLM_PROVIDER = "minimax"
+MINIMAX_BASE_URL = "https://api.minimax.io/anthropic/v1"
+MINIMAX_MODEL = "MiniMax-M3"
+
 [assets]
 directory = "./public"
 binding = "ASSETS"

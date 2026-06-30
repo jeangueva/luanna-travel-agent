@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "./http";
+
 export interface KapsoMessage {
   id: string;
   timestamp: string;
@@ -301,19 +303,23 @@ export async function sendKapsoText(params: {
   body: string;
 }): Promise<void> {
   const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": params.apiKey,
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": params.apiKey,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: params.to,
+        type: "text",
+        text: { body: params.body },
+      }),
     },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: params.to,
-      type: "text",
-      text: { body: params.body },
-    }),
-  });
+    { dep: "kapso:send_text", timeoutMs: 10000 },
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Kapso send failed ${res.status}: ${text}`);
