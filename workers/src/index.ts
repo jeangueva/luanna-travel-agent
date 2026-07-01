@@ -135,6 +135,11 @@ export interface Env {
   MINIMAX_API_KEY?: string;
   MINIMAX_MODEL?: string;
   MINIMAX_BASE_URL?: string;
+  // Hotel price source: "amadeus" (real offers) or default (Hotellook cache).
+  HOTELS_PROVIDER?: string;
+  AMADEUS_CLIENT_ID?: string;
+  AMADEUS_CLIENT_SECRET?: string;
+  AMADEUS_BASE_URL?: string;
   ADMIN_API_KEY?: string;
   ALERT_WEBHOOK_URL?: string;
   POSTHOG_API_KEY?: string;
@@ -443,9 +448,22 @@ function buildLLMArgs(
   const clickCtx = ctx.userId > 0
     ? { sql: ctx.sql, userId: ctx.userId, baseUrl: ctx.baseUrl }
     : undefined;
+  const hotelOpts =
+    env.HOTELS_PROVIDER === "amadeus" &&
+    env.AMADEUS_CLIENT_ID &&
+    env.AMADEUS_CLIENT_SECRET
+      ? {
+          provider: "amadeus",
+          amadeus: {
+            clientId: env.AMADEUS_CLIENT_ID,
+            clientSecret: env.AMADEUS_CLIENT_SECRET,
+            baseURL: env.AMADEUS_BASE_URL ?? "https://test.api.amadeus.com",
+          },
+        }
+      : undefined;
   const tools = {
     search_flights: makeFlightSearchTool(tpEnv, clickCtx),
-    search_hotels: makeHotelSearchTool(tpEnv, clickCtx),
+    search_hotels: makeHotelSearchTool(tpEnv, clickCtx, hotelOpts),
     get_package_link: makePackageLinkTool(tpEnv, clickCtx),
     suggest_itinerary: makeSuggestItineraryTool(),
     start_itinerary: makeStartItineraryTool({

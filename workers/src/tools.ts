@@ -146,6 +146,130 @@ export interface TravelpayoutsEnv {
   TRAVELPAYOUTS_MARKER: string;
 }
 
+// Hotel price source, switchable at runtime. "amadeus" pulls real offers from
+// the Amadeus Self-Service API (independent of the Travelpayouts Hotels Data
+// API approval); anything else (default) uses the Hotellook price cache. The
+// booking link stays the Travelpayouts affiliate URL in all cases, so bookings
+// always monetize through TP — Amadeus only supplies display prices.
+export interface HotelProviderOpts {
+  provider?: string;
+  amadeus?: { clientId: string; clientSecret: string; baseURL: string };
+}
+
+interface HotelRow {
+  name: string | null;
+  stars: number | null;
+  price_from_usd: number | null;
+  price_from_pen_approx: number | null;
+  price_avg_usd: number | null;
+  location: string | null;
+  country: string | null;
+}
+
+// OAuth2 client-credentials token for Amadeus. Fetched per search (Workers are
+// stateless); bounded + best-effort. Returns null on any failure.
+async function amadeusToken(cfg: {
+  clientId: string;
+  clientSecret: string;
+  baseURL: string;
+}): Promise<string | null> {
+  try {
+    const res = await fetchWithTimeout(
+      `${cfg.baseURL}/v1/security/oauth2/token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body:
+          `grant_type=client_credentials` +
+          `&client_id=${encodeURIComponent(cfg.clientId)}` +
+          `&client_secret=${encodeURIComponent(cfg.clientSecret)}`,
+      },
+      { dep: "amadeus:token", timeoutMs: 6000 },
+    );
+    if (!res.ok) return null;
+    const j = (await res.json()) as { access_token?: string };
+    return j.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Real hotel offers with prices from Amadeus for a resolved city (IATA) code.
+// Two hops: hotels-by-city -> hotel-offers. Returns [] when the city has no
+// offers, null when the API is unreachable/unauthorized (caller falls back).
+async function amadeusHotelSearch(
+  cfg: { clientId: string; clientSecret: string; baseURL: string },
+  cityCode: string,
+  checkin: string,
+  checkout: string,
+  adults: number,
+): Promise<HotelRow[] | null> {
+  const token = await amadeusToken(cfg);
+  if (!token) return null;
+  const auth = { Authorization: `Bearer ${token}` };
+  try {
+    const listUrl = new URL(
+      `${cfg.baseURL}/v1/reference-data/locations/hotels/by-city`,
+    );
+    listUrl.searchParams.set("cityCode", cityCode);
+    listUrl.searchParams.set("radius", "20");
+    listUrl.searchParams.set("radiusUnit", "KM");
+    listUrl.searchParams.set("hotelSource", "ALL");
+    const lres = await fetchWithTimeout(
+      listUrl.toString(),
+      { headers: auth },
+      { dep: "amadeus:hotels_by_city", timeoutMs: 7000 },
+    );
+    if (!lres.ok) return null;
+    const ldata = (await lres.json()) as { data?: Array<{ hotelId?: string }> };
+    const ids = (ldata.data ?? [])
+      .map((h) => h.hotelId)
+      .filter((x): x is string => !!x)
+      .slice(0, 25);
+    if (ids.length === 0) return [];
+
+    const offUrl = new URL(`${cfg.baseURL}/v3/shopping/hotel-offers`);
+    offUrl.searchParams.set("hotelIds", ids.join(","));
+    offUrl.searchParams.set("checkInDate", checkin);
+    offUrl.searchParams.set("checkOutDate", checkout);
+    offUrl.searchParams.set("adults", String(adults));
+    offUrl.searchParams.set("currency", "USD");
+    offUrl.searchParams.set("bestRateOnly", "true");
+    const ores = await fetchWithTimeout(
+      offUrl.toString(),
+      { headers: auth },
+      { dep: "amadeus:hotel_offers", timeoutMs: 9000 },
+    );
+    if (!ores.ok) return [];
+    const odata = (await ores.json()) as {
+      data?: Array<{
+        hotel?: { name?: string; rating?: string; cityCode?: string };
+        offers?: Array<{ price?: { total?: string } }>;
+      }>;
+    };
+    return (odata.data ?? [])
+      .map((d): HotelRow => {
+        const total = Number(d.offers?.[0]?.price?.total);
+        const price = Number.isFinite(total) ? Math.round(total) : null;
+        const stars = Number(d.hotel?.rating);
+        return {
+          name: d.hotel?.name ?? null,
+          stars: Number.isFinite(stars) ? stars : null,
+          price_from_usd: price,
+          price_from_pen_approx: price != null ? usdToPen(price) : null,
+          price_avg_usd: null,
+          location: d.hotel?.cityCode ?? null,
+          country: null,
+        };
+      })
+      .filter((h) => h.price_from_usd != null)
+      .sort((a, b) => (a.price_from_usd ?? 0) - (b.price_from_usd ?? 0))
+      .slice(0, 5);
+  } catch {
+    return null;
+  }
+}
+
 export function makeSuggestItineraryTool() {
   return tool({
     description:
@@ -803,6 +927,7 @@ function buildHotelSearchUrl(args: {
 export function makeHotelSearchTool(
   env: TravelpayoutsEnv,
   click?: ClickContext,
+  hotelOpts?: HotelProviderOpts,
 ) {
   return tool({
     description:
@@ -840,17 +965,42 @@ export function makeHotelSearchTool(
       });
       const search_url = await wrapClickUrl(click ?? null, "hotel", longSearch);
 
-      // When the price cache returns nothing (empty, upstream error, or the
-      // Hotels Data API isn't enabled on the account → 404), the search_url IS
-      // the product: a real affiliate Hotellook link the user can open. Frame
-      // it that way so the model presents it confidently in one message instead
-      // of apologizing / claiming a "system error" / spamming the link.
+      // When no prices come back, the search_url IS the product: a real
+      // affiliate Hotellook link. Frame it that way + give the model useful
+      // orientation to add (zones, typical price band, a tip) so the reply feels
+      // complete — WITHOUT inventing exact prices, apologizing, or spamming the
+      // link. (#4: enrich the link fallback.)
       const linkOnly = {
         hotels: [] as unknown[],
         search_url,
         note:
-          "Sin muestras de precio para esta búsqueda. Entrégale al usuario el search_url TAL CUAL como la forma de ver hoteles (lleva marker afiliado). Preséntalo con seguridad en UN solo mensaje. NO te disculpes, NO digas que hubo un error del sistema, NO repitas el link.",
+          "Sin muestras de precio para esta búsqueda. Entrégale el search_url TAL CUAL (lleva marker afiliado) como la forma de ver hoteles. Preséntalo con seguridad en UN solo mensaje, sin disculpas, sin decir que hubo un error, sin repetir el link. Para que sea útil, agrega 1-2 líneas de contexto real de la ciudad: mejores zonas donde alojarse y un RANGO típico de precio por noche (aclara que es aproximado, NO inventes precios exactos ni nombres de hoteles).",
       };
+
+      // Provider: Amadeus (real offers, independent of the TP Hotels Data API)
+      // when enabled + configured; the booking link stays the TP affiliate URL.
+      if (hotelOpts?.provider === "amadeus" && hotelOpts.amadeus) {
+        const cityCode = (await resolvePlaceCode(city)) ?? fallbackIata(city);
+        if (cityCode) {
+          const rows = await amadeusHotelSearch(
+            hotelOpts.amadeus,
+            cityCode,
+            checkin,
+            checkout,
+            adults,
+          );
+          if (rows && rows.length > 0) {
+            return {
+              hotels: rows,
+              search_url,
+              currency_note:
+                "price_from_pen_approx es aproximado (~3.75 PEN/USD), solo referencia.",
+            };
+          }
+        }
+        // No offers / unreachable → clean link fallback (skip the dead cache).
+        return linkOnly;
+      }
 
       let res: Response;
       try {

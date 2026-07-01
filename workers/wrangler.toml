@@ -24,6 +24,14 @@ LLM_PROVIDER = "minimax"
 MINIMAX_BASE_URL = "https://api.minimax.io/anthropic/v1"
 MINIMAX_MODEL = "MiniMax-M3"
 
+# ── Hotels ─────────────────────────────────────────────────────────────────
+# "amadeus" (real offers via Amadeus Self-Service) or default (Hotellook cache,
+# which needs the Travelpayouts Hotels Data API approval). Amadeus also needs
+# the AMADEUS_CLIENT_ID + AMADEUS_CLIENT_SECRET secrets. Booking links stay the
+# TP affiliate URL either way. Test host until you have production Amadeus creds.
+HOTELS_PROVIDER = "hotellook"
+AMADEUS_BASE_URL = "https://test.api.amadeus.com"
+
 [assets]
 directory = "./public"
 binding = "ASSETS"
