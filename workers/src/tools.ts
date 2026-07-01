@@ -1045,6 +1045,79 @@ export function makeHotelSearchTool(
   });
 }
 
+export interface StaysServiceOpts {
+  serviceUrl?: string;
+  apiKey?: string;
+}
+
+// Airbnb-style stays (entire homes/apartments) via the external Python scraping
+// service. Used while the TP Hotels Data API is gated (needs 50k MAU). ALWAYS
+// falls back to the TP vacation-rental search link (which monetizes) when the
+// service is unset, slow, blocked, or empty — the user is never left without an
+// option, and the model is told to present the link confidently.
+export function makeStaysSearchTool(
+  env: TravelpayoutsEnv,
+  click?: ClickContext,
+  stays?: StaysServiceOpts,
+) {
+  return tool({
+    description:
+      "Busca alojamientos tipo Airbnb (casas/departamentos completos) en una ciudad para fechas dadas. Devuelve estadías con precio total y por noche + un search_url de respaldo. Úsala cuando el usuario pida departamento, casa, Airbnb o 'algo más económico que un hotel'. Fechas YYYY-MM-DD; si no las da, pídeselas.",
+    inputSchema: z.object({
+      city: z.string().min(2).describe("Ciudad (ej: 'Cusco', 'Lisboa')"),
+      checkin: z.string().describe("Check-in YYYY-MM-DD"),
+      checkout: z.string().describe("Check-out YYYY-MM-DD"),
+      adults: z.number().int().min(1).max(16).default(2),
+    }),
+    execute: async ({ city, checkin, checkout, adults }) => {
+      const longSearch = buildHotelSearchUrl({
+        city,
+        checkin,
+        checkout,
+        adults,
+        marker: env.TRAVELPAYOUTS_MARKER,
+      });
+      const search_url = await wrapClickUrl(click ?? null, "hotel", longSearch);
+      const linkOnly = {
+        stays: [] as unknown[],
+        search_url,
+        note:
+          "Sin listados en vivo ahora. Entrega el search_url TAL CUAL como la forma de ver departamentos/estadías, con seguridad, en UN mensaje, sin disculpas ni mención de errores. Agrega 1-2 líneas de contexto real de la ciudad (mejores zonas + rango de precio aproximado por noche, sin inventar precios exactos).",
+      };
+
+      if (!stays?.serviceUrl || !stays.apiKey) return linkOnly;
+      try {
+        const res = await fetchWithTimeout(
+          `${stays.serviceUrl.replace(/\/$/, "")}/search`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": stays.apiKey,
+            },
+            body: JSON.stringify({ city, checkin, checkout, adults }),
+          },
+          // Scraping is slow; bound it well under the reply budget and fall back.
+          { dep: "stays:airbnb", timeoutMs: 15000 },
+        );
+        if (!res.ok) return linkOnly;
+        const data = (await res.json().catch(() => null)) as {
+          stays?: Array<Record<string, unknown>>;
+        } | null;
+        const list = (data?.stays ?? []).slice(0, 5);
+        if (list.length === 0) return linkOnly;
+        return {
+          stays: list,
+          search_url,
+          currency_note: "Precios en USD, referenciales.",
+        };
+      } catch {
+        return linkOnly;
+      }
+    },
+  });
+}
+
 export function makePackageLinkTool(
   env: TravelpayoutsEnv,
   click?: ClickContext,

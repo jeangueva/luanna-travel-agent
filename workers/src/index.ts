@@ -91,6 +91,7 @@ import {
   makeRemoveFavoritePlacesTool,
   makeSaveUserNameTool,
   makeSendStickerTool,
+  makeStaysSearchTool,
   makeSuggestItineraryTool,
   makeTripPrepTool,
   makeMyRewardsTool,
@@ -140,6 +141,11 @@ export interface Env {
   AMADEUS_CLIENT_ID?: string;
   AMADEUS_CLIENT_SECRET?: string;
   AMADEUS_BASE_URL?: string;
+  // Airbnb-style stays via the external Python scraping service. Enabled when
+  // STAYS_PROVIDER=airbnb and the service URL + key are set.
+  STAYS_PROVIDER?: string;
+  STAYS_SERVICE_URL?: string;
+  STAYS_API_KEY?: string;
   ADMIN_API_KEY?: string;
   ALERT_WEBHOOK_URL?: string;
   POSTHOG_API_KEY?: string;
@@ -461,9 +467,16 @@ function buildLLMArgs(
           },
         }
       : undefined;
+  const staysOpts =
+    env.STAYS_PROVIDER === "airbnb" &&
+    env.STAYS_SERVICE_URL &&
+    env.STAYS_API_KEY
+      ? { serviceUrl: env.STAYS_SERVICE_URL, apiKey: env.STAYS_API_KEY }
+      : undefined;
   const tools = {
     search_flights: makeFlightSearchTool(tpEnv, clickCtx),
     search_hotels: makeHotelSearchTool(tpEnv, clickCtx, hotelOpts),
+    search_stays: makeStaysSearchTool(tpEnv, clickCtx, staysOpts),
     get_package_link: makePackageLinkTool(tpEnv, clickCtx),
     suggest_itinerary: makeSuggestItineraryTool(),
     start_itinerary: makeStartItineraryTool({
