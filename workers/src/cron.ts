@@ -235,6 +235,9 @@ async function sendProactive(
       phoneNumberId: args.phoneNumberId,
       to: args.to,
       body: args.body,
+      // Proactive path: generous bound so an occasionally-slow Kapso send
+      // doesn't false-timeout and spam the error digest.
+      timeoutMs: 25000,
     });
     return "text";
   } catch (err) {

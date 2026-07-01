@@ -301,6 +301,10 @@ export async function sendKapsoText(params: {
   phoneNumberId: string;
   to: string;
   body: string;
+  // Reply path uses the tight default (10s) so a hung send can't eat the turn.
+  // Proactive/cron sends aren't latency-critical and Kapso is occasionally slow,
+  // so those pass a larger bound to avoid false-timeout errors in the digest.
+  timeoutMs?: number;
 }): Promise<void> {
   const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
   const res = await fetchWithTimeout(
@@ -318,7 +322,7 @@ export async function sendKapsoText(params: {
         text: { body: params.body },
       }),
     },
-    { dep: "kapso:send_text", timeoutMs: 10000 },
+    { dep: "kapso:send_text", timeoutMs: params.timeoutMs ?? 10000 },
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
