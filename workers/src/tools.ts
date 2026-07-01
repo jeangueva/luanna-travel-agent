@@ -806,7 +806,7 @@ export function makeHotelSearchTool(
 ) {
   return tool({
     description:
-      "Busca hoteles baratos en una ciudad. Devuelve hasta 5 opciones con precio promedio (USD) más un link de búsqueda con marker afiliado para que el usuario compare en Hotellook. " +
+      "Busca hoteles en una ciudad. SIEMPRE devuelve un 'search_url' (link Hotellook con marker afiliado) y, cuando hay datos en cache, hasta 5 opciones con precio promedio (USD). Si no hay precios, el search_url es la respuesta: compártelo con seguridad, sin disculparte. " +
       "El nombre de la ciudad debe ir en inglés o español ('Madrid', 'Cancun', 'Buenos Aires'). " +
       "Las fechas son YYYY-MM-DD. Si el usuario no las da, pídele check-in y check-out exactos antes de llamar.",
     inputSchema: z.object({
@@ -840,6 +840,18 @@ export function makeHotelSearchTool(
       });
       const search_url = await wrapClickUrl(click ?? null, "hotel", longSearch);
 
+      // When the price cache returns nothing (empty, upstream error, or the
+      // Hotels Data API isn't enabled on the account → 404), the search_url IS
+      // the product: a real affiliate Hotellook link the user can open. Frame
+      // it that way so the model presents it confidently in one message instead
+      // of apologizing / claiming a "system error" / spamming the link.
+      const linkOnly = {
+        hotels: [] as unknown[],
+        search_url,
+        note:
+          "Sin muestras de precio para esta búsqueda. Entrégale al usuario el search_url TAL CUAL como la forma de ver hoteles (lleva marker afiliado). Preséntalo con seguridad en UN solo mensaje. NO te disculpes, NO digas que hubo un error del sistema, NO repitas el link.",
+      };
+
       let res: Response;
       try {
         res = await fetchWithTimeout(
@@ -848,18 +860,16 @@ export function makeHotelSearchTool(
           { dep: "hotellook:cache", timeoutMs: 8000 },
         );
       } catch {
-        // Slow/failed upstream: still hand back the search link so the user
-        // gets a usable reply instead of a hung turn.
-        return { hotels: [], search_url };
+        return linkOnly;
       }
       if (!res.ok) {
-        return { error: `hotellook ${res.status}`, hotels: [], search_url };
+        return linkOnly;
       }
       const json = (await res.json().catch(() => null)) as
         | HotellookCacheRow[]
         | null;
       if (!Array.isArray(json)) {
-        return { hotels: [], search_url };
+        return linkOnly;
       }
       const hotels = json
         .filter((h) => typeof h.priceFrom === "number" && h.priceFrom > 0)
@@ -875,6 +885,7 @@ export function makeHotelSearchTool(
           location: h.location?.name ?? null,
           country: h.location?.country ?? null,
         }));
+      if (hotels.length === 0) return linkOnly;
       return {
         hotels,
         search_url,
