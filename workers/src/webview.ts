@@ -7,13 +7,13 @@ export function renderPreferencesPage(token: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>Mis preferencias · Luanna</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-<meta name="theme-color" content="#FFAD3E" />
+<meta name="theme-color" content="#DB892D" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --rausch: #FFAD3E;
+    --rausch: #DB892D;
     --rausch-dark: #e00b41;
     --text: #222222;
     --text-2: #6a6a6a;

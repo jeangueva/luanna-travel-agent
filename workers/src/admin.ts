@@ -11,7 +11,7 @@ export function renderAdminLoginPage(error: boolean): string {
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --rausch: #FFAD3E;
+    --rausch: #DB892D;
     --rausch-dark: #e00b41;
     --text: #222;
     --text-2: #6a6a6a;
@@ -156,7 +156,7 @@ export function renderAdminDashboardPage(): string {
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --rausch: #FFAD3E;
+    --rausch: #DB892D;
     --rausch-dark: #e00b41;
     --text: #222;
     --text-2: #6a6a6a;
