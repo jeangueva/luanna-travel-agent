@@ -68,6 +68,25 @@ def _first_number(text: Optional[str]) -> Optional[float]:
     return float(m.group()) if m else None
 
 
+def _proxy_config() -> Optional[dict]:
+    """Parse PROXY_URL into Playwright's proxy shape. Authenticated residential
+    proxies (user:pass@host:port from IPRoyal/Decodo/etc.) MUST pass username +
+    password as separate fields — embedding them in the server string fails."""
+    if not PROXY_URL:
+        return None
+    p = urllib.parse.urlparse(PROXY_URL)
+    if not p.hostname:
+        return None
+    scheme = p.scheme or "http"
+    port = f":{p.port}" if p.port else ""
+    cfg = {"server": f"{scheme}://{p.hostname}{port}"}
+    if p.username:
+        cfg["username"] = urllib.parse.unquote(p.username)
+    if p.password:
+        cfg["password"] = urllib.parse.unquote(p.password)
+    return cfg
+
+
 def _nights(checkin: str, checkout: str) -> int:
     from datetime import date
     try:
@@ -109,7 +128,7 @@ def _to_stay(raw: dict, nights: int) -> Stay:
 async def scrape_airbnb(req: SearchReq) -> list[Stay]:
     browser = BrowserConfig(
         headless=True,
-        proxy=PROXY_URL or None,   # residential proxy — required in practice
+        proxy_config=_proxy_config(),   # residential proxy — required in practice
         # A realistic UA + viewport reduces (not eliminates) bot flags.
         user_agent=(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
