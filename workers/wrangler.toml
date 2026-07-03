@@ -32,11 +32,12 @@ MINIMAX_MODEL = "MiniMax-M3"
 HOTELS_PROVIDER = "hotellook"
 AMADEUS_BASE_URL = "https://test.api.amadeus.com"
 
-# ── Stays (Airbnb-style) ────────────────────────────────────────────────────
-# "airbnb" routes the search_stays tool to the external Python scraping service
-# (services/stays), used while the TP Hotels Data API is gated (needs 50k MAU).
-# Needs STAYS_SERVICE_URL + STAYS_API_KEY secrets. "off" (default) → the tool
-# still works, returning the TP vacation-rental search link (monetizes).
+# ── Stays (Airbnb + Booking) ────────────────────────────────────────────────
+# "scrape" routes the search_stays tool to the external Python scraping service
+# (services/stays: Airbnb + Booking.com), used while the TP Hotels Data API is
+# gated (needs 50k MAU). "airbnb" is a legacy alias for "scrape". Needs
+# STAYS_SERVICE_URL + STAYS_API_KEY secrets. "off" (default) → the tool still
+# works, returning the TP vacation-rental search link (monetizes).
 STAYS_PROVIDER = "off"
 
 [assets]

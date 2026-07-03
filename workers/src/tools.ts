@@ -1050,8 +1050,8 @@ export interface StaysServiceOpts {
   apiKey?: string;
 }
 
-// Airbnb-style stays (entire homes/apartments) via the external Python scraping
-// service. Used while the TP Hotels Data API is gated (needs 50k MAU). ALWAYS
+// Airbnb + Booking.com stays via the external Python scraping service. Used
+// while the TP Hotels Data API is gated (needs 50k MAU). ALWAYS
 // falls back to the TP vacation-rental search link (which monetizes) when the
 // service is unset, slow, blocked, or empty — the user is never left without an
 // option, and the model is told to present the link confidently.
@@ -1062,7 +1062,7 @@ export function makeStaysSearchTool(
 ) {
   return tool({
     description:
-      "Busca alojamientos tipo Airbnb (casas/departamentos completos) en una ciudad para fechas dadas. Devuelve estadías con precio total y por noche + un search_url de respaldo. Úsala cuando el usuario pida departamento, casa, Airbnb o 'algo más económico que un hotel'. Fechas YYYY-MM-DD; si no las da, pídeselas.",
+      "Busca alojamientos en Airbnb y Booking (casas, departamentos, hoteles) en una ciudad para fechas dadas. Devuelve estadías con precio total y por noche + un search_url de respaldo. Cada estadía trae source (airbnb|booking) y rating_scale (Airbnb 0-5, Booking 0-10 — no compares ratings crudos entre fuentes). Úsala cuando el usuario pida departamento, casa, Airbnb, Booking o 'algo más económico'. Fechas YYYY-MM-DD; si no las da, pídeselas.",
     inputSchema: z.object({
       city: z.string().min(2).describe("Ciudad (ej: 'Cusco', 'Lisboa')"),
       checkin: z.string().describe("Check-in YYYY-MM-DD"),
@@ -1098,7 +1098,7 @@ export function makeStaysSearchTool(
             body: JSON.stringify({ city, checkin, checkout, adults }),
           },
           // Scraping is slow; bound it well under the reply budget and fall back.
-          { dep: "stays:airbnb", timeoutMs: 15000 },
+          { dep: "stays:scrape", timeoutMs: 15000 },
         );
         if (!res.ok) return linkOnly;
         const data = (await res.json().catch(() => null)) as {
@@ -1109,7 +1109,8 @@ export function makeStaysSearchTool(
         return {
           stays: list,
           search_url,
-          currency_note: "Precios en USD, referenciales.",
+          currency_note:
+            "Precios en USD, referenciales. Ratings: Airbnb sobre 5, Booking sobre 10 (ver rating_scale).",
         };
       } catch {
         return linkOnly;

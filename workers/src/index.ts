@@ -467,8 +467,9 @@ function buildLLMArgs(
           },
         }
       : undefined;
+  // "scrape" = Airbnb+Booking scraper service; "airbnb" kept as legacy alias.
   const staysOpts =
-    env.STAYS_PROVIDER === "airbnb" &&
+    (env.STAYS_PROVIDER === "scrape" || env.STAYS_PROVIDER === "airbnb") &&
     env.STAYS_SERVICE_URL &&
     env.STAYS_API_KEY
       ? { serviceUrl: env.STAYS_SERVICE_URL, apiKey: env.STAYS_API_KEY }
