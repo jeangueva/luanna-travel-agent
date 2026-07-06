@@ -902,6 +902,40 @@ interface HotellookCacheRow {
   stars?: number;
 }
 
+// Direct platform search URLs. Not affiliate-monetized, but they always work
+// and land the user on real inventory — used as the value fallback while the
+// scraper service / TP Hotels Data API aren't live. Wrapped through /r/ like
+// every other link so clicks are tracked and WhatsApp gets a short URL.
+function buildAirbnbSearchUrl(args: {
+  city: string;
+  checkin: string;
+  checkout: string;
+  adults: number;
+}): string {
+  const url = new URL(
+    `https://www.airbnb.com/s/${encodeURIComponent(args.city)}/homes`,
+  );
+  url.searchParams.set("checkin", args.checkin);
+  url.searchParams.set("checkout", args.checkout);
+  url.searchParams.set("adults", String(args.adults));
+  return url.toString();
+}
+
+function buildBookingSearchUrl(args: {
+  city: string;
+  checkin: string;
+  checkout: string;
+  adults: number;
+}): string {
+  const url = new URL("https://www.booking.com/searchresults.html");
+  url.searchParams.set("ss", args.city);
+  url.searchParams.set("checkin", args.checkin);
+  url.searchParams.set("checkout", args.checkout);
+  url.searchParams.set("group_adults", String(args.adults));
+  url.searchParams.set("no_rooms", "1");
+  return url.toString();
+}
+
 function buildHotelSearchUrl(args: {
   city: string;
   checkin: string;
@@ -931,7 +965,7 @@ export function makeHotelSearchTool(
 ) {
   return tool({
     description:
-      "Busca hoteles en una ciudad. SIEMPRE devuelve un 'search_url' (link Hotellook con marker afiliado) y, cuando hay datos en cache, hasta 5 opciones con precio promedio (USD). Si no hay precios, el search_url es la respuesta: compártelo con seguridad, sin disculparte. " +
+      "Busca hoteles en una ciudad. SIEMPRE devuelve un 'search_url' (link Hotellook con marker afiliado) y un 'booking_url' (búsqueda directa en Booking.com con ciudad/fechas prellenadas); cuando hay datos en cache, además hasta 5 opciones con precio promedio (USD). Si no hay precios, el booking_url es la respuesta: compártelo con seguridad, sin disculparte. " +
       "El nombre de la ciudad debe ir en inglés o español ('Madrid', 'Cancun', 'Buenos Aires'). " +
       "Las fechas son YYYY-MM-DD. Si el usuario no las da, pídele check-in y check-out exactos antes de llamar.",
     inputSchema: z.object({
@@ -963,18 +997,27 @@ export function makeHotelSearchTool(
         adults,
         marker: env.TRAVELPAYOUTS_MARKER,
       });
-      const search_url = await wrapClickUrl(click ?? null, "hotel", longSearch);
+      const [search_url, booking_url] = await Promise.all([
+        wrapClickUrl(click ?? null, "hotel", longSearch),
+        wrapClickUrl(
+          click ?? null,
+          "hotel",
+          buildBookingSearchUrl({ city, checkin, checkout, adults }),
+        ),
+      ]);
 
-      // When no prices come back, the search_url IS the product: a real
-      // affiliate Hotellook link. Frame it that way + give the model useful
+      // When no prices come back, the links ARE the product: the affiliate
+      // Hotellook search plus a direct Booking.com search with the user's city
+      // + dates prefilled. Frame them that way + give the model useful
       // orientation to add (zones, typical price band, a tip) so the reply feels
       // complete — WITHOUT inventing exact prices, apologizing, or spamming the
       // link. (#4: enrich the link fallback.)
       const linkOnly = {
         hotels: [] as unknown[],
         search_url,
+        booking_url,
         note:
-          "Sin muestras de precio para esta búsqueda. Entrégale el search_url TAL CUAL (lleva marker afiliado) como la forma de ver hoteles. Preséntalo con seguridad en UN solo mensaje, sin disculpas, sin decir que hubo un error, sin repetir el link. Para que sea útil, agrega 1-2 líneas de contexto real de la ciudad: mejores zonas donde alojarse y un RANGO típico de precio por noche (aclara que es aproximado, NO inventes precios exactos ni nombres de hoteles).",
+          "Sin muestras de precio para esta búsqueda. NO te disculpes ni digas que hubo un error: entrega el booking_url TAL CUAL (ya lleva ciudad y fechas) para que el usuario vea los hoteles disponibles, y menciona el search_url como comparador alternativo. Para que sea útil, agrega 1-2 líneas de contexto real de la ciudad: mejores zonas donde alojarse y un RANGO típico de precio por noche (aclara que es aproximado, NO inventes precios exactos ni nombres de hoteles). UN solo mensaje.",
       };
 
       // Provider: Amadeus (real offers, independent of the TP Hotels Data API)
@@ -1062,7 +1105,7 @@ export function makeStaysSearchTool(
 ) {
   return tool({
     description:
-      "Busca alojamientos en Airbnb y Booking (casas, departamentos, hoteles) en una ciudad para fechas dadas. Devuelve estadías con precio total y por noche + un search_url de respaldo. Cada estadía trae source (airbnb|booking) y rating_scale (Airbnb 0-5, Booking 0-10 — no compares ratings crudos entre fuentes). Úsala cuando el usuario pida departamento, casa, Airbnb, Booking o 'algo más económico'. Fechas YYYY-MM-DD; si no las da, pídeselas.",
+      "Busca alojamientos en Airbnb y Booking (casas, departamentos, hoteles) en una ciudad para fechas dadas. Devuelve estadías con precio total y por noche + airbnb_url y booking_url (búsquedas directas con ciudad/fechas prellenadas) de respaldo. Cada estadía trae source (airbnb|booking) y rating_scale (Airbnb 0-5, Booking 0-10 — no compares ratings crudos entre fuentes). Úsala cuando el usuario pida departamento, casa, Airbnb, Booking o 'algo más económico'. Fechas YYYY-MM-DD; si no las da, pídeselas.",
     inputSchema: z.object({
       city: z.string().min(2).describe("Ciudad (ej: 'Cusco', 'Lisboa')"),
       checkin: z.string().describe("Check-in YYYY-MM-DD"),
@@ -1077,12 +1120,30 @@ export function makeStaysSearchTool(
         adults,
         marker: env.TRAVELPAYOUTS_MARKER,
       });
-      const search_url = await wrapClickUrl(click ?? null, "hotel", longSearch);
+      // Direct platform searches (Airbnb / Booking) with the user's exact city
+      // + dates prefilled. These always resolve to real inventory, so the
+      // fallback still gives the user something actionable instead of an
+      // apology.
+      const [search_url, airbnb_url, booking_url] = await Promise.all([
+        wrapClickUrl(click ?? null, "hotel", longSearch),
+        wrapClickUrl(
+          click ?? null,
+          "hotel",
+          buildAirbnbSearchUrl({ city, checkin, checkout, adults }),
+        ),
+        wrapClickUrl(
+          click ?? null,
+          "hotel",
+          buildBookingSearchUrl({ city, checkin, checkout, adults }),
+        ),
+      ]);
       const linkOnly = {
         stays: [] as unknown[],
         search_url,
+        airbnb_url,
+        booking_url,
         note:
-          "Sin listados en vivo ahora. Entrega el search_url TAL CUAL como la forma de ver departamentos/estadías, con seguridad, en UN mensaje, sin disculpas ni mención de errores. Agrega 1-2 líneas de contexto real de la ciudad (mejores zonas + rango de precio aproximado por noche, sin inventar precios exactos).",
+          "Sin listados en vivo ahora. NO te disculpes ni menciones errores: entrega airbnb_url y booking_url TAL CUAL (ya llevan la ciudad y fechas del usuario) como la forma de ver departamentos/estadías — di que ahí puede ver las opciones disponibles con sus fechas. Agrega 1-2 líneas de contexto real de la ciudad (mejores zonas + rango de precio aproximado por noche, sin inventar precios exactos). UN solo mensaje.",
       };
 
       if (!stays?.serviceUrl || !stays.apiKey) return linkOnly;
@@ -1109,6 +1170,8 @@ export function makeStaysSearchTool(
         return {
           stays: list,
           search_url,
+          airbnb_url,
+          booking_url,
           currency_note:
             "Precios en USD, referenciales. Ratings: Airbnb sobre 5, Booking sobre 10 (ver rating_scale).",
         };

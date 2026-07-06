@@ -70,6 +70,11 @@ import {
 } from "./db";
 import { renderAdminDashboardPage, renderAdminLoginPage } from "./admin";
 import {
+  createLinkGuardStream,
+  extractRealUrls,
+  repairTrackedLinks,
+} from "./links";
+import {
   CHAT_MESSAGE_MAX,
   PREFS_ORIGIN_MAX,
   clampBudget,
@@ -194,50 +199,6 @@ const TRAVELPAYOUTS_HOSTS = new Set([
  * safe default — a missing URL is recoverable, a 200-char Aviasales URL
  * blasted to WhatsApp is not.
  */
-// Repair fabricated click-tracking links. Cheap models sometimes transcribe the
-// opaque random /r/<id> codes wrong, producing luanna.app/r/<id> URLs that
-// 404. We extract the REAL /r/ URLs the tools actually created this turn (from
-// the tool-call results) and, when the count matches, replace the in-text /r/
-// links positionally. Both the search tools and the model order results
-// cheapest-first, so position aligns price↔link. Conservative: if every in-text
-// link is already real, or counts differ, we leave the text untouched.
-const R_URL_RE = /https?:\/\/[^\s"'<>)]+\/r\/[A-Za-z0-9_-]{4,32}/g;
-const R_URL_CAPTURE_RE = /(https?:\/\/[^\s"'<>)]+\/r\/)([A-Za-z0-9_-]{4,32})/g;
-
-function repairTrackedLinks(text: string, steps: unknown): string {
-  if (!text.includes("/r/")) return text;
-  const blob = JSON.stringify(steps ?? "");
-  const realUrls: string[] = [];
-  const seen = new Set<string>();
-  for (const m of blob.matchAll(R_URL_RE)) {
-    if (!seen.has(m[0])) {
-      seen.add(m[0]);
-      realUrls.push(m[0]);
-    }
-  }
-  if (realUrls.length === 0) return text;
-  const realIds = new Set(realUrls.map((u) => u.split("/r/")[1]));
-
-  const textMatches = [...text.matchAll(R_URL_CAPTURE_RE)];
-  if (textMatches.length === 0) return text;
-  if (textMatches.every((m) => realIds.has(m[2]))) return text; // all valid
-
-  // Counts match → positionally remap (search + model both order results
-  // cheapest-first, so price↔link alignment holds).
-  if (textMatches.length === realUrls.length) {
-    let i = 0;
-    return text.replace(R_URL_CAPTURE_RE, () => realUrls[i++] ?? "");
-  }
-
-  // Counts differ → can't remap by position. Strip any /r/ link whose code
-  // isn't one the tools actually created this turn: a fabricated/mistyped
-  // code is a guaranteed 404 dead-end, worse than a missing link. Real codes
-  // pass through untouched.
-  return text.replace(R_URL_CAPTURE_RE, (full, _prefix, id) =>
-    realIds.has(id) ? full : "",
-  );
-}
-
 function sanitizeReply(text: string, baseUrl: string): string {
   const allowedHost = new URL(baseUrl).host;
   return text.replace(/https?:\/\/[^\s)]+/g, (url) => {
@@ -401,7 +362,8 @@ async function generateReply(
       );
     }
   }
-  const repaired = repairTrackedLinks(
+  const repaired = await repairTrackedLinks(
+    ctx.sql,
     result.text,
     (result as unknown as { steps?: unknown }).steps,
   );
@@ -598,10 +560,20 @@ function streamReply(
   const sql = ctx.sql;
   const userId = ctx.userId;
   const history = ctx.history;
+  // Live link guard: the browser sees raw tokens as they stream, so the
+  // batch repair at persist time never protected the visible reply. The guard
+  // validates/repairs URLs in-flight; tool-created /r/ links are fed to it as
+  // each step finishes (tool steps always complete before the answer streams).
+  const guard = createLinkGuardStream(sql, baseUrl);
   const result = streamText({
     ...args,
-    onFinish: ({ text, steps }) => {
-      const repaired = repairTrackedLinks(text, steps);
+    onStepFinish: (step) => {
+      for (const url of extractRealUrls(step)) guard.addRealUrl(url);
+    },
+    onFinish: async ({ text, steps }) => {
+      const repaired = await repairTrackedLinks(sql, text, steps).catch(
+        () => text,
+      );
       const sanitized = sanitizeReply(repaired, baseUrl).trim();
       if (sanitized && userId > 0) {
         appendMessage(sql, userId, "assistant", sanitized).catch((err) =>
@@ -635,7 +607,17 @@ function streamReply(
       }
     },
   });
-  return result.toTextStreamResponse();
+  return new Response(
+    result.textStream
+      .pipeThrough(guard.stream)
+      .pipeThrough(new TextEncoderStream()),
+    {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    },
+  );
 }
 
 interface ToolCallStep {
@@ -1984,6 +1966,14 @@ async function handleAdminLoginSubmit(
   if (!env.ADMIN_API_KEY) {
     return new Response("admin not configured", { status: 503 });
   }
+  // Brute-force guard: the login form is the only unauthenticated path that
+  // compares attacker-controlled input against ADMIN_API_KEY.
+  {
+    const sql = getDb(env.DATABASE_URL);
+    const ip = getClientIp(request);
+    const rl = await checkRateLimit(sql, `admin_login:${ip}`, 10, 900);
+    if (!rl.allowed) return rateLimitResponse(rl, "too many attempts");
+  }
   let password = "";
   const contentType = request.headers.get("Content-Type") ?? "";
   if (contentType.includes("application/x-www-form-urlencoded")) {
@@ -2565,6 +2555,10 @@ async function handleChatReset(request: Request, env: Env): Promise<Response> {
   }
   const phone = `web:${session_id}`;
   const sql = getDb(env.DATABASE_URL);
+  // Destructive endpoint (cascades the user's history) — cap per IP so it
+  // can't be scripted into a delete loop.
+  const rl = await checkRateLimit(sql, `reset:${getClientIp(request)}`, 10, 3600);
+  if (!rl.allowed) return rateLimitResponse(rl, "too many requests");
   await sql`DELETE FROM users WHERE phone = ${phone}`;
   return Response.json({ ok: true });
 }
@@ -2630,6 +2624,9 @@ async function handleChatTrack(request: Request, env: Env): Promise<Response> {
     return Response.json({ error: "event not allowed" }, { status: 400 });
   }
   const sql = getDb(env.DATABASE_URL);
+  // Unauthenticated write into analytics — keep it from becoming a spam pipe.
+  const rlTrack = await checkRateLimit(sql, `track:${getClientIp(request)}`, 60, 3600);
+  if (!rlTrack.allowed) return rateLimitResponse(rlTrack, "too many requests");
   const rows = (await sql`
     SELECT id FROM users WHERE phone = ${`web:${session_id}`} LIMIT 1
   `) as Array<{ id: number }>;

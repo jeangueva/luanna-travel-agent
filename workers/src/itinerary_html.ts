@@ -15,7 +15,10 @@ function esc(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    // Also single quotes: place.photo is interpolated inside url('…') in a
+    // style attribute, where an unescaped ' would allow CSS injection.
+    .replace(/'/g, "&#39;");
 }
 
 function ratingDots(rating?: number): string {

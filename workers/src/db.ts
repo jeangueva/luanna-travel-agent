@@ -869,6 +869,20 @@ export interface ClickRedirect {
   click_count: number;
 }
 
+// Which of these /r/<id> codes actually exist? Used to strip fabricated or
+// stale short links from LLM replies before they reach the user (a dead
+// luanna.app/r/ link silently redirects to the homepage — worse than no link).
+export async function filterExistingClickIds(
+  sql: Sql,
+  ids: string[],
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = (await sql`
+    SELECT id FROM click_redirects WHERE id = ANY(${ids})
+  `) as Array<{ id: string }>;
+  return new Set(rows.map((r) => r.id));
+}
+
 export async function consumeClickRedirect(
   sql: Sql,
   id: string,

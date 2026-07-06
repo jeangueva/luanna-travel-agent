@@ -6,6 +6,7 @@ and selectors below need tuning against live pages. Keep the Worker's fallback o
 """
 from __future__ import annotations
 
+import hmac
 import os
 import re
 import json
@@ -250,7 +251,7 @@ async def health():
 
 @app.post("/search")
 async def search(req: SearchReq, x_api_key: str = Header(default="")):
-    if not STAYS_API_KEY or x_api_key != STAYS_API_KEY:
+    if not STAYS_API_KEY or not hmac.compare_digest(x_api_key, STAYS_API_KEY):
         raise HTTPException(status_code=401, detail="unauthorized")
     sources = [s for s in (req.sources or SOURCES) if s in _SOURCE_CFG]
     if not sources:

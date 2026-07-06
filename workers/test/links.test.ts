@@ -1,0 +1,181 @@
+import { test, describe } from "node:test";
+import assert from "node:assert/strict";
+import { createLinkGuardStream, repairTrackedLinks } from "../src/links";
+import type { Sql } from "../src/db";
+
+// Fake Neon client: answers the filterExistingClickIds query with the ids in
+// `existing`, intersected with the ids the query asks about.
+function fakeSql(existing: string[]): Sql {
+  const fn = (async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+    const asked = (values[0] as string[]) ?? [];
+    return existing
+      .filter((id) => asked.includes(id))
+      .map((id) => ({ id }));
+  }) as unknown as Sql;
+  return fn;
+}
+
+function failingSql(): Sql {
+  return (async () => {
+    throw new Error("db down");
+  }) as unknown as Sql;
+}
+
+const steps = (...urls: string[]) => [
+  { toolResults: urls.map((u) => ({ output: { link: u } })) },
+];
+
+describe("repairTrackedLinks", () => {
+  test("text without /r/ links passes through untouched", async () => {
+    const out = await repairTrackedLinks(failingSql(), "hola ✈️", steps());
+    assert.equal(out, "hola ✈️");
+  });
+
+  test("links created this turn pass through untouched", async () => {
+    const text = "Mira: https://luanna.app/r/AbC123";
+    const out = await repairTrackedLinks(
+      failingSql(),
+      text,
+      steps("https://luanna.app/r/AbC123"),
+    );
+    assert.equal(out, text);
+  });
+
+  test("mistyped id remaps positionally when counts match", async () => {
+    const out = await repairTrackedLinks(
+      failingSql(),
+      "Opción: https://luanna.app/r/WRONG1 🔥",
+      steps("https://luanna.app/r/Righty"),
+    );
+    assert.equal(out, "Opción: https://luanna.app/r/Righty 🔥");
+  });
+
+  test("fabricated id with NO tool links this turn is stripped (the /r/CpbWiH bug)", async () => {
+    const out = await repairTrackedLinks(
+      fakeSql([]),
+      "Prueba el buscador: https://luanna.app/r/CpbWiH 🔍",
+      steps(), // model answered from history, no tool ran
+    );
+    assert.ok(!out.includes("/r/CpbWiH"));
+  });
+
+  test("valid id echoed from an earlier turn is kept (exists in DB)", async () => {
+    const text = "Te lo repito: https://luanna.app/r/OldReal 👍";
+    const out = await repairTrackedLinks(fakeSql(["OldReal"]), text, steps());
+    assert.equal(out, text);
+  });
+
+  test("count mismatch: real ids kept, fabricated stripped", async () => {
+    const out = await repairTrackedLinks(
+      fakeSql([]),
+      "A https://luanna.app/r/Real01 y B https://luanna.app/r/Fake99",
+      steps("https://luanna.app/r/Real01", "https://luanna.app/r/Real02", "https://luanna.app/r/Real03"),
+    );
+    assert.ok(out.includes("/r/Real01"));
+    assert.ok(!out.includes("/r/Fake99"));
+  });
+
+  test("DB failure strips unknown ids instead of leaking dead links", async () => {
+    const out = await repairTrackedLinks(
+      failingSql(),
+      "Link: https://luanna.app/r/Maybe1",
+      steps(),
+    );
+    assert.ok(!out.includes("/r/Maybe1"));
+  });
+});
+
+// Drive the guard with arbitrary chunk boundaries and collect the output.
+async function runGuard(
+  sql: Sql,
+  chunks: string[],
+  realUrls: string[] = [],
+): Promise<string> {
+  const guard = createLinkGuardStream(sql, "https://luanna.app");
+  for (const u of realUrls) guard.addRealUrl(u);
+  const writer = guard.stream.writable.getWriter();
+  const reader = guard.stream.readable.getReader();
+  const out: string[] = [];
+  const drain = (async () => {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out.push(value);
+    }
+  })();
+  for (const c of chunks) await writer.write(c);
+  await writer.close();
+  await drain;
+  return out.join("");
+}
+
+describe("createLinkGuardStream", () => {
+  test("plain text streams through unchanged", async () => {
+    const out = await runGuard(failingSql(), ["Hola ", "Jean ✈️ ", "¿a dónde vamos?"]);
+    assert.equal(out, "Hola Jean ✈️ ¿a dónde vamos?");
+  });
+
+  test("valid tool link passes even when split across chunks", async () => {
+    const out = await runGuard(
+      failingSql(),
+      ["Mira: https://luanna.a", "pp/r/AbC", "123 🔥"],
+      ["https://luanna.app/r/AbC123"],
+    );
+    assert.equal(out, "Mira: https://luanna.app/r/AbC123 🔥");
+  });
+
+  test("fabricated id is swapped for the unused real link", async () => {
+    const out = await runGuard(
+      failingSql(),
+      ["Link: https://luanna.app/r/FAKE99 listo"],
+      ["https://luanna.app/r/Righty"],
+    );
+    assert.equal(out, "Link: https://luanna.app/r/Righty listo");
+  });
+
+  test("fabricated id with no real links and no DB row is stripped (streamed /r/CpbWiH bug)", async () => {
+    const out = await runGuard(fakeSql([]), [
+      "Prueba: https://luanna.app/r/CpbWiH",
+      " 🔍",
+    ]);
+    assert.ok(!out.includes("/r/CpbWiH"));
+  });
+
+  test("echoed id that exists in DB is kept", async () => {
+    const out = await runGuard(fakeSql(["OldReal"]), [
+      "De nuevo: https://luanna.app/r/OldReal 👍",
+    ]);
+    assert.equal(out, "De nuevo: https://luanna.app/r/OldReal 👍");
+  });
+
+  test("foreign-host URLs are stripped mid-stream", async () => {
+    const out = await runGuard(failingSql(), [
+      "Ve a https://evil.example.com/phish y listo",
+    ]);
+    assert.equal(out, "Ve a  y listo");
+  });
+
+  test("emoji glued to a fabricated link does not smuggle it through", async () => {
+    const out = await runGuard(fakeSql([]), [
+      "Buscador: https://luanna.app/r/CpbWiH🔍📍 ¿qué prefieres?",
+    ]);
+    assert.ok(!out.includes("/r/CpbWiH"));
+    assert.ok(out.includes("¿qué prefieres?"));
+  });
+
+  test("URL at end of message resolves on flush", async () => {
+    const out = await runGuard(
+      failingSql(),
+      ["Acá: https://luanna.app/r/WRONG1"],
+      ["https://luanna.app/r/Righty"],
+    );
+    assert.equal(out, "Acá: https://luanna.app/r/Righty");
+  });
+
+  test("non-/r/ luanna URLs (trip pages) pass through", async () => {
+    const out = await runGuard(failingSql(), [
+      "Tu plan: https://luanna.app/trip/abc123 📄",
+    ]);
+    assert.equal(out, "Tu plan: https://luanna.app/trip/abc123 📄");
+  });
+});
