@@ -360,6 +360,33 @@
       margin-bottom: 16px;
     }
 
+    /* Follow-up chips: server-suggested next steps under the last bot reply */
+    .follow-ups {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 4px 0 12px 44px;
+    }
+
+    .follow-up-chip {
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--rausch);
+      background: rgba(219, 137, 45, 0.08);
+      border: 1px solid rgba(219, 137, 45, 0.35);
+      border-radius: 999px;
+      padding: 7px 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .follow-up-chip:hover {
+      background: var(--rausch);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
     .chip {
       display: inline-flex;
       align-items: center;
@@ -1101,6 +1128,44 @@
         return bubble;
       }
 
+      // ── Quick-reply chips (server-driven follow-ups) ──
+      // Streaming replies carry them as a \u001E-delimited JSON trailer; the
+      // JSON path as `data.suggestions`. One chips row at a time: a new bot
+      // reply replaces the previous row.
+      function splitSuggestions(fullText) {
+        var i = fullText.indexOf('\u001E');
+        if (i === -1) return { text: fullText, suggestions: null };
+        var s = null;
+        try { s = JSON.parse(fullText.slice(i + 1)); } catch (e) { }
+        return { text: fullText.slice(0, i), suggestions: s };
+      }
+      function clearFollowUps() {
+        var prev = document.getElementById('follow-up-chips');
+        if (prev) prev.remove();
+      }
+      function appendFollowUps(suggestions) {
+        clearFollowUps();
+        if (!Array.isArray(suggestions) || suggestions.length === 0) return;
+        var row = document.createElement('div');
+        row.id = 'follow-up-chips';
+        row.className = 'follow-ups';
+        suggestions.slice(0, 3).forEach(function (s) {
+          if (!s || !s.title || !s.message) return;
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'follow-up-chip';
+          b.textContent = s.title;
+          b.addEventListener('click', function () {
+            clearFollowUps();
+            send(s.message);
+          });
+          row.appendChild(b);
+        });
+        if (row.children.length === 0) return;
+        messages.appendChild(row);
+        scrollToBottom();
+      }
+
       function appendTyping() {
         const row = document.createElement('div');
         row.className = 'msg-row ai';
@@ -1169,6 +1234,7 @@
         if (busy) return;
         if (!text && !image && !audio) return;
         busy = true;
+        clearFollowUps();
         sendBtn.disabled = true;
         attachBtn.disabled = true;
         micBtn.disabled = true;
@@ -1237,15 +1303,18 @@
                 bubble = appendEmptyAiBubble();
               }
               fullText += chunk;
-              bubble.innerHTML = renderText(fullText);
+              bubble.innerHTML = renderText(splitSuggestions(fullText).text);
               scrollToBottom();
             }
+            var parts = splitSuggestions(fullText);
             if (!bubble) {
               // Edge case: stream ended with zero bytes.
               removeTyping();
               appendMessage('ai', '...');
-            } else if (fullText.trim()) {
-              remember('ai', fullText);
+            } else if (parts.text.trim()) {
+              bubble.innerHTML = renderText(parts.text);
+              remember('ai', parts.text);
+              appendFollowUps(parts.suggestions);
               fetchShareUrl();
               aiReplyCount++;
               maybeShowEmailBanner();
@@ -1259,6 +1328,7 @@
               appendMessage('ai', '⚠️ ' + data.error);
             } else if (data.reply && data.reply.trim()) {
               appendMessage('ai', data.reply.trim());
+              appendFollowUps(data.suggestions);
               fetchShareUrl();
               aiReplyCount++;
               maybeShowEmailBanner();

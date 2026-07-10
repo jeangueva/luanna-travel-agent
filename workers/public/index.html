@@ -1916,11 +1916,48 @@
         return d;
       }
 
+      // Server-driven follow-up chips. Streaming replies carry them as a
+      // \u001E-delimited JSON trailer; the JSON path as data.suggestions.
+      function splitSuggestions(full) {
+        var i = full.indexOf('\u001E');
+        if (i === -1) return { text: full, suggestions: null };
+        var s = null;
+        try { s = JSON.parse(full.slice(i + 1)); } catch (e) { }
+        return { text: full.slice(0, i), suggestions: s };
+      }
+      function clearFollowUps() {
+        var prev = document.getElementById('followUps');
+        if (prev) prev.remove();
+      }
+      function renderFollowUps(suggestions) {
+        clearFollowUps();
+        if (!Array.isArray(suggestions) || suggestions.length === 0) return;
+        var row = document.createElement('div');
+        row.id = 'followUps';
+        row.className = 'chips';
+        suggestions.slice(0, 3).forEach(function (s) {
+          if (!s || !s.title || !s.message) return;
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'chip';
+          b.textContent = s.title;
+          b.addEventListener('click', function () {
+            clearFollowUps();
+            sendMessage(s.message);
+          });
+          row.appendChild(b);
+        });
+        if (row.children.length === 0) return;
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;
+      }
+
       async function sendMessage(text) {
         if (busy || !text.trim()) return;
         busy = true;
         send.disabled = true;
         if (chips) chips.style.display = 'none';
+        clearFollowUps();
         bubble('user', text.trim());
         input.value = '';
         var t = typing();
@@ -1953,14 +1990,19 @@
               if (!chunk) continue;
               if (!el) { t.remove(); el = bubble('ai', ''); }
               full += chunk;
-              el.innerHTML = render(full);
+              el.innerHTML = render(splitSuggestions(full).text);
               log.scrollTop = log.scrollHeight;
             }
             if (!el) { t.remove(); bubble('ai', '...'); }
+            else {
+              var parts = splitSuggestions(full);
+              el.innerHTML = render(parts.text);
+              renderFollowUps(parts.suggestions);
+            }
           } else {
             var data = await res.json().catch(function () { return null; });
             t.remove();
-            if (data && data.reply) bubble('ai', data.reply);
+            if (data && data.reply) { bubble('ai', data.reply); renderFollowUps(data.suggestions); }
             else if (data && data.error) bubble('ai', '⚠️ ' + data.error);
             else bubble('ai', '...');
           }

@@ -16,6 +16,8 @@ export interface KapsoMessage {
       body?: string;
       response_json?: string;
     };
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string; description?: string };
   };
   location?: {
     latitude?: number;
@@ -241,6 +243,34 @@ export async function downloadKapsoMedia(
   };
 }
 
+// A tap on a quick-reply button or a list row. Both arrive as
+// type:"interactive" messages; we normalize them into one shape so the
+// webhook can treat a tap exactly like a typed message.
+export interface ButtonTap {
+  message_id: string;
+  from: string;
+  phone_number_id: string;
+  id: string;
+  title: string;
+}
+
+export function extractButtonReply(body: unknown): ButtonTap | null {
+  const data = unwrapEnvelope(body);
+  if (!data) return null;
+  if (data.message.type !== "interactive") return null;
+  const reply =
+    data.message.interactive?.button_reply ??
+    data.message.interactive?.list_reply;
+  if (!reply?.id && !reply?.title) return null;
+  return {
+    message_id: data.message.id,
+    from: data.message.from,
+    phone_number_id: data.phone_number_id,
+    id: reply.id ?? "",
+    title: reply.title ?? "",
+  };
+}
+
 export function extractFlowSubmission(body: unknown): FlowSubmission | null {
   const data = unwrapEnvelope(body);
   if (!data) return null;
@@ -327,6 +357,53 @@ export async function sendKapsoText(params: {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Kapso send failed ${res.status}: ${text}`);
+  }
+}
+
+/**
+ * Send a text message with native quick-reply buttons attached (interactive
+ * "button" message). Body max 1024 chars, up to 3 buttons, titles ≤ 20 chars.
+ * Requires an open 24h session window — fine for the reply path, which is
+ * always inside one.
+ */
+export async function sendKapsoButtons(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  bodyText: string;
+  buttons: Array<{ id: string; title: string }>;
+  timeoutMs?: number;
+}): Promise<void> {
+  const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": params.apiKey,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: params.to,
+        type: "interactive",
+        interactive: {
+          type: "button",
+          body: { text: params.bodyText.slice(0, 1024) },
+          action: {
+            buttons: params.buttons.slice(0, 3).map((b) => ({
+              type: "reply",
+              reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) },
+            })),
+          },
+        },
+      }),
+    },
+    { dep: "kapso:send_buttons", timeoutMs: params.timeoutMs ?? 10000 },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Kapso buttons send failed ${res.status}: ${text}`);
   }
 }
 

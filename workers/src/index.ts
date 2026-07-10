@@ -8,6 +8,7 @@ import {
 } from "ai";
 import {
   downloadKapsoMedia,
+  extractButtonReply,
   extractFlowSubmission,
   extractMediaMessage,
   extractLocationMessage,
@@ -16,6 +17,7 @@ import {
   type LocationMessage,
   type MediaMessage,
   sendKapsoAudio,
+  sendKapsoButtons,
   sendKapsoCtaUrl,
   sendKapsoDocument,
   sendKapsoSticker,
@@ -24,6 +26,11 @@ import {
   sendKapsoTypingIndicator,
   verifyKapsoSignature,
 } from "./kapso";
+import {
+  deriveSuggestions,
+  mapTapToMessage,
+  type Suggestion,
+} from "./suggestions";
 import {
   generateSpeech,
   identifyDestinationFromImage,
@@ -181,6 +188,10 @@ interface ReplyContext {
   // (heavy generation must never block/timeout the message). Null when no
   // itinerary was requested this turn.
   itineraryRequest?: { value: ItineraryRequest | null };
+  // Mutable holder: which tools ran this turn, in call order. The caller uses
+  // it to derive deterministic quick-reply suggestions (WhatsApp buttons /
+  // web chips) after the reply text is generated.
+  toolsUsed?: { value: string[] };
 }
 
 const TRAVELPAYOUTS_HOSTS = new Set([
@@ -349,6 +360,11 @@ async function generateReply(
 
   const llmArgs = buildLLMArgs(env, userMessage, ctx, flowEnabled, inWhatsApp);
   const result = await generateText(llmArgs);
+  if (ctx.toolsUsed) {
+    ctx.toolsUsed.value = collectToolNames(
+      result as unknown as { steps?: ToolCallStep[] },
+    );
+  }
   // PostHog tracking is fire-and-forget — never block the user's reply on
   // analytics. Errors swallowed (analytics SDK has its own retry).
   if (ctx.userId > 0) {
@@ -565,10 +581,15 @@ function streamReply(
   // validates/repairs URLs in-flight; tool-created /r/ links are fed to it as
   // each step finishes (tool steps always complete before the answer streams).
   const guard = createLinkGuardStream(sql, baseUrl);
+  // Tool names collected live: tool steps always complete before the final
+  // answer streams, so by flush time the list is complete.
+  const streamToolNames: string[] = [];
   const result = streamText({
     ...args,
     onStepFinish: (step) => {
       for (const url of extractRealUrls(step)) guard.addRealUrl(url);
+      const calls = (step as unknown as ToolCallStep).toolCalls ?? [];
+      for (const c of calls) if (c?.toolName) streamToolNames.push(c.toolName);
     },
     onFinish: async ({ text, steps }) => {
       const repaired = await repairTrackedLinks(sql, text, steps).catch(
@@ -607,9 +628,22 @@ function streamReply(
       }
     },
   });
+  // Trailer: after the text finishes, append the quick-reply suggestions as a
+  // record-separator-delimited JSON blob (\u001E + JSON). The web client
+  // splits on \u001E, renders the text part, and turns the JSON into chips.
+  // Plain-text consumers that ignore it see one trailing control char at most.
+  const suggestionTrailer = new TransformStream<string, string>({
+    flush(controller) {
+      const suggestions = deriveSuggestions(streamToolNames);
+      if (suggestions.length > 0) {
+        controller.enqueue("\u001E" + JSON.stringify(suggestions));
+      }
+    },
+  });
   return new Response(
     result.textStream
       .pipeThrough(guard.stream)
+      .pipeThrough(suggestionTrailer)
       .pipeThrough(new TextEncoderStream()),
     {
       headers: {
@@ -626,6 +660,16 @@ interface ToolCallStep {
     input?: unknown;
     args?: unknown;
   }>;
+}
+
+function collectToolNames(result: { steps?: ToolCallStep[] }): string[] {
+  const names: string[] = [];
+  for (const step of result.steps ?? []) {
+    for (const call of step.toolCalls ?? []) {
+      if (call?.toolName) names.push(call.toolName);
+    }
+  }
+  return names;
 }
 
 function collectToolEvents(
@@ -1179,14 +1223,30 @@ async function handleKapsoWebhook(
   for (const item of batch) {
     const data = extractMessageReceived(item);
     const media = data ? null : extractMediaMessage(item);
-    if (!data && !media) continue; // flow / unsupported type
-    const text = data ? data.message.text?.body?.trim() ?? null : null;
-    if (data && !text) continue; // empty text body
-    const id = data ? data.message.id : media!.message_id;
+    // A quick-reply button / list-row tap is a first-class user turn: map the
+    // tapped id back to the natural-language message it stands for and feed it
+    // through the same pipeline as typed text. (Flow nfm_reply submissions
+    // don't match extractButtonReply and keep their own handler above.)
+    const tap = !data && !media ? extractButtonReply(item) : null;
+    if (!data && !media && !tap) continue; // flow / unsupported type
+    const text = data
+      ? data.message.text?.body?.trim() ?? null
+      : tap
+        ? mapTapToMessage(tap.id, tap.title)
+        : null;
+    if (!media && !text) continue; // empty text body / empty tap
+    const id = data?.message.id ?? tap?.message_id ?? media!.message_id;
     const fresh = await recordWebhookOrSkip(dedupeSql, id);
     if (!fresh) {
       console.log("kapso webhook duplicate", id);
       continue;
+    }
+    if (tap) {
+      void track(env, {
+        event: "quick_reply_tapped",
+        distinct_id: "anon", // real user id not resolved yet at this point
+        properties: { button_id: tap.id },
+      });
     }
     incoming.push({ id, text, media });
   }
@@ -1401,6 +1461,7 @@ async function handleKapsoWebhook(
           getPreferences(sql, user.id).catch(() => null),
         ]);
         const itineraryRequest = { value: null as ItineraryRequest | null };
+        const toolsUsed = { value: [] as string[] };
         const reply = await withTimeout(
           generateReply(env, resolvedText, {
             userId: user.id,
@@ -1413,6 +1474,7 @@ async function handleKapsoWebhook(
             isFirstContact,
             userPrefs,
             itineraryRequest,
+            toolsUsed,
           }),
           // Generous bound: legit flight fan-outs run ~10-20s. Cut only true
           // hangs, before the runtime kills the invocation with no reply.
@@ -1427,12 +1489,38 @@ async function handleKapsoWebhook(
           // invocation before a dangling DB write lands. That dropped the
           // assistant turns from history, so the bot never "saw" its own
           // replies and repeated itself / lost context.
-          await sendKapsoText({
-            apiKey: env.KAPSO_API_KEY,
-            phoneNumberId: phone_number_id,
-            to: from,
-            body: reply,
-          });
+          //
+          // Quick-reply buttons: when a search tool ran, attach up to 3 native
+          // reply buttons. Short replies ride in the interactive message body
+          // (single bubble); long ones fall back to text + no buttons rather
+          // than a second "¿qué sigue?" bubble. Any buttons failure falls back
+          // to plain text — the reply must always arrive.
+          const suggestions = deriveSuggestions(toolsUsed.value);
+          const asButtons = suggestions.length > 0 && reply.length <= 1000;
+          let buttonsSent = false;
+          if (asButtons) {
+            buttonsSent = await sendKapsoButtons({
+              apiKey: env.KAPSO_API_KEY,
+              phoneNumberId: phone_number_id,
+              to: from,
+              bodyText: reply,
+              buttons: suggestions,
+            }).then(
+              () => true,
+              (err) => {
+                console.error("sendKapsoButtons failed, falling back to text", err);
+                return false;
+              },
+            );
+          }
+          if (!buttonsSent) {
+            await sendKapsoText({
+              apiKey: env.KAPSO_API_KEY,
+              phoneNumberId: phone_number_id,
+              to: from,
+              body: reply,
+            });
+          }
           await appendMessage(sql, user.id, "assistant", reply).catch((err) =>
             console.error("appendMessage assistant failed", err),
           );
@@ -2512,6 +2600,7 @@ async function handleChat(
       exec,
     );
   }
+  const toolsUsed = { value: [] as string[] };
   const reply = await generateReply(env, resolvedText, {
     userId: user.id,
     baseUrl: new URL(request.url).origin,
@@ -2521,6 +2610,7 @@ async function handleChat(
     isFirstContact,
     userPrefs,
     itineraryRequest,
+    toolsUsed,
   });
   if (reply.trim()) {
     // Persist the assistant turn in the background — the web client
@@ -2541,7 +2631,11 @@ async function handleChat(
       }),
     );
   }
-  return Response.json({ reply });
+  const suggestions: Suggestion[] = deriveSuggestions(toolsUsed.value);
+  return Response.json({
+    reply,
+    ...(suggestions.length > 0 ? { suggestions } : {}),
+  });
 }
 
 async function handleChatReset(request: Request, env: Env): Promise<Response> {
