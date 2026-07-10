@@ -597,8 +597,14 @@ function streamReply(
       );
       const sanitized = sanitizeReply(repaired, baseUrl).trim();
       if (sanitized && userId > 0) {
-        appendMessage(sql, userId, "assistant", sanitized).catch((err) =>
-          console.error("appendMessage assistant (stream) failed", err),
+        // MUST ride on waitUntil: once the stream closes, the runtime can kill
+        // the invocation and a dangling fire-and-forget write gets dropped.
+        // That silently lost EVERY assistant turn from web-chat history, so
+        // the bot never saw its own replies and kept re-greeting the user.
+        exec.waitUntil(
+          appendMessage(sql, userId, "assistant", sanitized).catch((err) =>
+            console.error("appendMessage assistant (stream) failed", err),
+          ),
         );
       }
       // Background itinerary generation (web): the user already saw the "lo
@@ -2613,10 +2619,14 @@ async function handleChat(
     toolsUsed,
   });
   if (reply.trim()) {
-    // Persist the assistant turn in the background — the web client
-    // already has the JSON response, so we don't gate on the DB write.
-    appendMessage(sql, user.id, "assistant", reply).catch((err) =>
-      console.error("appendMessage assistant (web) failed", err),
+    // Persist the assistant turn in the background, but ON waitUntil: a bare
+    // fire-and-forget write races worker termination after the response is
+    // returned and silently drops the assistant turn from history (the bot
+    // then re-greets every message because it never sees its own replies).
+    exec.waitUntil(
+      appendMessage(sql, user.id, "assistant", reply).catch((err) =>
+        console.error("appendMessage assistant (web) failed", err),
+      ),
     );
   }
   // Background itinerary generation (web, non-streaming path).
