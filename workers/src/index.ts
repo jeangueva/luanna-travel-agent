@@ -20,6 +20,7 @@ import {
   sendKapsoButtons,
   sendKapsoCtaUrl,
   sendKapsoDocument,
+  sendKapsoReaction,
   sendKapsoSticker,
   sendKapsoFlow,
   sendKapsoText,
@@ -101,6 +102,7 @@ import {
   makePreferencesFlowTool,
   makePreferencesLinkTool,
   makeRemoveFavoritePlacesTool,
+  makeRequestLocationTool,
   makeSaveUserNameTool,
   makeSendStickerTool,
   makeStaysSearchTool,
@@ -323,17 +325,23 @@ async function generateReply(
 
   if (PREFS_INTENT_RE.test(userMessage)) {
     if (flowEnabled) {
-      await sendKapsoFlow({
-        apiKey: env.KAPSO_API_KEY,
-        phoneNumberId: ctx.phoneNumberId!,
-        to: ctx.to!,
-        flowId: env.KAPSO_PREFS_FLOW_ID!,
-        bodyText: "Configura tus preferencias para que te recomiende mejor 🎯",
-        cta: "Configurar",
-        screen: "PREFERENCES",
-        draft: env.KAPSO_PREFS_FLOW_DRAFT === "1",
-      });
-      return "Listo 👆";
+      try {
+        await sendKapsoFlow({
+          apiKey: env.KAPSO_API_KEY,
+          phoneNumberId: ctx.phoneNumberId!,
+          to: ctx.to!,
+          flowId: env.KAPSO_PREFS_FLOW_ID!,
+          bodyText: "Configura tus preferencias para que te recomiende mejor 🎯",
+          cta: "Configurar",
+          screen: "PREFERENCES",
+          draft: env.KAPSO_PREFS_FLOW_DRAFT === "1",
+        });
+        return "Listo 👆";
+      } catch (err) {
+        // Flow unpublished/misconfigured must never dead-end the user — fall
+        // through to the CTA-URL webview path below.
+        console.error("prefs flow send failed, falling back to webview", err);
+      }
     }
     if (ctx.userId > 0) {
       const token = await createWebviewToken(ctx.userId, env.WEBVIEW_SIGNING_KEY);
@@ -509,7 +517,8 @@ function buildLLMArgs(
       sql: ctx.sql,
       userId: ctx.userId,
     }),
-    // Stickers only make sense in WhatsApp (need a real recipient + phone id).
+    // Stickers + native location request only make sense in WhatsApp (need a
+    // real recipient + phone id).
     ...(inWhatsApp
       ? {
           send_sticker: makeSendStickerTool({
@@ -517,6 +526,11 @@ function buildLLMArgs(
             phoneNumberId: ctx.phoneNumberId!,
             to: ctx.to!,
             baseUrl: ctx.baseUrl,
+          }),
+          request_location: makeRequestLocationTool({
+            apiKey: env.KAPSO_API_KEY,
+            phoneNumberId: ctx.phoneNumberId!,
+            to: ctx.to!,
           }),
         }
       : {}),
@@ -1526,6 +1540,19 @@ async function handleKapsoWebhook(
               to: from,
               body: reply,
             });
+          }
+          // Alert created this turn → react ✅ to the user's message. Cosmetic,
+          // fire-and-forget, never blocks or fails the reply.
+          if (toolsUsed.value.includes("add_watchlist")) {
+            ctx.waitUntil(
+              sendKapsoReaction({
+                apiKey: env.KAPSO_API_KEY,
+                phoneNumberId: phone_number_id,
+                to: from,
+                messageId: message_id,
+                emoji: "✅",
+              }),
+            );
           }
           await appendMessage(sql, user.id, "assistant", reply).catch((err) =>
             console.error("appendMessage assistant failed", err),

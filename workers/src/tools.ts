@@ -2,7 +2,12 @@ import { tool } from "ai";
 import { z } from "zod";
 import { createWebviewToken } from "./auth";
 import { fetchWithTimeout } from "./http";
-import { sendKapsoCtaUrl, sendKapsoFlow, sendKapsoSticker } from "./kapso";
+import {
+  sendKapsoCtaUrl,
+  sendKapsoFlow,
+  sendKapsoLocationRequest,
+  sendKapsoSticker,
+} from "./kapso";
 import {
   addWatchlistItem,
   createClickRedirect,
@@ -394,6 +399,35 @@ export function makeSendStickerTool(args: {
         link: `${args.baseUrl}/stickers/${mood}.webp`,
       });
       return { ok: true, mood };
+    },
+  });
+}
+
+export function makeRequestLocationTool(args: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+}) {
+  return tool({
+    description:
+      "Envía el mensaje nativo de WhatsApp que pide la ubicación del usuario con un botón 'Enviar ubicación' (1 tap, abre el selector del sistema). " +
+      "Úsala SOLO cuando necesites saber desde qué ciudad sale el usuario y no la tengas: en vez de pedirle que escriba su ciudad, llama esta tool. " +
+      "Cuando comparta el pin, el sistema detecta el aeropuerto más cercano y guarda su origen automáticamente. " +
+      "Tras llamarla, tu respuesta debe ser UNA línea breve (ej 'También puedes escribirme tu ciudad si prefieres 🙂'). NO la uses si ya conoces su origen.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      await sendKapsoLocationRequest({
+        apiKey: args.apiKey,
+        phoneNumberId: args.phoneNumberId,
+        to: args.to,
+        bodyText:
+          "¿Desde dónde sales? Toca el botón y comparte tu ubicación, yo detecto tu aeropuerto más cercano 📍",
+      });
+      return {
+        ok: true,
+        hint:
+          "El botón nativo ya fue enviado. Responde con UNA línea breve ofreciendo la alternativa de escribir la ciudad. No repitas la pregunta.",
+      };
     },
   });
 }

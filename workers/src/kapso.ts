@@ -408,6 +408,81 @@ export async function sendKapsoButtons(params: {
 }
 
 /**
+ * Native "share location" request: renders a message with a "Enviar ubicación"
+ * button that opens the OS location picker directly — one tap instead of the
+ * user hunting for the attach menu. The shared pin arrives as a normal
+ * location message (already handled by handleLocationMessage).
+ */
+export async function sendKapsoLocationRequest(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  bodyText: string;
+}): Promise<void> {
+  const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": params.apiKey,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: params.to,
+        type: "interactive",
+        interactive: {
+          type: "location_request_message",
+          body: { text: params.bodyText.slice(0, 1024) },
+          action: { name: "send_location" },
+        },
+      }),
+    },
+    { dep: "kapso:send_location_request", timeoutMs: 10000 },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Kapso location request failed ${res.status}: ${text}`);
+  }
+}
+
+/**
+ * React to a user message with an emoji. Purely cosmetic warmth (e.g. ✅ on
+ * the message that created a price alert) — never throws.
+ */
+export async function sendKapsoReaction(params: {
+  apiKey: string;
+  phoneNumberId: string;
+  to: string;
+  messageId: string;
+  emoji: string;
+}): Promise<void> {
+  const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
+  try {
+    await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": params.apiKey,
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: params.to,
+          type: "reaction",
+          reaction: { message_id: params.messageId, emoji: params.emoji },
+        }),
+      },
+      { dep: "kapso:send_reaction", timeoutMs: 8000 },
+    );
+  } catch (err) {
+    console.error("sendKapsoReaction failed", err);
+  }
+}
+
+/**
  * True when a Kapso/Meta send failed because we're outside the 24-hour
  * customer-service window (error 470 / 131047 / the human-readable "24-hour
  * window" message). In that state only an approved template can be delivered.

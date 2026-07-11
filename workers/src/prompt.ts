@@ -184,7 +184,7 @@ export function buildLuannaSystemPrompt(ctx: PromptContext = {}): string {
     );
   } else {
     prefsLines.push(
-      `- Aún no sabes su origen. Si pide un vuelo y no menciona origen, pregúntaselo UNA VEZ (ej "¿desde qué ciudad sales? O si quieres, compárteme tu ubicación 📍 y la detecto") antes de buscar.`,
+      `- Aún no sabes su origen. Si pide un vuelo y no menciona origen: en WhatsApp llama \`request_location\` (manda un botón nativo para compartir ubicación con 1 tap) y ofrece en una línea la alternativa de escribir la ciudad. Si no tienes esa tool (chat web), pregúntale su ciudad UNA VEZ antes de buscar.`,
     );
   }
   if (ctx.userCountries && ctx.userCountries.length > 0) {
