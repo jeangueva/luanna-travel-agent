@@ -40,9 +40,10 @@ import {
 import {
   addWatchlistItem,
   appendMessage,
+  bumpClickCount,
   checkRateLimit,
-  consumeClickRedirect,
   countReferralsFor,
+  getClickRedirect,
   createDataDeletionRequest,
   createTrip,
   deleteWatchlistItem,
@@ -2944,7 +2945,11 @@ async function handleChatLogout(): Promise<Response> {
   });
 }
 
-async function handleClickRedirect(url: URL, env: Env): Promise<Response> {
+async function handleClickRedirect(
+  url: URL,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
   const id = url.pathname.slice(3).replace(/[^A-Za-z0-9_-]/g, "");
   if (!id || id.length < 4 || id.length > 32) {
     // Malformed/fabricated code: send home instead of a blank "not found"
@@ -2953,16 +2958,32 @@ async function handleClickRedirect(url: URL, env: Env): Promise<Response> {
   }
   const sql = getDb(env.DATABASE_URL);
   try {
-    const row = await consumeClickRedirect(sql, id);
+    // Fast path: one read-only SELECT, then 302 immediately. The click-count
+    // bump and analytics ride waitUntil so they never add latency between the
+    // user's tap and the provider page opening.
+    const row = await getClickRedirect(sql, id);
     // Unknown id (e.g. a mistyped/expired link): send the user to the homepage
     // instead of a blank "not found" — far better UX than a dead end.
     if (!row) return Response.redirect(`${url.origin}/`, 302);
-    void track(env, {
-      event: "link_clicked",
-      distinct_id: row.user_id ? distinctIdForUser(row.user_id) : "anon",
-      properties: { kind: row.kind, redirect_id: id },
+    ctx.waitUntil(
+      Promise.allSettled([
+        bumpClickCount(sql, id),
+        track(env, {
+          event: "link_clicked",
+          distinct_id: row.user_id ? distinctIdForUser(row.user_id) : "anon",
+          properties: { kind: row.kind, redirect_id: id },
+        }),
+      ]),
+    );
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: row.original_url,
+        // The target affiliate URL is immutable for this id — let the edge
+        // cache the hop so repeat taps skip the DB entirely.
+        "Cache-Control": "public, max-age=300",
+      },
     });
-    return Response.redirect(row.original_url, 302);
   } catch (err) {
     console.error("click redirect failed", err);
     await recordError(sql, "fetch:click_redirect", err, { id });
@@ -3107,7 +3128,7 @@ async function routeFetch(
     return handleHealth(env, url.searchParams.get("deep") === "1");
   }
   if (request.method === "GET" && url.pathname.startsWith("/r/")) {
-    return handleClickRedirect(url, env);
+    return handleClickRedirect(url, env, ctx);
   }
   if (request.method === "GET" && url.pathname.startsWith("/i/")) {
     return handleInviteRedirect(url, env);

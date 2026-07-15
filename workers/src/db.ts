@@ -883,17 +883,26 @@ export async function filterExistingClickIds(
   return new Set(rows.map((r) => r.id));
 }
 
-export async function consumeClickRedirect(
+// Read-only lookup for the redirect fast path: the 302 goes out immediately
+// after this SELECT; the click-count bump rides waitUntil separately.
+// (Replaces the old consumeClickRedirect UPDATE...RETURNING, which put a
+// write on the critical path of every tap.)
+export async function getClickRedirect(
   sql: Sql,
   id: string,
-): Promise<ClickRedirect | null> {
+): Promise<Pick<ClickRedirect, "id" | "user_id" | "original_url" | "kind"> | null> {
   const rows = (await sql`
+    SELECT id, user_id, original_url, kind FROM click_redirects WHERE id = ${id}
+  `) as ClickRedirect[];
+  return rows[0] ?? null;
+}
+
+export async function bumpClickCount(sql: Sql, id: string): Promise<void> {
+  await sql`
     UPDATE click_redirects
     SET click_count = click_count + 1, last_click_at = NOW()
     WHERE id = ${id}
-    RETURNING id, user_id, original_url, kind, click_count
-  `) as ClickRedirect[];
-  return rows[0] ?? null;
+  `;
 }
 
 // ─── Price history (drop detection) ──────────────────────────────────────────

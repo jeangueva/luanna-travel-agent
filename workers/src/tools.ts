@@ -46,20 +46,30 @@ export async function wrapClickUrl(
   originalUrl: string,
 ): Promise<string> {
   if (!ctx || ctx.userId <= 0 || !originalUrl) return originalUrl;
-  const id = genClickId();
-  try {
-    await createClickRedirect(ctx.sql, {
-      id,
-      userId: ctx.userId,
-      originalUrl,
-      kind,
-    });
-    return `${ctx.baseUrl}/r/${id}`;
-  } catch (err) {
-    // Click logging never breaks the user reply — fall back to the raw URL.
-    console.error("wrapClickUrl failed", err);
-    return originalUrl;
+  // Two attempts (fresh id each) — a transient Neon hiccup or an id collision
+  // must not leak a 200-char affiliate URL into a WhatsApp message.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const id = genClickId();
+    try {
+      await createClickRedirect(ctx.sql, {
+        id,
+        userId: ctx.userId,
+        originalUrl,
+        kind,
+      });
+      return `${ctx.baseUrl}/r/${id}`;
+    } catch (err) {
+      if (attempt === 1) console.error("wrapClickUrl failed twice", err);
+    }
   }
+  // Click logging never breaks the user reply — fall back to the raw URL.
+  // Chat paths sanitize this away; cron callers must check isShortLink().
+  return originalUrl;
+}
+
+/** True when wrapClickUrl actually produced a luanna short link. */
+export function isShortLink(url: string, baseUrl: string): boolean {
+  return url.startsWith(`${baseUrl}/r/`);
 }
 
 function dedupeCaseInsensitive(values: string[]): string[] {

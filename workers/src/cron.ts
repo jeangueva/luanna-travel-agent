@@ -21,7 +21,7 @@ import {
 import { sendKapsoText, sendKapsoTemplate, isOutside24hWindow } from "./kapso";
 import { distinctIdForUser, track } from "./posthog";
 import { HOLIDAYS, holidaysWithinDays } from "./holidays";
-import { wrapClickUrl } from "./tools";
+import { isShortLink, wrapClickUrl } from "./tools";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 
@@ -272,13 +272,17 @@ async function processWatchlistRow(
   // Wrap the flight URL through our click redirect so the WhatsApp message
   // shows luanna.app/r/<id> instead of the 200-char aviasales link. The
   // redirect also tracks clicks, which we can't get from the raw URL.
+  // HARD RULE: a raw 200-char affiliate URL must never reach WhatsApp — if
+  // the wrap failed (returned the original URL), drop the link line; the
+  // alert is still useful and the user can ask for the link in chat.
   if (cheapest.link) {
     const baseUrl = env.PUBLIC_BASE_URL ?? "https://luanna.app";
-    cheapest.link = await wrapClickUrl(
+    const wrapped = await wrapClickUrl(
       { sql, userId: row.user_id, baseUrl },
       "watchlist",
       cheapest.link,
     );
+    cheapest.link = isShortLink(wrapped, baseUrl) ? wrapped : null;
   }
 
   // Always record the observation for future baseline comparisons.
@@ -440,11 +444,13 @@ async function processOfferUser(
   if (flight.link) {
     const baseUrl = env.PUBLIC_BASE_URL ?? "https://luanna.app";
     const sqlForClick = getDb(env.DATABASE_URL);
-    flight.link = await wrapClickUrl(
+    const wrapped = await wrapClickUrl(
       { sql: sqlForClick, userId: user.id, baseUrl },
       "offer",
       flight.link,
     );
+    // Same hard rule as the watchlist path: short link or no link.
+    flight.link = isShortLink(wrapped, baseUrl) ? wrapped : null;
   }
 
   await sendProactive(env, {
