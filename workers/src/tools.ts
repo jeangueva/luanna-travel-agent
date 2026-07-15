@@ -19,11 +19,27 @@ import {
   type Sql,
 } from "./db";
 
-// Approximate USD→PEN rate for display only ("~S/ X aprox"). Travelpayouts
-// prices are in USD; we show an approximate soles figure alongside. Update
-// this when the rate drifts materially. Not used for any billing/logic.
-const USD_TO_PEN = 3.75;
-const usdToPen = (usd: number): number => Math.round(usd * USD_TO_PEN);
+import { resolveLocalFx, usdToLocal, type LocalFx } from "./fx";
+
+// Local-currency display (USD is always the primary figure). The currency is
+// derived from the user's phone country and the rate fetched live (6h cache,
+// static fallback) — no more hardcoded soles for everyone. `fx` null (web
+// users, USD countries, unknown prefixes) → USD only.
+function localPriceFields(
+  usd: number,
+  fx: LocalFx | null,
+  prefix = "price",
+): Record<string, number | string> {
+  if (!fx) return {};
+  return {
+    [`${prefix}_local_approx`]: usdToLocal(usd, fx),
+    local_currency: fx.code,
+    local_symbol: fx.symbol,
+  };
+}
+
+const LOCAL_CURRENCY_NOTE =
+  "Los campos *_local_approx son aproximados (tipo de cambio del día), solo referencia. Muestra el precio USD primero y el local entre paréntesis con local_symbol. Si no hay campos locales, muestra solo USD.";
 
 function genClickId(): string {
   // URL-safe 8-char id from crypto-random bytes
@@ -38,6 +54,8 @@ export interface ClickContext {
   sql: Sql;
   userId: number;
   baseUrl: string;
+  /** User's WhatsApp phone (E.164) — used to pick their display currency. */
+  phone?: string | null;
 }
 
 export async function wrapClickUrl(
@@ -175,10 +193,10 @@ interface HotelRow {
   name: string | null;
   stars: number | null;
   price_from_usd: number | null;
-  price_from_pen_approx: number | null;
   price_avg_usd: number | null;
   location: string | null;
   country: string | null;
+  [k: string]: unknown; // local-currency display fields (see localPriceFields)
 }
 
 // OAuth2 client-credentials token for Amadeus. Fetched per search (Workers are
@@ -218,6 +236,7 @@ async function amadeusHotelSearch(
   checkin: string,
   checkout: string,
   adults: number,
+  fx: LocalFx | null,
 ): Promise<HotelRow[] | null> {
   const token = await amadeusToken(cfg);
   if (!token) return null;
@@ -271,7 +290,7 @@ async function amadeusHotelSearch(
           name: d.hotel?.name ?? null,
           stars: Number.isFinite(stars) ? stars : null,
           price_from_usd: price,
-          price_from_pen_approx: price != null ? usdToPen(price) : null,
+          ...(price != null ? localPriceFields(price, fx, "price_from") : {}),
           price_avg_usd: null,
           location: d.hotel?.cityCode ?? null,
           country: null,
@@ -890,21 +909,22 @@ export function makeFlightSearchTool(
         }).catch(() => { /* never break the reply */ });
       }
       const pax = passengers ?? 1;
+      const fx = await resolveLocalFx(click?.phone);
       const flights = await Promise.all(
         raw.map(async (f) => {
           const longUrl = f.link
             ? `https://www.aviasales.com${f.link}${f.link.includes("?") ? "&" : "?"}marker=${env.TRAVELPAYOUTS_MARKER}`
             : null;
           return {
-            // Per-person price in both currencies (PEN is approximate, display-only).
+            // Per-person price: USD primary + local-currency approximation.
             price_usd: f.price,
-            price_pen_approx: usdToPen(f.price),
+            ...localPriceFields(f.price, fx),
             // Group total only when the user specified passenger count (>1).
             ...(pax > 1
               ? {
                   passengers: pax,
                   total_usd: f.price * pax,
-                  total_pen_approx: usdToPen(f.price * pax),
+                  ...localPriceFields(f.price * pax, fx, "total"),
                 }
               : {}),
             airline: f.airline,
@@ -931,7 +951,7 @@ export function makeFlightSearchTool(
         ...(flights.length === 0
           ? { note: "No hay precios en cache para esta ruta ni en los próximos 6 meses. Sugiérele al usuario otra fecha, un aeropuerto cercano, o confirmar origen/destino." }
           : {}),
-        currency_note: "price_pen_approx es aproximado (~3.75 PEN/USD), solo referencia.",
+        currency_note: LOCAL_CURRENCY_NOTE,
       };
     },
   });
@@ -1025,6 +1045,7 @@ export function makeHotelSearchTool(
         .describe("Número de huéspedes adultos"),
     }),
     execute: async ({ city, checkin, checkout, adults }) => {
+      const fx = await resolveLocalFx(click?.phone);
       const url = new URL("https://engine.hotellook.com/api/v2/cache.json");
       url.searchParams.set("location", city);
       url.searchParams.set("checkIn", checkin);
@@ -1075,13 +1096,13 @@ export function makeHotelSearchTool(
             checkin,
             checkout,
             adults,
+            fx,
           );
           if (rows && rows.length > 0) {
             return {
               hotels: rows,
               search_url,
-              currency_note:
-                "price_from_pen_approx es aproximado (~3.75 PEN/USD), solo referencia.",
+              currency_note: LOCAL_CURRENCY_NOTE,
             };
           }
         }
@@ -1116,8 +1137,9 @@ export function makeHotelSearchTool(
           name: h.hotelName ?? null,
           stars: h.stars ?? null,
           price_from_usd: h.priceFrom ?? null,
-          price_from_pen_approx:
-            typeof h.priceFrom === "number" ? usdToPen(h.priceFrom) : null,
+          ...(typeof h.priceFrom === "number"
+            ? localPriceFields(h.priceFrom, fx, "price_from")
+            : {}),
           price_avg_usd: h.priceAvg ?? null,
           location: h.location?.name ?? null,
           country: h.location?.country ?? null,
@@ -1126,7 +1148,7 @@ export function makeHotelSearchTool(
       return {
         hotels,
         search_url,
-        currency_note: "price_*_pen_approx es aproximado (~3.75 PEN/USD), solo referencia.",
+        currency_note: LOCAL_CURRENCY_NOTE,
       };
     },
   });

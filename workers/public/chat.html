@@ -360,6 +360,69 @@
       margin-bottom: 16px;
     }
 
+    /* Flight/hotel price cards inside AI bubbles */
+    .price-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin: 6px 0;
+    }
+
+    .pc-main {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .pc-price {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .pc-meta {
+      font-size: 12px;
+      color: var(--text-2);
+    }
+
+    .pc-go {
+      flex-shrink: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      background: var(--rausch);
+      border-radius: 999px;
+      padding: 7px 14px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .pc-go:hover {
+      background: var(--rausch-dark);
+    }
+
+    /* Speak button on AI replies */
+    .speak-btn {
+      align-self: flex-end;
+      flex-shrink: 0;
+      border: none;
+      background: transparent;
+      font-size: 15px;
+      cursor: pointer;
+      opacity: 0.45;
+      padding: 2px 4px;
+      transition: opacity 0.15s ease;
+    }
+
+    .speak-btn:hover {
+      opacity: 1;
+    }
+
     /* Follow-up chips: server-suggested next steps under the last bot reply */
     .follow-ups {
       display: flex;
@@ -1076,8 +1139,46 @@
           /(https?:\/\/[^\s)]+)/g,
           (m) => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`
         );
-        // bold **text**
-        return linked.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        // bold **text** / *text*
+        return linked
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/(^|\s)\*([^*\n]+)\*/g, '$1<strong>$2</strong>');
+      }
+
+      // Price-card upgrade for AI bubbles: a line like
+      //   *$48* (~S/180) | LATAM | 26 ago, directo
+      // optionally followed by a luanna.app/r/ link becomes a tappable card.
+      // Anything that doesn't match renders as plain rich text.
+      var PRICE_LINE_RE = /^\s*-?\s*\*{0,2}\$\s?[\d.,]+\*{0,2}\s*(\([^)]*\))?\s*\|/;
+      var BARE_LINK_RE = /^\s*(https?:\/\/[^\s]+)\s*$/;
+      function renderRich(text) {
+        var lines = text.split('\n');
+        var out = [];
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+          if (PRICE_LINE_RE.test(line)) {
+            var parts = line.replace(/^\s*-\s*/, '').split('|').map(function (p) { return p.trim(); });
+            var price = parts[0] || '';
+            var meta = parts.slice(1).join(' · ');
+            var link = null;
+            var next = lines[i + 1] || '';
+            var lm = next.match(BARE_LINK_RE);
+            if (lm) { link = lm[1]; i++; }
+            out.push(
+              '<div class="price-card">' +
+              '<div class="pc-main"><span class="pc-price">' + renderText(price) + '</span>' +
+              '<span class="pc-meta">' + escapeHtml(meta) + '</span></div>' +
+              (link
+                ? '<a class="pc-go" href="' + escapeHtml(link) + '" target="_blank" rel="noopener">Ver →</a>'
+                : '') +
+              '</div>'
+            );
+          } else {
+            out.push(renderText(line));
+          }
+        }
+        return out.join('\n').replace(/\n(?=<div class="price-card")/g, '')
+          .replace(/(<\/div>)\n/g, '$1');
       }
 
       // Dedup signatures shared between local renders and the sync poll, so a
@@ -1090,6 +1191,40 @@
       function remember(role, content) {
         seenSig.push(msgSig(role, content));
         if (seenSig.length > 50) seenSig.shift();
+      }
+
+      // 🔊 speak an AI reply via /api/chat/tts (same voice as WhatsApp).
+      var currentAudio = null;
+      function addSpeakBtn(row, text) {
+        if (!text || !text.trim()) return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'speak-btn';
+        btn.title = 'Escuchar';
+        btn.textContent = '🔊';
+        btn.addEventListener('click', async function () {
+          if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+          btn.disabled = true;
+          btn.textContent = '…';
+          try {
+            var res = await fetch('/api/chat/tts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: text }),
+            });
+            if (!res.ok) throw new Error(String(res.status));
+            var blob = await res.blob();
+            currentAudio = new Audio(URL.createObjectURL(blob));
+            currentAudio.onended = function () { btn.textContent = '🔊'; };
+            await currentAudio.play();
+            btn.textContent = '⏸';
+          } catch (e) {
+            btn.textContent = '🔊';
+          } finally {
+            btn.disabled = false;
+          }
+        });
+        row.appendChild(btn);
       }
 
       function appendMessage(role, text) {
@@ -1105,8 +1240,9 @@
         }
         const bubble = document.createElement('div');
         bubble.className = 'msg';
-        bubble.innerHTML = renderText(text);
+        bubble.innerHTML = role === 'ai' ? renderRich(text) : renderText(text);
         row.appendChild(bubble);
+        if (role === 'ai') addSpeakBtn(row, text);
         messages.appendChild(row);
         scrollToBottom();
         return row;
@@ -1312,7 +1448,8 @@
               removeTyping();
               appendMessage('ai', '...');
             } else if (parts.text.trim()) {
-              bubble.innerHTML = renderText(parts.text);
+              bubble.innerHTML = renderRich(parts.text);
+              if (bubble.parentNode) addSpeakBtn(bubble.parentNode, parts.text);
               remember('ai', parts.text);
               appendFollowUps(parts.suggestions);
               fetchShareUrl();

@@ -439,7 +439,13 @@ function buildLLMArgs(
     TRAVELPAYOUTS_MARKER: env.TRAVELPAYOUTS_MARKER,
   };
   const clickCtx = ctx.userId > 0
-    ? { sql: ctx.sql, userId: ctx.userId, baseUrl: ctx.baseUrl }
+    ? {
+        sql: ctx.sql,
+        userId: ctx.userId,
+        baseUrl: ctx.baseUrl,
+        // Phone drives the local display currency (null on web → USD only).
+        phone: ctx.to ?? null,
+      }
     : undefined;
   const hotelOpts =
     env.HOTELS_PROVIDER === "amadeus" &&
@@ -2935,6 +2941,41 @@ async function handleChatHistory(
   return Response.json({ messages, server_time: now });
 }
 
+// POST /api/chat/tts — speak an assistant reply aloud in the web chat (the
+// WhatsApp path already answers voice notes with voice). Body: { text, lang? }.
+// Returns audio/mpeg. Uses the same spokenSummary cleanup as WhatsApp so URLs
+// and emojis never get read out loud.
+async function handleChatTts(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as
+    | { text?: string; lang?: string }
+    | null;
+  const text = typeof body?.text === "string" ? body.text : "";
+  if (!text.trim()) {
+    return Response.json({ error: "missing 'text'" }, { status: 400 });
+  }
+  if (text.length > 4000) {
+    return Response.json({ error: "text too long" }, { status: 413 });
+  }
+  const sql = getDb(env.DATABASE_URL);
+  const rl = await checkRateLimit(sql, `tts:${getClientIp(request)}`, 20, 3600);
+  if (!rl.allowed) return rateLimitResponse(rl, "too many requests");
+  const spoken = spokenSummary(text);
+  if (!spoken) {
+    return Response.json({ error: "nothing speakable" }, { status: 422 });
+  }
+  const lang = typeof body?.lang === "string" ? body.lang : "es";
+  const mp3 = await generateSpeech(env, spoken, lang);
+  if (!mp3) {
+    return Response.json({ error: "tts unavailable" }, { status: 503 });
+  }
+  return new Response(mp3.buffer as ArrayBuffer, {
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 async function handleChatLogout(): Promise<Response> {
   // Clear the chat-session cookie. The web user will need to vincular again
   // (or just chat normally as a brand-new web session) on the next message.
@@ -3185,6 +3226,9 @@ async function routeFetch(
   }
   if (request.method === "GET" && url.pathname === "/api/chat/whoami") {
     return handleChatWhoami(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/chat/tts") {
+    return handleChatTts(request, env);
   }
   if (request.method === "POST" && url.pathname === "/api/chat/logout") {
     return handleChatLogout();
