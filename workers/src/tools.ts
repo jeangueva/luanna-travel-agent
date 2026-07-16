@@ -718,9 +718,48 @@ function fallbackIata(raw: string): string | null {
   return /^[A-Za-z]{3}$/.test(raw.trim()) ? raw.trim().toUpperCase() : null;
 }
 
+// Early-result teaser (WhatsApp): the cheapest option is known the moment the
+// tool returns, but the model still needs 3-5s to write its reply. The caller
+// can push a deterministic "top option" message immediately via onTopResult;
+// when it confirms delivery, the tool result tells the model NOT to repeat
+// that option.
+export interface FlightTeaser {
+  originIata: string;
+  destIata: string;
+  priceUsd: number;
+  priceLocal?: { amount: number; symbol: string };
+  airline: string;
+  departureAt: string;
+  transfers: number;
+  link: string | null;
+}
+
+const SPANISH_MONTHS_SHORT = [
+  "ene", "feb", "mar", "abr", "may", "jun",
+  "jul", "ago", "sep", "oct", "nov", "dic",
+];
+
+export function formatFlightTeaser(t: FlightTeaser): string {
+  const d = new Date(t.departureAt);
+  const when = Number.isNaN(d.getTime())
+    ? t.departureAt.slice(0, 10)
+    : `${d.getUTCDate()} ${SPANISH_MONTHS_SHORT[d.getUTCMonth()]}`;
+  const local = t.priceLocal ? ` (~${t.priceLocal.symbol}${t.priceLocal.amount})` : "";
+  const stops = t.transfers === 0 ? "directo" : `${t.transfers} escala${t.transfers > 1 ? "s" : ""}`;
+  const lines = [
+    `🥇 Lo más barato ${t.originIata} → ${t.destIata}:`,
+    `*$${t.priceUsd}*${local} | ${t.airline} | ${when}, ${stops}`,
+  ];
+  if (t.link) lines.push(t.link);
+  lines.push("");
+  lines.push("Dame unos segundos para el resto de opciones… ⏳");
+  return lines.join("\n");
+}
+
 export function makeFlightSearchTool(
   env: TravelpayoutsEnv,
   click?: ClickContext,
+  onTopResult?: (teaser: FlightTeaser) => Promise<boolean>,
 ) {
   return tool({
     description:
@@ -942,6 +981,27 @@ export function makeFlightSearchTool(
           };
         }),
       );
+      // WhatsApp teaser: push the cheapest option to the user NOW (the model
+      // still needs seconds to write). Await it — the "don't repeat it" hint
+      // below must only appear when the message actually went out.
+      let topSent = false;
+      const top = flights[0] as
+        | { price_usd: number; airline: string; departure_at: string; transfers: number; link: string | null }
+        | undefined;
+      if (onTopResult && top) {
+        topSent = await onTopResult({
+          originIata,
+          destIata,
+          priceUsd: top.price_usd,
+          priceLocal: fx
+            ? { amount: usdToLocal(top.price_usd, fx), symbol: fx.symbol }
+            : undefined,
+          airline: top.airline,
+          departureAt: top.departure_at,
+          transfers: top.transfers,
+          link: top.link,
+        }).catch(() => false);
+      }
       return {
         flights,
         resolved_origin: originIata,
@@ -953,6 +1013,13 @@ export function makeFlightSearchTool(
         widened_search: widened,
         ...(flights.length === 0
           ? { note: "No hay precios en cache para esta ruta ni en los próximos 6 meses. Sugiérele al usuario otra fecha, un aeropuerto cercano, o confirmar origen/destino." }
+          : {}),
+        ...(topSent
+          ? {
+              top_option_already_sent: true,
+              note:
+                "IMPORTANTE: la opción MÁS BARATA (la primera de flights) YA le llegó al usuario en un mensaje aparte con su link. NO la repitas. Tu respuesta: una línea breve de contexto + las OTRAS opciones (de la 2da en adelante, máx 4, una por línea con su link si lo tienen) + siguiente paso. Si solo había 1 opción, comenta brevemente y sugiere el siguiente paso sin repetir precio ni link.",
+            }
           : {}),
         currency_note: LOCAL_CURRENCY_NOTE,
       };

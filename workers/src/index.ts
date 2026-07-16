@@ -96,6 +96,8 @@ import {
   makeAddFavoritePlacesTool,
   makeAddWatchlistTool,
   makeStartItineraryTool,
+  formatFlightTeaser,
+  type FlightTeaser,
   makeFlightSearchTool,
   makeHotelSearchTool,
   makePackageLinkTool,
@@ -195,6 +197,10 @@ interface ReplyContext {
   // it to derive deterministic quick-reply suggestions (WhatsApp buttons /
   // web chips) after the reply text is generated.
   toolsUsed?: { value: string[] };
+  // The user message id this turn replies to — used to re-fire the typing
+  // indicator after an early teaser message so the chat still shows "typing…"
+  // while the model writes the full reply.
+  typingMessageId?: string;
 }
 
 const TRAVELPAYOUTS_HOSTS = new Set([
@@ -467,8 +473,42 @@ function buildLLMArgs(
     env.STAYS_API_KEY
       ? { serviceUrl: env.STAYS_SERVICE_URL, apiKey: env.STAYS_API_KEY }
       : undefined;
+  // Early-teaser callback (WhatsApp only): the instant search_flights has its
+  // cheapest option, push it as its own message — the user sees a real price
+  // + link ~3-5s before the model finishes writing. One teaser per turn (an
+  // open-jaw does two searches; two teasers would read as spam). The full
+  // reply then covers the remaining options (the tool result tells the model
+  // not to repeat the top one).
+  let teaserSent = false;
+  const onTopResult =
+    inWhatsApp && ctx.userId > 0
+      ? async (teaser: FlightTeaser): Promise<boolean> => {
+          if (teaserSent) return false;
+          teaserSent = true;
+          const body = formatFlightTeaser(teaser);
+          await sendKapsoText({
+            apiKey: env.KAPSO_API_KEY,
+            phoneNumberId: ctx.phoneNumberId!,
+            to: ctx.to!,
+            body,
+          });
+          // Persist + re-show typing dots in the background; the model's
+          // generation continues immediately.
+          void appendMessage(ctx.sql, ctx.userId, "assistant", body).catch(
+            (err) => console.error("appendMessage teaser failed", err),
+          );
+          if (ctx.typingMessageId) {
+            void sendKapsoTypingIndicator({
+              apiKey: env.KAPSO_API_KEY,
+              phoneNumberId: ctx.phoneNumberId!,
+              messageId: ctx.typingMessageId,
+            });
+          }
+          return true;
+        }
+      : undefined;
   const tools = {
-    search_flights: makeFlightSearchTool(tpEnv, clickCtx),
+    search_flights: makeFlightSearchTool(tpEnv, clickCtx, onTopResult),
     search_hotels: makeHotelSearchTool(tpEnv, clickCtx, hotelOpts),
     search_stays: makeStaysSearchTool(tpEnv, clickCtx, staysOpts),
     get_package_link: makePackageLinkTool(tpEnv, clickCtx),
@@ -1520,6 +1560,7 @@ async function handleKapsoWebhook(
             userPrefs,
             itineraryRequest,
             toolsUsed,
+            typingMessageId: message_id,
           }),
           // Generous bound: legit flight fan-outs run ~10-20s. Cut only true
           // hangs, before the runtime kills the invocation with no reply.
