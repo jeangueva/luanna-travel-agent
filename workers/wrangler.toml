@@ -22,6 +22,10 @@ LUANNA_WHATSAPP_NUMBER = "12024908102"
 # MINIMAX_API_KEY secret. Roll back instantly: set back to "anthropic" + deploy.
 LLM_PROVIDER = "minimax"
 MINIMAX_BASE_URL = "https://api.minimax.io/anthropic/v1"
+# Benchmarked 2026-07-15 (same prompt, 5 runs each, end-to-end via /api/chat):
+# M3 median 4.9s vs M2.5-highspeed median 6.9s — M2.5's higher t/s loses to
+# the extra tokens it generates per reply. Keep M3; re-benchmark before any
+# swap instead of trusting provider throughput numbers.
 MINIMAX_MODEL = "MiniMax-M3"
 
 # ── Hotels ─────────────────────────────────────────────────────────────────

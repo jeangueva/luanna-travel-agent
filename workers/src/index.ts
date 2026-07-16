@@ -566,6 +566,9 @@ function buildLLMArgs(
     // 3 steps is plenty for the typical flow: one tool call + one reply.
     // Capping lower than 5 saves a roundtrip when the model wanders.
     stopWhen: stepCountIs(3),
+    // WhatsApp replies are 1-3 short lines + links; 600 tokens is generous.
+    // Caps the tail latency when the model tries to write an essay.
+    maxOutputTokens: 600,
   };
 }
 
@@ -1246,7 +1249,10 @@ async function handleKapsoWebhook(
   // so a Kapso retry of the whole batch never double-replies. Heavy multimodal
   // work (vision + Whisper) happens later INSIDE ctx.waitUntil so we still ack
   // the webhook in <500ms.
-  const incoming: IncomingMessage[] = [];
+  // Parse the batch first, then run all dedupe checks in ONE parallel wave —
+  // each recordWebhookOrSkip is a Neon roundtrip, and running them
+  // sequentially added ~200ms per extra message before the user saw anything.
+  const parsed: Array<{ id: string; text: string | null; media: MediaMessage | null; tapId?: string }> = [];
   for (const item of batch) {
     const data = extractMessageReceived(item);
     const media = data ? null : extractMediaMessage(item);
@@ -1263,19 +1269,27 @@ async function handleKapsoWebhook(
         : null;
     if (!media && !text) continue; // empty text body / empty tap
     const id = data?.message.id ?? tap?.message_id ?? media!.message_id;
-    const fresh = await recordWebhookOrSkip(dedupeSql, id);
-    if (!fresh) {
-      console.log("kapso webhook duplicate", id);
+    parsed.push({ id, text, media, tapId: tap?.id });
+  }
+  const freshFlags = await Promise.all(
+    parsed.map((p) =>
+      recordWebhookOrSkip(dedupeSql, p.id).catch(() => true),
+    ),
+  );
+  const incoming: IncomingMessage[] = [];
+  for (let i = 0; i < parsed.length; i++) {
+    if (!freshFlags[i]) {
+      console.log("kapso webhook duplicate", parsed[i].id);
       continue;
     }
-    if (tap) {
+    if (parsed[i].tapId) {
       void track(env, {
         event: "quick_reply_tapped",
         distinct_id: "anon", // real user id not resolved yet at this point
-        properties: { button_id: tap.id },
+        properties: { button_id: parsed[i].tapId },
       });
     }
-    incoming.push({ id, text, media });
+    incoming.push({ id: parsed[i].id, text: parsed[i].text, media: parsed[i].media });
   }
 
   if (incoming.length === 0) {
@@ -1301,11 +1315,12 @@ async function handleKapsoWebhook(
       try {
         const sql = getDb(env.DATABASE_URL);
         const user = await getOrCreateUser(sql, from, phone_number_id);
-        // Parallelize the three independent post-user-fetch DB roundtrips.
-        // None of them depend on each other and they all hit the same Neon
-        // connection — saves ~300ms vs the sequential chain.
-        const [history] = await Promise.all([
+        // Parallelize every independent post-user-fetch DB read in ONE wave —
+        // prefs included (it only needs user.id, not the resolved text). Each
+        // extra sequential Neon roundtrip is ~200-400ms the user waits.
+        const [history, userPrefs] = await Promise.all([
           getRecentMessages(sql, user.id),
+          getPreferences(sql, user.id).catch(() => null),
           ensureReferralCode(sql, user.id).catch(() => null),
           resetInactivityNudgeCount(sql, user.id).catch(() => undefined),
         ]);
@@ -1481,12 +1496,15 @@ async function handleKapsoWebhook(
             length: resolvedText.length,
           },
         });
-        // appendMessage(user) and getPreferences both touch Neon and don't
-        // depend on each other — fire in parallel.
-        const [, userPrefs] = await Promise.all([
-          appendMessage(sql, user.id, "user", resolvedText),
-          getPreferences(sql, user.id).catch(() => null),
-        ]);
+        // Persist the user turn in the background — the LLM gets the text
+        // directly (history + userMessage are separate inputs), so this write
+        // doesn't need to block the reply. waitUntil keeps it alive past the
+        // turn; it lands seconds before the assistant turn's insert.
+        ctx.waitUntil(
+          appendMessage(sql, user.id, "user", resolvedText).catch((err) =>
+            console.error("appendMessage user failed", err),
+          ),
+        );
         const itineraryRequest = { value: null as ItineraryRequest | null };
         const toolsUsed = { value: [] as string[] };
         const reply = await withTimeout(

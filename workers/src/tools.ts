@@ -880,12 +880,15 @@ export function makeFlightSearchTool(
       let scannedMonths = 1;
       let widened = false;
       if (departure_date) {
-        raw = await single(departure_date);
-        if (raw.length === 0) {
-          // Exact date empty → widen to the whole month.
-          raw = await single(departure_date.slice(0, 7));
-          widened = raw.length > 0;
-        }
+        // The exact-date cache cell is often empty even when the month has
+        // flights, so fetch BOTH in parallel and prefer the exact date. Same
+        // TP quota as the old sequential widen, ~8s faster on the miss path.
+        const [exact, month] = await Promise.all([
+          single(departure_date),
+          single(departure_date.slice(0, 7)),
+        ]);
+        raw = exact.length > 0 ? exact : month;
+        widened = exact.length === 0 && month.length > 0;
       } else if (departure_month) {
         raw = await single(departure_month);
       }
