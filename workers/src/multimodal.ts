@@ -83,9 +83,16 @@ export interface AudioTranscript {
   language?: string;
 }
 
-// MeloTTS supports these speech languages. Portuguese isn't available, so
-// PT voice replies fall back to text-only (the caller skips TTS).
-const TTS_LANGS = new Set(["es", "en", "fr", "zh", "ja", "ko"]);
+// TTS model routing. MeloTTS silently dropped Spanish ("8002: Invalid input"
+// for lang:"es" as of July 2026), which broke our core-market voice replies —
+// so es/en now use Deepgram Aura-2's native variants and MeloTTS only covers
+// the remaining languages it still accepts. Portuguese has no TTS on Workers
+// AI; PT voice replies stay text-only (caller skips).
+const AURA_MODELS: Record<string, string> = {
+  es: "@cf/deepgram/aura-2-es",
+  en: "@cf/deepgram/aura-2-en",
+};
+const MELO_LANGS = new Set(["fr", "zh", "ja", "ko"]);
 
 function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);
@@ -94,10 +101,28 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
+// Workers AI models return audio as a base64 JSON field, a ReadableStream, or
+// raw bytes depending on the model. Normalize all three to Uint8Array.
+async function toAudioBytes(result: unknown): Promise<Uint8Array | null> {
+  if (!result) return null;
+  if (result instanceof ReadableStream) {
+    const buf = await new Response(result).arrayBuffer();
+    return buf.byteLength > 0 ? new Uint8Array(buf) : null;
+  }
+  if (result instanceof ArrayBuffer) {
+    return result.byteLength > 0 ? new Uint8Array(result) : null;
+  }
+  if (result instanceof Uint8Array) {
+    return result.length > 0 ? result : null;
+  }
+  const audio = (result as { audio?: string }).audio;
+  return audio ? base64ToBytes(audio) : null;
+}
+
 /**
- * Text → spoken MP3 via Workers AI MeloTTS. Returns null when TTS is
- * unavailable or the language isn't supported (caller then stays text-only).
- * Cosmetic feature: never throws.
+ * Text → spoken MP3 via Workers AI (Aura-2 for es/en, MeloTTS for the rest).
+ * Returns null when TTS is unavailable or the language isn't supported
+ * (caller then stays text-only). Cosmetic feature: never throws.
  */
 export async function generateSpeech(
   env: MultimodalEnv,
@@ -106,16 +131,23 @@ export async function generateSpeech(
 ): Promise<Uint8Array | null> {
   if (!env.AI) return null;
   const code = (lang ?? "es").slice(0, 2).toLowerCase();
-  if (!TTS_LANGS.has(code)) return null;
   const prompt = text.trim().slice(0, 800);
   if (!prompt) return null;
   try {
-    const result = (await env.AI.run("@cf/myshell-ai/melotts", {
+    const aura = AURA_MODELS[code];
+    if (aura) {
+      const result = await env.AI.run(aura, {
+        text: prompt,
+        encoding: "mp3",
+      });
+      return await toAudioBytes(result);
+    }
+    if (!MELO_LANGS.has(code)) return null;
+    const result = await env.AI.run("@cf/myshell-ai/melotts", {
       prompt,
       lang: code,
-    })) as { audio?: string };
-    if (!result.audio) return null;
-    return base64ToBytes(result.audio);
+    });
+    return await toAudioBytes(result);
   } catch (err) {
     console.error("generateSpeech failed", err);
     return null;
