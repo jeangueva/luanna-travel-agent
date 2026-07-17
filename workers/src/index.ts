@@ -485,18 +485,47 @@ function buildLLMArgs(
       ? async (teaser: FlightTeaser): Promise<boolean> => {
           if (teaserSent) return false;
           teaserSent = true;
-          const body = formatFlightTeaser(teaser);
-          await sendKapsoText({
-            apiKey: env.KAPSO_API_KEY,
-            phoneNumberId: ctx.phoneNumberId!,
-            to: ctx.to!,
-            body,
-          });
+          // Preferred shape: native CTA URL button ("Ver vuelo") — no visible
+          // link at all, so nothing depends on the model transcribing a URL
+          // and the tap opens the flight in the in-app browser. Falls back to
+          // a plain text + link if the interactive send fails.
+          const body = formatFlightTeaser(teaser, { omitLink: true });
+          if (teaser.link) {
+            try {
+              await sendKapsoCtaUrl({
+                apiKey: env.KAPSO_API_KEY,
+                phoneNumberId: ctx.phoneNumberId!,
+                to: ctx.to!,
+                bodyText: body,
+                buttonText: "Ver vuelo ✈️",
+                url: teaser.link,
+              });
+            } catch (err) {
+              console.error("teaser CTA failed, falling back to text", err);
+              await sendKapsoText({
+                apiKey: env.KAPSO_API_KEY,
+                phoneNumberId: ctx.phoneNumberId!,
+                to: ctx.to!,
+                body: formatFlightTeaser(teaser),
+              });
+            }
+          } else {
+            await sendKapsoText({
+              apiKey: env.KAPSO_API_KEY,
+              phoneNumberId: ctx.phoneNumberId!,
+              to: ctx.to!,
+              body,
+            });
+          }
           // Persist + re-show typing dots in the background; the model's
-          // generation continues immediately.
-          void appendMessage(ctx.sql, ctx.userId, "assistant", body).catch(
-            (err) => console.error("appendMessage teaser failed", err),
-          );
+          // generation continues immediately. History keeps the link so the
+          // model knows it was delivered.
+          void appendMessage(
+            ctx.sql,
+            ctx.userId,
+            "assistant",
+            formatFlightTeaser(teaser),
+          ).catch((err) => console.error("appendMessage teaser failed", err));
           if (ctx.typingMessageId) {
             void sendKapsoTypingIndicator({
               apiKey: env.KAPSO_API_KEY,

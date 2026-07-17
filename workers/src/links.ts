@@ -13,13 +13,39 @@ import { filterExistingClickIds, type Sql } from "./db";
 const R_URL_RE = /https?:\/\/[^\s"'<>)]+\/r\/[A-Za-z0-9_-]{4,32}/g;
 const R_URL_CAPTURE_RE = /(https?:\/\/[^\s"'<>)]+\/r\/)([A-Za-z0-9_-]{4,32})/g;
 
+// Narrow arbitrary AI-SDK steps down to ONLY the tool results before matching
+// URLs. Stringifying whole steps is poisonous: they embed the request payload
+// (system prompt + chat HISTORY), so a dead /r/ id echoed from an old message
+// would count as "created this turn" and sail through the guard — exactly the
+// CpbWiH ghost-link bug.
+function toolResultsBlob(steps: unknown): string {
+  if (!Array.isArray(steps)) return "";
+  const parts: unknown[] = [];
+  for (const step of steps as Array<Record<string, unknown>>) {
+    if (!step || typeof step !== "object") continue;
+    if (step.toolResults) parts.push(step.toolResults);
+    else if (Array.isArray(step.content)) {
+      parts.push(
+        (step.content as Array<{ type?: string }>).filter(
+          (c) => c?.type === "tool-result",
+        ),
+      );
+    }
+  }
+  try {
+    return JSON.stringify(parts);
+  } catch {
+    return "";
+  }
+}
+
 export async function repairTrackedLinks(
   sql: Sql,
   text: string,
   steps: unknown,
 ): Promise<string> {
   if (!text.includes("/r/")) return text;
-  const blob = JSON.stringify(steps ?? "");
+  const blob = toolResultsBlob(steps);
   const realUrls: string[] = [];
   const seen = new Set<string>();
   for (const m of blob.matchAll(R_URL_RE)) {
@@ -170,9 +196,10 @@ export function createLinkGuardStream(
   return { stream, addRealUrl };
 }
 
-// Pull every /r/ short link out of an arbitrary step payload (tool results).
-export function extractRealUrls(steps: unknown): string[] {
-  const blob = JSON.stringify(steps ?? "");
+// Pull every /r/ short link out of a step's TOOL RESULTS (never the whole
+// step — see toolResultsBlob for why).
+export function extractRealUrls(step: unknown): string[] {
+  const blob = toolResultsBlob([step]);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const m of blob.matchAll(R_URL_RE)) {

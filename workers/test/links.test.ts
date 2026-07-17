@@ -83,6 +83,31 @@ describe("repairTrackedLinks", () => {
     );
     assert.ok(!out.includes("/r/Maybe1"));
   });
+
+  test("ghost id in the step REQUEST (chat history) does not count as real (CpbWiH regression)", async () => {
+    // AI SDK steps embed the request payload, which contains the chat history.
+    // A dead link echoed there must NOT whitelist itself.
+    const poisonedSteps = [
+      {
+        request: {
+          body: JSON.stringify({
+            messages: [
+              { role: "assistant", content: "viejo: https://luanna.app/r/CpbWiH" },
+            ],
+          }),
+        },
+        toolResults: [{ output: { link: "https://luanna.app/r/Real01" } }],
+      },
+    ];
+    const out = await repairTrackedLinks(
+      fakeSql([]),
+      "Top: https://luanna.app/r/CpbWiH y más opciones",
+      poisonedSteps,
+    );
+    // Exactly one real URL and one in-text URL → positional remap to the real one.
+    assert.ok(!out.includes("/r/CpbWiH"));
+    assert.ok(out.includes("/r/Real01"));
+  });
 });
 
 // Drive the guard with arbitrary chunk boundaries and collect the output.

@@ -739,7 +739,10 @@ const SPANISH_MONTHS_SHORT = [
   "jul", "ago", "sep", "oct", "nov", "dic",
 ];
 
-export function formatFlightTeaser(t: FlightTeaser): string {
+export function formatFlightTeaser(
+  t: FlightTeaser,
+  opts?: { omitLink?: boolean },
+): string {
   const d = new Date(t.departureAt);
   const when = Number.isNaN(d.getTime())
     ? t.departureAt.slice(0, 10)
@@ -750,7 +753,7 @@ export function formatFlightTeaser(t: FlightTeaser): string {
     `🥇 Lo más barato ${t.originIata} → ${t.destIata}:`,
     `*$${t.priceUsd}*${local} | ${t.airline} | ${when}, ${stops}`,
   ];
-  if (t.link) lines.push(t.link);
+  if (t.link && !opts?.omitLink) lines.push(t.link);
   lines.push("");
   lines.push("Dame unos segundos para el resto de opciones… ⏳");
   return lines.join("\n");
