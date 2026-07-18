@@ -1245,10 +1245,12 @@ export async function mergeWebUserInto(
   await sql`DELETE FROM users WHERE id = ${webUserId}`;
 }
 
-// ─── Gamification: engagement points + partner promo codes ──────────────────
+// ─── Gamification: engagement points ─────────────────────────────────────────
 //
 // Points are COMPUTED from activity we already record (no new write paths, so
 // there's nothing to farm): active days, link clicks, alerts created.
+// Partner promo codes were descoped (migration 0013 dropped, table never
+// applied) — the prompt promises no codes/prizes until that ships.
 // Levels: 1 Explorador (0+) · 2 Viajero (40+) · 3 Trotamundos (120+).
 
 export interface UserEngagement {

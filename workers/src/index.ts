@@ -380,21 +380,21 @@ async function generateReply(
 
   const llmArgs = buildLLMArgs(env, userMessage, ctx, flowEnabled, inWhatsApp);
   let result = await generateText(llmArgs);
-  // Deterministic backstop for the "reprinted stale flights" failure: the
-  // model answers a flight request with prices copied from chat history and
-  // never calls search_flights — so there is no fresh /r/ link to show (the
-  // link guard rightly strips the stale one). Prompt rules alone don't stop
-  // this (observed on MiniMax-M3 even with an explicit prohibition), so when
-  // we detect it, regenerate once with search_flights FORCED on the first
-  // step. The forced run also fires the WhatsApp teaser, so the user gets a
-  // tappable fresh link even if the model under-links the final text.
-  if (
-    reprintedStaleFlights(
-      userMessage,
-      result as unknown as { text: string; steps?: ToolCallStep[] },
-    )
-  ) {
-    console.log("stale-flight backstop: forcing search_flights retry");
+  // Deterministic backstop for the "reprinted stale results" failure: the
+  // model answers a flight/lodging request with prices copied from chat
+  // history (or a "no availability" claim) and never calls the search tool —
+  // so there is no fresh /r/ link to show (the link guard rightly strips the
+  // stale one). Prompt rules alone don't stop this (observed on MiniMax-M3
+  // even with an explicit prohibition), so when we detect it, regenerate once
+  // with the right search tool FORCED on the first step. For flights the
+  // forced run also fires the WhatsApp teaser, so the user gets a tappable
+  // fresh link even if the model under-links the final text.
+  const staleTool = detectStaleReprint(
+    userMessage,
+    result as unknown as { text: string; steps?: ToolCallStep[] },
+  );
+  if (staleTool) {
+    console.log(`stale-result backstop: forcing ${staleTool} retry`);
     try {
       // MiniMax-M3's Anthropic-compat endpoint IGNORES a forced tool_choice
       // (verified in prod: retry ran, zero tool calls). Claude honors it, so
@@ -406,22 +406,17 @@ async function generateReply(
         model: anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL),
         prepareStep: ({ stepNumber }) =>
           stepNumber === 0
-            ? {
-                toolChoice: {
-                  type: "tool" as const,
-                  toolName: "search_flights" as const,
-                },
-              }
+            ? { toolChoice: { type: "tool" as const, toolName: staleTool } }
             : undefined,
       });
       const retryTools = collectToolNames(
         retry as unknown as { steps?: ToolCallStep[] },
       );
-      console.log("stale-flight backstop: retry tools =", retryTools.join(",") || "(none)");
+      console.log("stale-result backstop: retry tools =", retryTools.join(",") || "(none)");
       result = retry;
     } catch (err) {
       // Keep the first (linkless but coherent) reply if the retry fails.
-      console.error("forced flight-search retry failed", err);
+      console.error("forced search retry failed", err);
     }
   }
   if (ctx.toolsUsed) {
@@ -830,19 +825,42 @@ function collectToolNames(result: { steps?: ToolCallStep[] }): string[] {
 // were copied from history and no valid /r/ link can exist. Clarifying-question
 // replies ("¿de dónde sales?") carry no price token, so they never match.
 const FLIGHT_INTENT_RE = /\b(vuel[oa]s?|pasajes?|boletos?|volar|flights?|fly)\b/i;
+const LODGING_INTENT_RE =
+  /\b(hotel(es)?|hospedajes?|alojamientos?|hostal(es)?|habitaci[oó]n(es)?|airbnb|estad[ií]as?|depa(rtamento)?s?)\b/i;
+// Lodging sub-intent: explicit Airbnb/apartment/house language routes to
+// search_stays; generic lodging language routes to search_hotels.
+const STAYS_HINT_RE = /\b(airbnb|depa(rtamento)?s?|casas?|estad[ií]as?)\b/i;
 const PRICE_TOKEN_RE = /\$\s?\d|\bS\/\s?\.?\d|\bUSD\b/i;
 // "No availability" claims are the other unsearched-answer shape: the model
 // asserts there's nothing ("no hay precios en cache…") without having looked.
 const NO_AVAIL_RE =
-  /\bno\s+(?:hay|encontr\w+|veo|tengo|existen?)\b[^.\n]{0,40}\b(?:precios?|vuelos?|cach[eé]|resultados?|opciones)/i;
+  /\bno\s+(?:hay|encontr\w+|veo|tengo|existen?)\b[^.\n]{0,40}\b(?:precios?|vuelos?|hotel(es)?|alojamientos?|estad[ií]as?|habitaci[oó]n(es)?|cach[eé]|resultados?|opciones)/i;
 
-function reprintedStaleFlights(
+// Which search tool (if any) should have run this turn but didn't, while the
+// reply still shows prices or claims no availability? Clarifying-question
+// replies ("¿de dónde sales?", "¿qué fechas?") carry neither signal, so they
+// never match. Flights are checked first: on a combined ask ("vuelo y hotel a
+// Cusco") the flight branch only stands down if search_flights actually ran,
+// and the lodging branch then catches a missing hotel search.
+function detectStaleReprint(
   userMessage: string,
   result: { text: string; steps?: ToolCallStep[] },
-): boolean {
-  if (!FLIGHT_INTENT_RE.test(userMessage)) return false;
-  if (collectToolNames(result).includes("search_flights")) return false;
-  return PRICE_TOKEN_RE.test(result.text) || NO_AVAIL_RE.test(result.text);
+): "search_flights" | "search_hotels" | "search_stays" | null {
+  if (!PRICE_TOKEN_RE.test(result.text) && !NO_AVAIL_RE.test(result.text)) {
+    return null;
+  }
+  const tools = collectToolNames(result);
+  if (FLIGHT_INTENT_RE.test(userMessage) && !tools.includes("search_flights")) {
+    return "search_flights";
+  }
+  if (
+    LODGING_INTENT_RE.test(userMessage) &&
+    !tools.includes("search_hotels") &&
+    !tools.includes("search_stays")
+  ) {
+    return STAYS_HINT_RE.test(userMessage) ? "search_stays" : "search_hotels";
+  }
+  return null;
 }
 
 function collectToolEvents(
