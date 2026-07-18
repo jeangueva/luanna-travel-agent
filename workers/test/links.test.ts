@@ -1,6 +1,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { createLinkGuardStream, repairTrackedLinks } from "../src/links";
+import {
+  createLinkGuardStream,
+  repairTrackedLinks,
+  scrubHistoryLinks,
+} from "../src/links";
 import type { Sql } from "../src/db";
 
 // Fake Neon client: answers the filterExistingClickIds query with the ids in
@@ -137,6 +141,27 @@ describe("repairTrackedLinks", () => {
     // Exactly one real URL and one in-text URL → positional remap to the real one.
     assert.ok(!out.includes("/r/CpbWiH"));
     assert.ok(out.includes("/r/Real01"));
+  });
+});
+
+describe("scrubHistoryLinks", () => {
+  test("replaces /r/ links with an inert placeholder", () => {
+    const out = scrubHistoryLinks(
+      "Top: https://luanna.app/r/CpbWiH ✈️ y https://luanna.app/r/AbC123",
+    );
+    assert.ok(!out.includes("/r/CpbWiH"));
+    assert.ok(!out.includes("/r/AbC123"));
+    assert.ok(out.includes("[link vencido — busca de nuevo]"));
+    assert.ok(out.includes("✈️"));
+  });
+
+  test("text without links passes through untouched", () => {
+    assert.equal(scrubHistoryLinks("hola ✈️"), "hola ✈️");
+  });
+
+  test("non-/r/ luanna URLs (trip pages) are preserved", () => {
+    const text = "Tu plan: https://luanna.app/trip/abc123 📄";
+    assert.equal(scrubHistoryLinks(text), text);
   });
 });
 

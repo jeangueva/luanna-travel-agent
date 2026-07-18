@@ -80,6 +80,8 @@ import {
 import { renderAdminDashboardPage, renderAdminLoginPage } from "./admin";
 import {
   createLinkGuardStream,
+  EXPIRED_LINK_PLACEHOLDER,
+  scrubHistoryLinks,
   extractRealUrls,
   repairTrackedLinks,
 } from "./links";
@@ -221,6 +223,9 @@ const TRAVELPAYOUTS_HOSTS = new Set([
  */
 function sanitizeReply(text: string, baseUrl: string): string {
   const allowedHost = new URL(baseUrl).host;
+  // The model sometimes copies the history scrub placeholder verbatim —
+  // internal plumbing, never meant for the user.
+  text = text.split(EXPIRED_LINK_PLACEHOLDER).join("");
   return text.replace(/https?:\/\/[^\s)]+/g, (url) => {
     try {
       const host = new URL(url).host;
@@ -374,7 +379,51 @@ async function generateReply(
   }
 
   const llmArgs = buildLLMArgs(env, userMessage, ctx, flowEnabled, inWhatsApp);
-  const result = await generateText(llmArgs);
+  let result = await generateText(llmArgs);
+  // Deterministic backstop for the "reprinted stale flights" failure: the
+  // model answers a flight request with prices copied from chat history and
+  // never calls search_flights — so there is no fresh /r/ link to show (the
+  // link guard rightly strips the stale one). Prompt rules alone don't stop
+  // this (observed on MiniMax-M3 even with an explicit prohibition), so when
+  // we detect it, regenerate once with search_flights FORCED on the first
+  // step. The forced run also fires the WhatsApp teaser, so the user gets a
+  // tappable fresh link even if the model under-links the final text.
+  if (
+    reprintedStaleFlights(
+      userMessage,
+      result as unknown as { text: string; steps?: ToolCallStep[] },
+    )
+  ) {
+    console.log("stale-flight backstop: forcing search_flights retry");
+    try {
+      // MiniMax-M3's Anthropic-compat endpoint IGNORES a forced tool_choice
+      // (verified in prod: retry ran, zero tool calls). Claude honors it, so
+      // the backstop always retries on Claude regardless of LLM_PROVIDER —
+      // this path only fires on violation turns, so the cost is negligible.
+      const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      const retry = await generateText({
+        ...llmArgs,
+        model: anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL),
+        prepareStep: ({ stepNumber }) =>
+          stepNumber === 0
+            ? {
+                toolChoice: {
+                  type: "tool" as const,
+                  toolName: "search_flights" as const,
+                },
+              }
+            : undefined,
+      });
+      const retryTools = collectToolNames(
+        retry as unknown as { steps?: ToolCallStep[] },
+      );
+      console.log("stale-flight backstop: retry tools =", retryTools.join(",") || "(none)");
+      result = retry;
+    } catch (err) {
+      // Keep the first (linkless but coherent) reply if the retry fails.
+      console.error("forced flight-search retry failed", err);
+    }
+  }
   if (ctx.toolsUsed) {
     ctx.toolsUsed.value = collectToolNames(
       result as unknown as { steps?: ToolCallStep[] },
@@ -437,7 +486,12 @@ function buildLLMArgs(
 ) {
   const model = getModel(env);
   const messages: ModelMessage[] = [
-    ...ctx.history.map((m) => ({ role: m.role, content: m.content })),
+    // Assistant history is scrubbed of /r/ short links so the model can't
+    // echo a stale code instead of re-running the search (see scrubHistoryLinks).
+    ...ctx.history.map((m) => ({
+      role: m.role,
+      content: m.role === "assistant" ? scrubHistoryLinks(m.content) : m.content,
+    })),
     { role: "user" as const, content: userMessage },
   ];
   const tpEnv = {
@@ -769,6 +823,26 @@ function collectToolNames(result: { steps?: ToolCallStep[] }): string[] {
     }
   }
   return names;
+}
+
+// "Reprinted stale flights" detector: the user asked about flights, the model
+// showed prices, but search_flights never ran this turn — meaning the prices
+// were copied from history and no valid /r/ link can exist. Clarifying-question
+// replies ("¿de dónde sales?") carry no price token, so they never match.
+const FLIGHT_INTENT_RE = /\b(vuel[oa]s?|pasajes?|boletos?|volar|flights?|fly)\b/i;
+const PRICE_TOKEN_RE = /\$\s?\d|\bS\/\s?\.?\d|\bUSD\b/i;
+// "No availability" claims are the other unsearched-answer shape: the model
+// asserts there's nothing ("no hay precios en cache…") without having looked.
+const NO_AVAIL_RE =
+  /\bno\s+(?:hay|encontr\w+|veo|tengo|existen?)\b[^.\n]{0,40}\b(?:precios?|vuelos?|cach[eé]|resultados?|opciones)/i;
+
+function reprintedStaleFlights(
+  userMessage: string,
+  result: { text: string; steps?: ToolCallStep[] },
+): boolean {
+  if (!FLIGHT_INTENT_RE.test(userMessage)) return false;
+  if (collectToolNames(result).includes("search_flights")) return false;
+  return PRICE_TOKEN_RE.test(result.text) || NO_AVAIL_RE.test(result.text);
 }
 
 function collectToolEvents(

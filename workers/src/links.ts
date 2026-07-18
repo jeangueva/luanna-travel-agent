@@ -207,6 +207,20 @@ export function createLinkGuardStream(
   return { stream, addRealUrl };
 }
 
+// Replace /r/ short links in a HISTORY message with an inert placeholder
+// before the text reaches the LLM. Prompt rules alone don't stop the model
+// from echoing an old code (observed with MiniMax-M3: it re-printed a whole
+// flight answer, dead link included, without calling the tool). A code the
+// model never sees is a code it can't copy — so the only way for it to show
+// a link is to run the search tool this turn, which is exactly the product
+// guarantee: every link points at THIS recommendation's live result.
+const R_URL_FULL_RE = /https?:\/\/[^\s"'<>)\]]+\/r\/[A-Za-z0-9_-]{4,32}/g;
+export const EXPIRED_LINK_PLACEHOLDER = "[link vencido — busca de nuevo]";
+export function scrubHistoryLinks(text: string): string {
+  if (!text.includes("/r/")) return text;
+  return text.replace(R_URL_FULL_RE, EXPIRED_LINK_PLACEHOLDER);
+}
+
 // Pull every /r/ short link out of a step's TOOL RESULTS (never the whole
 // step — see toolResultsBlob for why).
 export function extractRealUrls(step: unknown): string[] {
