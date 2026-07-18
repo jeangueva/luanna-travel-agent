@@ -65,7 +65,7 @@ describe("repairTrackedLinks", () => {
     assert.equal(out, text);
   });
 
-  test("count mismatch: real ids kept, fabricated stripped", async () => {
+  test("count mismatch: real ids kept, fabricated swapped for unused fresh link", async () => {
     const out = await repairTrackedLinks(
       fakeSql([]),
       "A https://luanna.app/r/Real01 y B https://luanna.app/r/Fake99",
@@ -73,6 +73,36 @@ describe("repairTrackedLinks", () => {
     );
     assert.ok(out.includes("/r/Real01"));
     assert.ok(!out.includes("/r/Fake99"));
+    assert.ok(out.includes("/r/Real02"));
+  });
+
+  test("count mismatch: stale id that still exists in DB is swapped for this turn's link", async () => {
+    // Tool ran this turn (5 results) but the model showed only 1 link and
+    // echoed an OLD id from history. Even though the old id resolves, it
+    // points at a previous search — the fresh cheapest link must win.
+    const out = await repairTrackedLinks(
+      fakeSql(["Stale1"]),
+      "Top: https://luanna.app/r/Stale1 y 4 opciones más sin link",
+      steps(
+        "https://luanna.app/r/New001",
+        "https://luanna.app/r/New002",
+        "https://luanna.app/r/New003",
+        "https://luanna.app/r/New004",
+        "https://luanna.app/r/New005",
+      ),
+    );
+    assert.ok(!out.includes("/r/Stale1"));
+    assert.ok(out.includes("/r/New001"));
+  });
+
+  test("count mismatch with no fresh links left: DB-existing echo kept, dead stripped", async () => {
+    const out = await repairTrackedLinks(
+      fakeSql(["OldReal"]),
+      "A https://luanna.app/r/OldReal y B https://luanna.app/r/Dead01",
+      steps(),
+    );
+    assert.ok(out.includes("/r/OldReal"));
+    assert.ok(!out.includes("/r/Dead01"));
   });
 
   test("DB failure strips unknown ids instead of leaking dead links", async () => {

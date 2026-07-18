@@ -67,19 +67,30 @@ export async function repairTrackedLinks(
     return text.replace(R_URL_CAPTURE_RE, () => realUrls[i++] ?? "");
   }
 
-  // Can't remap by position. Ids not created this turn may still be real
-  // (echoed from an earlier turn's tool result) — check the DB in one query
-  // and keep those; strip the rest. On a DB error strip unknowns: a missing
-  // link beats a dead one.
+  // Can't remap by position. Prefer swapping each unknown id for a fresh link
+  // the model hasn't shown yet — both sides emit cheapest-first, so order
+  // lines up (same policy as the streaming guard below). The tool ran this
+  // turn, so the text describes THIS turn's results; an id echoed from
+  // history would point at an old search even when it still resolves. Only
+  // once fresh links run out do we fall back to the DB check (valid echo of
+  // an earlier turn) and strip whatever remains. On a DB error strip
+  // unknowns: a missing link beats a dead one.
+  const usedRealIds = new Set(
+    textMatches.map((m) => m[2]).filter((id) => realIds.has(id)),
+  );
+  const unusedReal = realUrls.filter((u) => !usedRealIds.has(u.split("/r/")[1]));
   const unknownIds = [
     ...new Set(textMatches.map((m) => m[2]).filter((id) => !realIds.has(id))),
   ];
   const existing = await filterExistingClickIds(sql, unknownIds).catch(
     () => new Set<string>(),
   );
-  return text.replace(R_URL_CAPTURE_RE, (full, _prefix, id) =>
-    realIds.has(id) || existing.has(id) ? full : "",
-  );
+  let swap = 0;
+  return text.replace(R_URL_CAPTURE_RE, (full, _prefix, id) => {
+    if (realIds.has(id)) return full;
+    if (swap < unusedReal.length) return unusedReal[swap++];
+    return existing.has(id) ? full : "";
+  });
 }
 
 // ── Streaming link guard ─────────────────────────────────────────────────────
