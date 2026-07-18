@@ -394,26 +394,8 @@ async function generateReply(
     result as unknown as { text: string; steps?: ToolCallStep[] },
   );
   if (staleTool) {
-    console.log(`stale-result backstop: forcing ${staleTool} retry`);
     try {
-      // MiniMax-M3's Anthropic-compat endpoint IGNORES a forced tool_choice
-      // (verified in prod: retry ran, zero tool calls). Claude honors it, so
-      // the backstop always retries on Claude regardless of LLM_PROVIDER —
-      // this path only fires on violation turns, so the cost is negligible.
-      const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
-      const retry = await generateText({
-        ...llmArgs,
-        model: anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL),
-        prepareStep: ({ stepNumber }) =>
-          stepNumber === 0
-            ? { toolChoice: { type: "tool" as const, toolName: staleTool } }
-            : undefined,
-      });
-      const retryTools = collectToolNames(
-        retry as unknown as { steps?: ToolCallStep[] },
-      );
-      console.log("stale-result backstop: retry tools =", retryTools.join(",") || "(none)");
-      result = retry;
+      result = await forcedSearchRetry(env, llmArgs, staleTool);
     } catch (err) {
       // Keep the first (linkless but coherent) reply if the retry fails.
       console.error("forced search retry failed", err);
@@ -776,6 +758,54 @@ function streamReply(
       }
     },
   });
+  // Streaming analogue of the batch stale-reprint backstop: tokens already
+  // reached the browser, so a violating reply can't be retracted — instead,
+  // once the LLM stream ends (flush), detect the violation and APPEND a
+  // correction: a short "checking live prices" line plus a forced-search
+  // regeneration, streamed into the same response. The correction is
+  // persisted as its own assistant message so history matches what the user
+  // saw. Sits after the link guard (its output bypasses the guard, so it runs
+  // batch repair + sanitize itself) and before the suggestion trailer (so
+  // retry tool names still produce chips).
+  let streamedText = "";
+  const staleBackstop = new TransformStream<string, string>({
+    transform(chunk, controller) {
+      streamedText += chunk;
+      controller.enqueue(chunk);
+    },
+    async flush(controller) {
+      const staleTool = detectStaleReprint(userMessage, {
+        text: streamedText,
+        steps: [{ toolCalls: streamToolNames.map((toolName) => ({ toolName })) }],
+      });
+      if (!staleTool) return;
+      try {
+        controller.enqueue("\n\nDéjame verificar los precios actuales… 🔄\n\n");
+        const retry = await forcedSearchRetry(env, args, staleTool);
+        const repaired = await repairTrackedLinks(
+          sql,
+          retry.text,
+          (retry as unknown as { steps?: unknown }).steps,
+        ).catch(() => retry.text);
+        const sanitized = sanitizeReply(repaired, baseUrl).trim();
+        if (sanitized) {
+          controller.enqueue(sanitized);
+          if (userId > 0) {
+            exec.waitUntil(
+              appendMessage(sql, userId, "assistant", sanitized).catch((err) =>
+                console.error("appendMessage backstop (stream) failed", err),
+              ),
+            );
+          }
+        }
+        streamToolNames.push(
+          ...collectToolNames(retry as unknown as { steps?: ToolCallStep[] }),
+        );
+      } catch (err) {
+        console.error("web stale-result backstop failed", err);
+      }
+    },
+  });
   // Trailer: after the text finishes, append the quick-reply suggestions as a
   // record-separator-delimited JSON blob (\u001E + JSON). The web client
   // splits on \u001E, renders the text part, and turns the JSON into chips.
@@ -791,6 +821,7 @@ function streamReply(
   return new Response(
     result.textStream
       .pipeThrough(guard.stream)
+      .pipeThrough(staleBackstop)
       .pipeThrough(suggestionTrailer)
       .pipeThrough(new TextEncoderStream()),
     {
@@ -836,13 +867,43 @@ const PRICE_TOKEN_RE = /\$\s?\d|\bS\/\s?\.?\d|\bUSD\b/i;
 const NO_AVAIL_RE =
   /\bno\s+(?:hay|encontr\w+|veo|tengo|existen?)\b[^.\n]{0,40}\b(?:precios?|vuelos?|hotel(es)?|alojamientos?|estad[ií]as?|habitaci[oó]n(es)?|cach[eé]|resultados?|opciones)/i;
 
+// Regenerate the reply with `staleTool` FORCED on the first step. MiniMax-M3's
+// Anthropic-compat endpoint IGNORES a forced tool_choice (verified in prod:
+// retry ran, zero tool calls), so the backstop always retries on Claude
+// regardless of LLM_PROVIDER — it only fires on violation turns, so the cost
+// is negligible. Shared by the batch (WhatsApp) and streaming (web) paths.
+async function forcedSearchRetry(
+  env: Env,
+  llmArgs: ReturnType<typeof buildLLMArgs>,
+  staleTool: "search_flights" | "search_hotels" | "search_stays",
+) {
+  console.log(`stale-result backstop: forcing ${staleTool} retry`);
+  const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const retry = await generateText({
+    ...llmArgs,
+    model: anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL),
+    prepareStep: ({ stepNumber }) =>
+      stepNumber === 0
+        ? { toolChoice: { type: "tool" as const, toolName: staleTool } }
+        : undefined,
+  });
+  const retryTools = collectToolNames(
+    retry as unknown as { steps?: ToolCallStep[] },
+  );
+  console.log(
+    "stale-result backstop: retry tools =",
+    retryTools.join(",") || "(none)",
+  );
+  return retry;
+}
+
 // Which search tool (if any) should have run this turn but didn't, while the
 // reply still shows prices or claims no availability? Clarifying-question
 // replies ("¿de dónde sales?", "¿qué fechas?") carry neither signal, so they
 // never match. Flights are checked first: on a combined ask ("vuelo y hotel a
 // Cusco") the flight branch only stands down if search_flights actually ran,
 // and the lodging branch then catches a missing hotel search.
-function detectStaleReprint(
+export function detectStaleReprint(
   userMessage: string,
   result: { text: string; steps?: ToolCallStep[] },
 ): "search_flights" | "search_hotels" | "search_stays" | null {
