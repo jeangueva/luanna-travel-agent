@@ -87,6 +87,56 @@ describe("detectStaleReprint", () => {
     );
   });
 
+  test("combined ask + reply promises links + get_package_link never ran → force get_package_link (Bogotá bug)", () => {
+    assert.equal(
+      detectStaleReprint("necesito vuelo y hotel para Bogotá del 10 al 14 de octubre", {
+        text: "Para confirmar precios reales necesitas abrir los links — ahí eliges vuelo + hotel juntos ✅",
+        ...withTools(),
+      }),
+      "get_package_link",
+    );
+  });
+
+  test("explicit 'paquete' word + link mention + tool never ran → force get_package_link", () => {
+    assert.equal(
+      detectStaleReprint("arma un paquete a Cancún", {
+        text: "Aquí tienes los links del paquete completo",
+        ...withTools(),
+      }),
+      "get_package_link",
+    );
+  });
+
+  test("get_package_link ran → no retry even if reply mentions links", () => {
+    assert.equal(
+      detectStaleReprint("vuelo y hotel a Bogotá", {
+        text: "Aquí los links: ...",
+        ...withTools("get_package_link"),
+      }),
+      null,
+    );
+  });
+
+  test("reply already has a real /r/ link → no retry (nothing to force)", () => {
+    assert.equal(
+      detectStaleReprint("vuelo y hotel a Bogotá", {
+        text: "Aquí el link: https://luanna.app/r/AbC123",
+        ...withTools(),
+      }),
+      null,
+    );
+  });
+
+  test("only flight intent (no lodging, no 'paquete') + link mention → no package trigger", () => {
+    assert.equal(
+      detectStaleReprint("vuelos a Bogotá", {
+        text: "Te paso el link en un momento",
+        ...withTools(),
+      }),
+      null,
+    );
+  });
+
   test("non-travel message with prices → no retry", () => {
     assert.equal(
       detectStaleReprint("cuánto es 100 dólares en soles", {

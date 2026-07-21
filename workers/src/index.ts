@@ -866,6 +866,14 @@ const PRICE_TOKEN_RE = /\$\s?\d|\bS\/\s?\.?\d|\bUSD\b/i;
 // asserts there's nothing ("no hay precios en cache…") without having looked.
 const NO_AVAIL_RE =
   /\bno\s+(?:hay|encontr\w+|veo|tengo|existen?)\b[^.\n]{0,40}\b(?:precios?|vuelos?|hotel(es)?|alojamientos?|estad[ií]as?|habitaci[oó]n(es)?|cach[eé]|resultados?|opciones)/i;
+// Combined flight+hotel asks route to get_package_link, which returns TWO
+// urls (flight + hotel) in one call. Distinct failure shape from the
+// price/no-avail cases below: the model can claim "abre los links" with
+// ZERO real links created this turn — the append-fix in links.ts has
+// nothing to append because the tool never ran at all, so this must force
+// the actual tool instead.
+const PACKAGE_WORD_RE = /\bpaquete\b/i;
+const LINK_WORD_RE = /\blinks?\b/i;
 
 // Regenerate the reply with `staleTool` FORCED on the first step. MiniMax-M3's
 // Anthropic-compat endpoint IGNORES a forced tool_choice (verified in prod:
@@ -875,7 +883,11 @@ const NO_AVAIL_RE =
 async function forcedSearchRetry(
   env: Env,
   llmArgs: ReturnType<typeof buildLLMArgs>,
-  staleTool: "search_flights" | "search_hotels" | "search_stays",
+  staleTool:
+    | "search_flights"
+    | "search_hotels"
+    | "search_stays"
+    | "get_package_link",
 ) {
   console.log(`stale-result backstop: forcing ${staleTool} retry`);
   const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
@@ -906,11 +918,29 @@ async function forcedSearchRetry(
 export function detectStaleReprint(
   userMessage: string,
   result: { text: string; steps?: ToolCallStep[] },
-): "search_flights" | "search_hotels" | "search_stays" | null {
+):
+  | "search_flights"
+  | "search_hotels"
+  | "search_stays"
+  | "get_package_link"
+  | null {
+  const tools = collectToolNames(result);
+  // Package hallucination: reply references "los links" for a combined
+  // flight+hotel ask, get_package_link never ran, and there isn't even a
+  // real /r/ link anywhere to fall back on (nothing for the append-fix to
+  // grab) — the model invented the whole promise.
+  if (
+    !tools.includes("get_package_link") &&
+    !result.text.includes("/r/") &&
+    LINK_WORD_RE.test(result.text) &&
+    (PACKAGE_WORD_RE.test(userMessage) ||
+      (FLIGHT_INTENT_RE.test(userMessage) && LODGING_INTENT_RE.test(userMessage)))
+  ) {
+    return "get_package_link";
+  }
   if (!PRICE_TOKEN_RE.test(result.text) && !NO_AVAIL_RE.test(result.text)) {
     return null;
   }
-  const tools = collectToolNames(result);
   if (FLIGHT_INTENT_RE.test(userMessage) && !tools.includes("search_flights")) {
     return "search_flights";
   }
