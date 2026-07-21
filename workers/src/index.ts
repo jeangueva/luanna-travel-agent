@@ -891,14 +891,26 @@ async function forcedSearchRetry(
 ) {
   console.log(`stale-result backstop: forcing ${staleTool} retry`);
   const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const retry = await generateText({
-    ...llmArgs,
-    model: anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL),
-    prepareStep: ({ stepNumber }) =>
-      stepNumber === 0
-        ? { toolChoice: { type: "tool" as const, toolName: staleTool } }
-        : undefined,
-  });
+  // Bounded well under the outer 26s generateReply timeout: this retry runs
+  // AFTER a full first attempt already spent some of that budget, so an
+  // unbounded second attempt can blow the total past 26s — and the outer
+  // timeout rejects the WHOLE call, discarding the perfectly good first
+  // reply along with it (confirmed in prod: a battery of concurrent test
+  // messages tripped this exact case). Timing out here instead throws
+  // immediately, which the caller's catch turns into "keep the first
+  // reply" — a linkless-but-coherent answer beats a lost one.
+  const retry = await withTimeout(
+    generateText({
+      ...llmArgs,
+      model: anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL),
+      prepareStep: ({ stepNumber }) =>
+        stepNumber === 0
+          ? { toolChoice: { type: "tool" as const, toolName: staleTool } }
+          : undefined,
+    }),
+    12_000,
+    "forcedSearchRetry",
+  );
   const retryTools = collectToolNames(
     retry as unknown as { steps?: ToolCallStep[] },
   );
