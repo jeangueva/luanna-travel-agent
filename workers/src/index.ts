@@ -1,4 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 import {
   generateText,
@@ -148,13 +150,17 @@ export interface Env {
   TRAVELPAYOUTS_MARKER: string;
   WEBVIEW_SIGNING_KEY: string;
   LUANNA_MODEL?: string;
-  // LLM provider switch. "minimax" routes the bot through MiniMax's
-  // OpenAI-compatible API; anything else (default) uses Anthropic/Claude.
-  // Lets us A/B in prod and roll back instantly without a code change.
+  // LLM provider switch: "minimax" | "gemini" | "deepseek" | anything else
+  // (default) → Anthropic/Claude. Lets us A/B in prod and roll back
+  // instantly without a code change.
   LLM_PROVIDER?: string;
   MINIMAX_API_KEY?: string;
   MINIMAX_MODEL?: string;
   MINIMAX_BASE_URL?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
+  DEEPSEEK_API_KEY?: string;
+  DEEPSEEK_MODEL?: string;
   // Hotel price source: "amadeus" (real offers) or default (Hotellook cache).
   HOTELS_PROVIDER?: string;
   AMADEUS_CLIENT_ID?: string;
@@ -433,9 +439,12 @@ async function generateReply(
  * streaming paths can't drift apart.
  */
 // Single source of truth for which LLM the bot talks to. Swappable at runtime
-// via env.LLM_PROVIDER so MiniMax can be trialed (and rolled back) without a
-// deploy. MiniMax speaks the OpenAI-compatible protocol; tool calling + the
-// multi-step loop must hold up there or flight/hotel search degrades.
+// via env.LLM_PROVIDER ("minimax" | "gemini" | "deepseek" | default=Claude)
+// so any candidate can be trialed (and rolled back) without a deploy —
+// just a wrangler secret/var change + redeploy. Tool calling + the
+// multi-step loop must hold up on whichever is primary or flight/hotel
+// search degrades; the stale-result backstop (forcedSearchRetry) always
+// runs its correction pass on Claude regardless, as a safety net.
 function getModel(env: Env) {
   if (env.LLM_PROVIDER === "minimax") {
     // MiniMax exposes an Anthropic-compatible endpoint, so we reuse the same
@@ -449,6 +458,26 @@ function getModel(env: Env) {
       baseURL: env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic/v1",
     });
     return minimax(env.MINIMAX_MODEL ?? "MiniMax-M3");
+  }
+  if (env.LLM_PROVIDER === "gemini") {
+    // Native Google provider (not OpenAI-compat) — full tool-calling support,
+    // including forced tool_choice, which the stale-result backstop needs
+    // whichever provider is primary (the backstop itself always falls back
+    // to Claude regardless, so this only affects the FIRST attempt).
+    const gemini = createGoogleGenerativeAI({ apiKey: env.GEMINI_API_KEY ?? "" });
+    return gemini(env.GEMINI_MODEL ?? "gemini-2.5-flash");
+  }
+  if (env.LLM_PROVIDER === "deepseek") {
+    // The dedicated @ai-sdk/deepseek package only ships on a newer provider-
+    // spec major (v4) than this project's pinned `ai` package supports (v3,
+    // matching @ai-sdk/anthropic and @ai-sdk/google here) — routing through
+    // the OpenAI-compatible provider avoids that mismatch entirely, since
+    // DeepSeek's API is OpenAI-compatible by design.
+    const deepseek = createOpenAI({
+      apiKey: env.DEEPSEEK_API_KEY ?? "",
+      baseURL: "https://api.deepseek.com/v1",
+    });
+    return deepseek(env.DEEPSEEK_MODEL ?? "deepseek-chat");
   }
   const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
   return anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL);

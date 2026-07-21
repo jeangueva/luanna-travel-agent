@@ -17,9 +17,14 @@ PUBLIC_BASE_URL = "https://luanna.app"
 LUANNA_WHATSAPP_NUMBER = "12024908102"
 
 # ── LLM provider ───────────────────────────────────────────────────────────
-# "anthropic" (default, Claude) or "minimax". Flip to "minimax" + deploy to
-# route the bot through MiniMax's OpenAI-compatible API. Needs the
-# MINIMAX_API_KEY secret. Roll back instantly: set back to "anthropic" + deploy.
+# "anthropic" (default, Claude), "minimax", "gemini", or "deepseek". Flip +
+# deploy to route the bot through a different model — no code change. Each
+# non-default provider needs its own API key secret (MINIMAX_API_KEY /
+# GEMINI_API_KEY / DEEPSEEK_API_KEY). Roll back instantly: set back to
+# "anthropic" + deploy. Whichever is primary, the stale-result backstop
+# (forcedSearchRetry in src/index.ts) always corrects on Claude — so a
+# provider that skips tool calls under load degrades gracefully instead of
+# losing the link, at the cost of that provider's own quirks otherwise.
 LLM_PROVIDER = "minimax"
 MINIMAX_BASE_URL = "https://api.minimax.io/anthropic/v1"
 # Benchmarked 2026-07-15 (same prompt, 5 runs each, end-to-end via /api/chat):
@@ -27,6 +32,11 @@ MINIMAX_BASE_URL = "https://api.minimax.io/anthropic/v1"
 # the extra tokens it generates per reply. Keep M3; re-benchmark before any
 # swap instead of trusting provider throughput numbers.
 MINIMAX_MODEL = "MiniMax-M3"
+# GEMINI_MODEL default: "gemini-2.5-flash". DEEPSEEK_MODEL default: "deepseek-chat".
+# Neither has been prod-benchmarked yet on Luanna's actual tool-calling flow —
+# re-run the same 5-prompt benchmark as MiniMax before trusting published
+# throughput/pricing numbers for this specific search_flights/hotels/stays
+# workload.
 
 # ── Hotels ─────────────────────────────────────────────────────────────────
 # "amadeus" (real offers via Amadeus Self-Service) or default (Hotellook cache,
