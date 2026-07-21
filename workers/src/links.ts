@@ -44,7 +44,6 @@ export async function repairTrackedLinks(
   text: string,
   steps: unknown,
 ): Promise<string> {
-  if (!text.includes("/r/")) return text;
   const blob = toolResultsBlob(steps);
   const realUrls: string[] = [];
   const seen = new Set<string>();
@@ -57,7 +56,17 @@ export async function repairTrackedLinks(
   const realIds = new Set(realUrls.map((u) => u.split("/r/")[1]));
 
   const textMatches = [...text.matchAll(R_URL_CAPTURE_RE)];
-  if (textMatches.length === 0) return text;
+  // The model sometimes promises a link ("acá lo ves en vivo:") and then just
+  // never writes the URL token — a genuinely different failure than a
+  // fabricated/stale code, since there's nothing in the text to repair. If a
+  // tool created a real link this turn and NONE of it made it into the reply,
+  // append the first one rather than silently dropping the only thing the
+  // user asked for.
+  if (textMatches.length === 0) {
+    if (realUrls.length === 0) return text;
+    const sep = /[.!?…\s]$/.test(text) ? " " : "\n\n";
+    return text + sep + realUrls[0];
+  }
   if (textMatches.every((m) => realIds.has(m[2]))) return text; // all valid
 
   // Counts match → positionally remap (search + model both order results
@@ -200,6 +209,13 @@ export function createLinkGuardStream(
       if (buffer) {
         const emitted = await rewrite(buffer);
         if (emitted) controller.enqueue(emitted);
+      }
+      // Same "model promised a link and never wrote it" gap as the batch
+      // repair (see repairTrackedLinks): a real link existed this turn but
+      // zero ids ever resolved into the visible stream. Append the first one
+      // rather than let the promise go unfulfilled.
+      if (usedIds.size === 0 && realUrls.length > 0) {
+        controller.enqueue("\n\n" + realUrls[0]);
       }
     },
   });

@@ -144,6 +144,23 @@ describe("repairTrackedLinks", () => {
   });
 });
 
+describe("repairTrackedLinks: model promised a link and never wrote it", () => {
+  test("real link created this turn but text has zero /r/ tokens → appended (Prague bug)", async () => {
+    const out = await repairTrackedLinks(
+      failingSql(),
+      "En Praga no encuentro precios guardados ahorita, Jean 🏰 Pero acá puedes ver opciones en vivo:\n\n¿Quieres que te arme una alerta para cuando bajen? 📍✈️",
+      steps("https://luanna.app/r/9GlckM"),
+    );
+    assert.ok(out.includes("https://luanna.app/r/9GlckM"));
+  });
+
+  test("no tool link this turn and text has zero /r/ tokens → untouched", async () => {
+    const text = "¿A dónde quieres ir, Jean? ✈️";
+    const out = await repairTrackedLinks(failingSql(), text, steps());
+    assert.equal(out, text);
+  });
+});
+
 describe("scrubHistoryLinks", () => {
   test("replaces /r/ links with an inert placeholder", () => {
     const out = scrubHistoryLinks(
@@ -193,6 +210,20 @@ describe("createLinkGuardStream", () => {
   test("plain text streams through unchanged", async () => {
     const out = await runGuard(failingSql(), ["Hola ", "Jean ✈️ ", "¿a dónde vamos?"]);
     assert.equal(out, "Hola Jean ✈️ ¿a dónde vamos?");
+  });
+
+  test("real link created this turn but never referenced in the stream → appended on flush (Prague bug)", async () => {
+    const out = await runGuard(
+      failingSql(),
+      ["Pero acá puedes ver opciones en vivo:\n\n¿Te armo una alerta? 📍"],
+      ["https://luanna.app/r/9GlckM"],
+    );
+    assert.ok(out.includes("https://luanna.app/r/9GlckM"));
+  });
+
+  test("no real link this turn → nothing appended", async () => {
+    const out = await runGuard(failingSql(), ["¿A dónde quieres ir, Jean? ✈️"]);
+    assert.equal(out, "¿A dónde quieres ir, Jean? ✈️");
   });
 
   test("valid tool link passes even when split across chunks", async () => {
