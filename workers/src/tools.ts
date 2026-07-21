@@ -1005,6 +1005,28 @@ export function makeFlightSearchTool(
           link: top.link,
         }).catch(() => false);
       }
+      // True zero: TP's fare cache has nothing for this route in the next 6
+      // months (already includes connections — prices_for_dates has no
+      // direct-only filter). Rather than leave the user with just "no
+      // encontré", hand them a live Aviasales search deep-link — same
+      // fallback pattern search_hotels uses with booking_url. DDMM date
+      // segments are optional in Aviasales's path format (verified: bare
+      // "LIMASU1" resolves), so this works even with no date given.
+      let noResultsSearchUrl: string | null = null;
+      if (flights.length === 0) {
+        const toDDMM = (date: string | undefined): string => {
+          const m = date?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          return m ? `${m[3]}${m[2]}` : "";
+        };
+        const outDDMM = toDDMM(departure_date);
+        const backDDMM = toDDMM(return_date);
+        const flightPath = `${originIata}${outDDMM}${destIata}${backDDMM}${pax}`;
+        noResultsSearchUrl = await wrapClickUrl(
+          click ?? null,
+          "flight",
+          `https://www.aviasales.com/search/${flightPath}?marker=${env.TRAVELPAYOUTS_MARKER}`,
+        );
+      }
       return {
         flights,
         resolved_origin: originIata,
@@ -1015,7 +1037,10 @@ export function makeFlightSearchTool(
         // dates, not their requested one.
         widened_search: widened,
         ...(flights.length === 0
-          ? { note: "No hay precios en cache para esta ruta ni en los próximos 6 meses. Sugiérele al usuario otra fecha, un aeropuerto cercano, o confirmar origen/destino." }
+          ? {
+              search_url: noResultsSearchUrl,
+              note: "No tenemos precios guardados para esta ruta en los próximos 6 meses (la búsqueda ya incluyó vuelos con escala, no solo directos). NUNCA uses palabras técnicas como 'cache', 'API' o 'error' — habla como persona. NO te disculpes ni digas que hubo un problema técnico: entrega el search_url TAL CUAL para que el usuario vea las opciones en vivo, y sugiere alternativas (otra fecha, aeropuerto cercano, confirmar origen/destino).",
+            }
           : {}),
         ...(topSent
           ? {
@@ -1392,7 +1417,7 @@ export function makePackageLinkTool(
       return {
         flight_search_url,
         hotel_search_url,
-        note: "Travelpayouts no devuelve precio total combinado; el usuario compara en cada link.",
+        note: "No hay un precio total combinado; el usuario compara en cada link.",
       };
     },
   });
