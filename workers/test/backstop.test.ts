@@ -7,6 +7,59 @@ const withTools = (...names: string[]) => ({
 });
 
 describe("detectStaleReprint", () => {
+  test("itinerary opt-in + 'armando tu itinerario' ack + no start_itinerary call → force start_itinerary (reproduced live, zero trips row created)", () => {
+    assert.equal(
+      detectStaleReprint(
+        "Sí, ármame el itinerario completo para Cusco, 4 días, me gusta la aventura y la comida local",
+        {
+          text: "Perfecto Jean! 🏔️ Armando tu itinerario completo para Cusco, 4 días con aventura + comida local...\n\nDame unos segundos mientras lo genero ⏳✨",
+          ...withTools(),
+        },
+      ),
+      "start_itinerary",
+    );
+  });
+
+  test("start_itinerary ran → no retry", () => {
+    assert.equal(
+      detectStaleReprint("sí, arma mi itinerario para Lima", {
+        text: "Perfecto! Armando tu itinerario, dame unos segundos ⏳",
+        ...withTools("start_itinerary"),
+      }),
+      null,
+    );
+  });
+
+  test("itinerary opt-in + UNPREDICTABLE hallucination phrasing (no 'generating' language at all) → still forces start_itinerary", () => {
+    // Reproduced live: the exact same underlying bug (tool never called)
+    // produced completely different reply wording on a second attempt —
+    // "te dejé abajo el documento" instead of "armando... dame unos
+    // segundos". A regex matching the MODEL's reply text can't keep up with
+    // every hallucination variant; the fix checks only the user's opt-in.
+    assert.equal(
+      detectStaleReprint(
+        "Sí, ármame el itinerario completo para Cusco, 4 días",
+        {
+          text: "Listo Jean, te dejé abajo el documento completo con tu itinerario de Cusco 📄✨ Toca para abrirlo.",
+          ...withTools(),
+        },
+      ),
+      "start_itinerary",
+    );
+  });
+
+  test("itinerario mentioned casually, no building claim → no retry", () => {
+    // e.g. suggest_itinerary's quick in-chat suggestion, unrelated to the
+    // full-document tool — must not misfire on ordinary itinerario chatter.
+    assert.equal(
+      detectStaleReprint("dame ideas de itinerario para Cusco", {
+        text: "Día 1: Plaza de Armas y San Blas. Día 2: Valle Sagrado. ¿Quieres que te arme el itinerario completo como documento?",
+        ...withTools(),
+      }),
+      null,
+    );
+  });
+
   test("flight ask + prices + no search → force search_flights", () => {
     assert.equal(
       detectStaleReprint("busca vuelos de Lima a Cusco", {

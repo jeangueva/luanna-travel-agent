@@ -74,6 +74,26 @@ binding = "AI"
 [browser]
 binding = "BROWSER"
 
+# Itinerary generation (LLM compose + PDF render) routinely exceeds
+# ctx.waitUntil()'s hard 30s ceiling — confirmed live (2026-07-21): the
+# LLM call alone took longer than 30s, the background task was silently
+# cancelled by the runtime, and the user never heard back (no trip row, no
+# error logged, since the function's own catch block lives inside the
+# cancelled promise). Queue consumers aren't bound by that 30s-after-response
+# window, so generation happens there instead of in a request's waitUntil.
+[[queues.producers]]
+queue = "luanna-itinerary"
+binding = "ITINERARY_QUEUE"
+
+[[queues.consumers]]
+queue = "luanna-itinerary"
+max_batch_size = 1
+max_retries = 2
+# Retries stay platform-level safety only — the consumer always acks after
+# calling generateAndDeliverItinerary (success OR its own handled failure,
+# which already sends the user an apology), so Cloudflare's automatic retry
+# should rarely trigger and never causes a duplicate apology message.
+
 [triggers]
 crons = [
   "0 */6 * * *",      # watchlist checks every 6h

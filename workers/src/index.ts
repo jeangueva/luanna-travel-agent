@@ -182,6 +182,10 @@ export interface Env {
   // Browser Rendering binding (headless Chromium) for trip-itinerary PDF export.
   // Optional so the worker still typechecks/runs in environments without it.
   BROWSER?: BrowserWorker;
+  // Itinerary generation (LLM compose + PDF render) runs in this queue's
+  // consumer instead of a request's ctx.waitUntil — see the wrangler.toml
+  // comment on the binding for why (the 30s waitUntil ceiling).
+  ITINERARY_QUEUE: Queue<ItineraryQueueMessage>;
 }
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
@@ -516,6 +520,20 @@ function getModel(env: Env) {
   return anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL);
 }
 
+// Itinerary composition always uses Gemini specifically, independent of
+// env.LLM_PROVIDER (the chat model). Google's ecosystem (Maps/Places/Search
+// grounding data baked into training) gives Gemini stronger real-world
+// knowledge of neighborhoods, opening hours, and how attractions actually
+// connect geographically — the exact thing a day-by-day itinerary needs and
+// a generic chat model is more likely to hallucinate. Falls back to the
+// primary chat model if GEMINI_API_KEY isn't configured, so itinerary
+// generation doesn't hard-depend on a key nothing else in the bot needs.
+function getItineraryModel(env: Env) {
+  if (!env.GEMINI_API_KEY) return getModel(env);
+  const gemini = createGoogleGenerativeAI({ apiKey: env.GEMINI_API_KEY });
+  return gemini(env.GEMINI_MODEL ?? "gemini-3.5-flash");
+}
+
 function buildLLMArgs(
   env: Env,
   userMessage: string,
@@ -798,8 +816,7 @@ function streamReply(
       // new assistant message and surfaces in the web client via history polling.
       if (userId > 0 && ctx.itineraryRequest?.value) {
         exec.waitUntil(
-          generateAndDeliverItinerary(env, {
-            sql,
+          env.ITINERARY_QUEUE.send({
             userId,
             baseUrl,
             history,
@@ -947,6 +964,32 @@ const NO_AVAIL_RE =
 // the actual tool instead.
 const PACKAGE_WORD_RE = /\bpaquete\b/i;
 const LINK_WORD_RE = /\b(links?|enlaces?)\b/i;
+// Full-itinerary hallucination: start_itinerary is OPT-IN STRICT per the
+// prompt (only fires on the user's explicit confirmation), so the trigger
+// belongs on the USER'S message, not on guessing the model's reply wording.
+// Tried matching the model's "armando tu itinerario… ⏳" ack text first, but
+// MiniMax's hallucinated phrasing varies too much turn to turn to reliably
+// pattern-match (reproduced live: one turn wrote "dame unos segundos", the
+// next wrote "te dejé abajo el documento" for the exact same failure — the
+// SECOND phrasing has no "generating" language at all, so a reply-text regex
+// keeps missing new variants indefinitely). If the user clearly opted in
+// this turn and start_itinerary didn't run, force it — the tool's own
+// schema already defaults missing days/style, so there's no real downside
+// to firing even when the model would've asked a clarifying question first.
+const ITINERARY_MENTION_RE = /\bitinerarios?\b/i;
+// Plain-ASCII on purpose — match against stripAccents(userMessage), not the
+// raw string. Hand-enumerating every accented conjugation ("ármame",
+// "genérame", "sí"...) is exactly how the NO_AVAIL_RE bug happened earlier
+// this session (missed "encontré"): a regex only covers the accent
+// placements someone thought to type. Stripping diacritics before matching
+// closes the whole bug class instead of chasing individual words.
+const ITINERARY_CONFIRM_WORD_RE =
+  /\b(si|dale|va|hazlo|armame|arma|generame|genera|quiero|confirmalo|adelante|perfecto)\b/i;
+// Strips combining diacritics after NFD decomposition: "ármame" → "armame",
+// "sí" → "si". Keeps the rest of the string (spacing, punctuation) intact.
+function stripAccents(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 
 // Regenerate the reply with `staleTool` FORCED on the first step. MiniMax-M3's
 // Anthropic-compat endpoint IGNORES a forced tool_choice (verified in prod:
@@ -960,7 +1003,8 @@ async function forcedSearchRetry(
     | "search_flights"
     | "search_hotels"
     | "search_stays"
-    | "get_package_link",
+    | "get_package_link"
+    | "start_itinerary",
   timeoutMs: number,
 ) {
   console.log(`stale-result backstop: forcing ${staleTool} retry (budget ${timeoutMs}ms)`);
@@ -1013,8 +1057,22 @@ export function detectStaleReprint(
   | "search_hotels"
   | "search_stays"
   | "get_package_link"
+  | "start_itinerary"
   | null {
   const tools = collectToolNames(result);
+  // Itinerary hallucination: user explicitly opted in (itinerario + a
+  // confirmation word, same turn) but start_itinerary never ran — no trip
+  // gets created and the user waits forever for a plan that's never coming.
+  // Trigger lives on the user's message, not the model's reply wording (see
+  // comment on the regexes above for why). Checked first since it has
+  // nothing to do with prices/links.
+  if (
+    !tools.includes("start_itinerary") &&
+    ITINERARY_MENTION_RE.test(userMessage) &&
+    ITINERARY_CONFIRM_WORD_RE.test(stripAccents(userMessage))
+  ) {
+    return "start_itinerary";
+  }
   // Package hallucination: reply references "los links" for a combined
   // flight+hotel ask, get_package_link never ran, and there isn't even a
   // real /r/ link anywhere to fall back on (nothing for the append-fix to
@@ -1356,21 +1414,26 @@ function safeExtract(text: string): unknown {
 // the link as an assistant message (so the web client sees it via history
 // polling), and on WhatsApp push the link + PDF document. Never throws — a
 // failure appends a friendly retry message instead of leaving the user hanging.
+// Runs inside the ITINERARY_QUEUE consumer (see wrangler.toml), NOT a
+// request's ctx.waitUntil — the payload must stay JSON-serializable (no
+// live `sql` client reference; `sql` is derived fresh from env.DATABASE_URL
+// inside this function instead of being passed in).
+export interface ItineraryQueueMessage {
+  userId: number;
+  baseUrl: string;
+  history: Message[];
+  request: ItineraryRequest;
+  whatsapp?: { to: string; phoneNumberId: string };
+}
 async function generateAndDeliverItinerary(
   env: Env,
-  args: {
-    sql: ReturnType<typeof getDb>;
-    userId: number;
-    baseUrl: string;
-    history: Message[];
-    request: ItineraryRequest;
-    whatsapp?: { to: string; phoneNumberId: string };
-  },
+  args: ItineraryQueueMessage,
 ): Promise<void> {
-  const { sql, userId, baseUrl, history, request, whatsapp } = args;
+  const sql = getDb(env.DATABASE_URL);
+  const { userId, baseUrl, history, request, whatsapp } = args;
   const wa = whatsapp;
   try {
-    const model = getModel(env);
+    const model = getItineraryModel(env);
     const convo = history
       .map((m) => `${m.role}: ${m.content}`)
       .join("\n")
@@ -1392,13 +1455,33 @@ async function generateAndDeliverItinerary(
       `¡Tu itinerario está listo! 🗺️✨\n${url}\n` +
       `Ábrelo en el navegador y, si quieres, expórtalo a PDF 📄`;
     await appendMessage(sql, userId, "assistant", msg).catch(() => {});
+    // The trip is REAL at this point (created + persisted) regardless of what
+    // happens below — a WhatsApp delivery hiccup must never trigger the
+    // "no pude terminar" apology, which would be an outright lie (found
+    // live: sendKapsoText's default 10s timeout fired on a send that most
+    // likely succeeded upstream — Kapso's confirmation response was just
+    // slow — throwing past this point skipped the PDF entirely and told the
+    // user generation failed when the link was already sitting in their
+    // chat). Delivery gets its own try, isolated from "did we build it."
     if (wa) {
-      await sendKapsoText({
-        apiKey: env.KAPSO_API_KEY,
-        phoneNumberId: wa.phoneNumberId,
-        to: wa.to,
-        body: msg,
-      });
+      try {
+        await sendKapsoText({
+          apiKey: env.KAPSO_API_KEY,
+          phoneNumberId: wa.phoneNumberId,
+          to: wa.to,
+          body: msg,
+          // Default 10s is tuned for live-chat latency pressure; this runs
+          // in a queue consumer with no such pressure, so give Kapso's
+          // response more room before we treat it as failed.
+          timeoutMs: 20_000,
+        });
+      } catch (err) {
+        console.error("itinerary sendKapsoText failed", err);
+        await recordError(getDb(env.DATABASE_URL), "itinerary:send_text", err, {
+          user_id: userId,
+          slug,
+        }).catch(() => {});
+      }
       await deliverItineraryPdf(env, baseUrl, {
         slug,
         to: wa.to,
@@ -1962,13 +2045,13 @@ async function handleKapsoWebhook(
           }
         }
         // If the user asked for a full itinerary this turn, build + deliver it
-        // in the BACKGROUND after the ack reply. Generation is heavy (10-40s)
-        // and must never block the message or trip the reply timeout. Scheduled
-        // as its own keepalive so it survives this turn's IIFE settling.
+        // in the BACKGROUND via a queue — generation is heavy (10-40s+) and
+        // routinely exceeds ctx.waitUntil's hard 30s ceiling (confirmed live:
+        // silent total failure, no trip row, no error). enqueue() itself is
+        // near-instant, so it comfortably finishes within this turn.
         if (itineraryRequest.value) {
           ctx.waitUntil(
-            generateAndDeliverItinerary(env, {
-              sql,
+            env.ITINERARY_QUEUE.send({
               userId: user.id,
               baseUrl,
               history,
@@ -3045,8 +3128,7 @@ async function handleChat(
   // Background itinerary generation (web, non-streaming path).
   if (user.id > 0 && itineraryRequest.value) {
     exec.waitUntil(
-      generateAndDeliverItinerary(env, {
-        sql,
+      env.ITINERARY_QUEUE.send({
         userId: user.id,
         baseUrl: new URL(request.url).origin,
         history,
@@ -3690,7 +3772,39 @@ async function dispatchScheduled(
   ctx.waitUntil(run());
 }
 
+// Itinerary generation lives here instead of a request's ctx.waitUntil — see
+// the ITINERARY_QUEUE comment in wrangler.toml for why (the hard 30s
+// waitUntil-after-response ceiling, confirmed live to silently kill the LLM
+// compose + PDF render step). Queue consumer invocations aren't tied to an
+// HTTP response, so they get the worker's normal (much more generous) CPU/
+// wall-clock budget instead. max_batch_size=1 in wrangler.toml keeps one
+// itinerary per invocation — always ack, even on a handled failure inside
+// generateAndDeliverItinerary (it already sends the user an apology), so
+// Cloudflare's automatic retry never causes a duplicate apology message.
+async function dispatchQueue(
+  batch: MessageBatch<ItineraryQueueMessage>,
+  env: Env,
+): Promise<void> {
+  for (const msg of batch.messages) {
+    try {
+      await generateAndDeliverItinerary(env, msg.body);
+    } catch (err) {
+      // generateAndDeliverItinerary already catches its own errors and
+      // notifies the user — reaching here means something broke OUTSIDE
+      // that (e.g. env.DATABASE_URL itself unreachable). Log and still ack:
+      // a platform-level retry storm is worse than one silently dropped
+      // message the hourly error digest will surface.
+      console.error("itinerary queue consumer uncaught", err);
+      await recordError(getDb(env.DATABASE_URL), "queue:itinerary", err, {
+        userId: msg.body.userId,
+      }).catch(() => {});
+    }
+    msg.ack();
+  }
+}
+
 export default {
   fetch: dispatchFetch,
   scheduled: dispatchScheduled,
-} satisfies ExportedHandler<Env>;
+  queue: dispatchQueue,
+} satisfies ExportedHandler<Env, ItineraryQueueMessage>;
