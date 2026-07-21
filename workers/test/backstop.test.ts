@@ -53,6 +53,29 @@ describe("detectStaleReprint", () => {
     );
   });
 
+  test("false success claim: 'aquí tienes los links' with ZERO real link and no honest failure admission → force search_stays (Cancún airbnb bug)", () => {
+    // Neither PRICE_TOKEN_RE nor NO_AVAIL_RE fires here — the model never
+    // says a price and never admits failure, it just confidently promises
+    // links that don't exist. Reproduced live: search_stays never ran.
+    assert.equal(
+      detectStaleReprint("busca un airbnb en Cancún del 20 al 25 de agosto", {
+        text: "🏠 Ver en Airbnb:\n\n🔎 Ver en Booking:\n\nJean, aquí tienes los links para buscar alojamiento en Cancún del 20-25 de agosto 🌴",
+        ...withTools(),
+      }),
+      "search_stays",
+    );
+  });
+
+  test("false success claim with 'enlaces' (link synonym) + hotel intent → force search_hotels", () => {
+    assert.equal(
+      detectStaleReprint("hoteles en Madrid", {
+        text: "Jean, te dejo los enlaces principales para que veas los hoteles disponibles.",
+        ...withTools(),
+      }),
+      "search_hotels",
+    );
+  });
+
   test("search_flights ran → no retry", () => {
     assert.equal(
       detectStaleReprint("busca vuelos a Cusco", {
@@ -153,13 +176,17 @@ describe("detectStaleReprint", () => {
     );
   });
 
-  test("only flight intent (no lodging, no 'paquete') + link mention → no package trigger", () => {
+  test("only flight intent (no lodging, no 'paquete') + link mention → package branch stands down, general flight branch still forces search_flights", () => {
+    // The package-specific branch requires combined intent, so it doesn't
+    // fire here — but this exact shape (false link promise, single-intent
+    // ask, tool never ran) is the general false-link-promise case the fix
+    // is meant to catch, so the flight branch below correctly forces it.
     assert.equal(
       detectStaleReprint("vuelos a Bogotá", {
         text: "Te paso el link en un momento",
         ...withTools(),
       }),
-      null,
+      "search_flights",
     );
   });
 

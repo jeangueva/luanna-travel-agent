@@ -385,6 +385,13 @@ async function generateReply(
   }
 
   const llmArgs = buildLLMArgs(env, userMessage, ctx, flowEnabled, inWhatsApp);
+  // Tracks how much of the caller's 26s withTimeout budget (see
+  // handleKapsoWebhook) the first attempt actually used, so the backstop
+  // retry below can be capped by what's ACTUALLY left rather than a fixed
+  // guess — a fixed cap isn't safe on its own (reproduced in prod: first
+  // attempt alone took ~16-20s on a real 6-month multi-passenger flight
+  // scan, leaving a "capped" 12s retry still enough to blow 26s total).
+  const startedAt = Date.now();
   let result = await generateText(llmArgs);
   // Deterministic backstop for the "reprinted stale results" failure: the
   // model answers a flight/lodging request with prices copied from chat
@@ -400,11 +407,28 @@ async function generateReply(
     result as unknown as { text: string; steps?: ToolCallStep[] },
   );
   if (staleTool) {
-    try {
-      result = await forcedSearchRetry(env, llmArgs, staleTool);
-    } catch (err) {
-      // Keep the first (linkless but coherent) reply if the retry fails.
-      console.error("forced search retry failed", err);
+    // Give the retry only what's ACTUALLY left of the outer 26s budget
+    // (minus a safety margin), capped at 12s. If the first attempt already
+    // ate most of the budget, a doomed sub-3s retry isn't worth attempting —
+    // skip straight to keeping the first (linkless but coherent) reply
+    // rather than risk tripping the outer timeout, which would discard it.
+    const remaining = 26_000 - (Date.now() - startedAt) - 1_500;
+    if (remaining < 3_000) {
+      console.log(
+        `stale-result backstop: skipping retry, only ${remaining}ms left in budget`,
+      );
+    } else {
+      try {
+        result = await forcedSearchRetry(
+          env,
+          llmArgs,
+          staleTool,
+          Math.min(12_000, remaining),
+        );
+      } catch (err) {
+        // Keep the first (linkless but coherent) reply if the retry fails.
+        console.error("forced search retry failed", err);
+      }
     }
   }
   if (ctx.toolsUsed) {
@@ -819,7 +843,11 @@ function streamReply(
       if (!staleTool) return;
       try {
         controller.enqueue("\n\nDéjame verificar los precios actuales… 🔄\n\n");
-        const retry = await forcedSearchRetry(env, args, staleTool);
+        // No hard outer timeout wraps the web streaming path (unlike the
+        // WhatsApp batch path's 26s withTimeout), so a fixed cap is fine
+        // here — it just bounds how long the browser waits for the
+        // correction, not a shared budget with a prior attempt.
+        const retry = await forcedSearchRetry(env, args, staleTool, 12_000);
         const repaired = await repairTrackedLinks(
           sql,
           retry.text,
@@ -918,7 +946,7 @@ const NO_AVAIL_RE =
 // nothing to append because the tool never ran at all, so this must force
 // the actual tool instead.
 const PACKAGE_WORD_RE = /\bpaquete\b/i;
-const LINK_WORD_RE = /\blinks?\b/i;
+const LINK_WORD_RE = /\b(links?|enlaces?)\b/i;
 
 // Regenerate the reply with `staleTool` FORCED on the first step. MiniMax-M3's
 // Anthropic-compat endpoint IGNORES a forced tool_choice (verified in prod:
@@ -933,17 +961,22 @@ async function forcedSearchRetry(
     | "search_hotels"
     | "search_stays"
     | "get_package_link",
+  timeoutMs: number,
 ) {
-  console.log(`stale-result backstop: forcing ${staleTool} retry`);
+  console.log(`stale-result backstop: forcing ${staleTool} retry (budget ${timeoutMs}ms)`);
   const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
   // Bounded well under the outer 26s generateReply timeout: this retry runs
   // AFTER a full first attempt already spent some of that budget, so an
   // unbounded second attempt can blow the total past 26s — and the outer
   // timeout rejects the WHOLE call, discarding the perfectly good first
-  // reply along with it (confirmed in prod: a battery of concurrent test
-  // messages tripped this exact case). Timing out here instead throws
-  // immediately, which the caller's catch turns into "keep the first
-  // reply" — a linkless-but-coherent answer beats a lost one.
+  // reply along with it. A FIXED cap here (originally 12s) isn't actually
+  // enough on its own: if the first attempt alone took ~16-20s (a real,
+  // reproduced case — search_flights's 6-month scan + a slow model write),
+  // first+capped-retry can still exceed 26s. The caller now computes
+  // timeoutMs from the ACTUAL remaining budget, so the two can never sum
+  // past the outer deadline. Timing out here throws immediately, which the
+  // caller's catch turns into "keep the first reply" — a linkless-but-
+  // coherent answer beats a lost one.
   const retry = await withTimeout(
     generateText({
       ...llmArgs,
@@ -953,7 +986,7 @@ async function forcedSearchRetry(
           ? { toolChoice: { type: "tool" as const, toolName: staleTool } }
           : undefined,
     }),
-    12_000,
+    timeoutMs,
     "forcedSearchRetry",
   );
   const retryTools = collectToolNames(
@@ -995,9 +1028,27 @@ export function detectStaleReprint(
   ) {
     return "get_package_link";
   }
-  if (!PRICE_TOKEN_RE.test(result.text) && !NO_AVAIL_RE.test(result.text)) {
+  // Third shape, distinct from an honest "no encontré": the model CLAIMS
+  // success ("aquí tienes los links / te dejo los enlaces") while writing
+  // zero actual /r/ links — no price, no admitted failure, just a false
+  // promise. Found live: search_stays never ran, reply confidently offered
+  // "Airbnb:" / "Booking:" labels with nothing after them, and neither
+  // PRICE_TOKEN_RE nor NO_AVAIL_RE fired because the model never admitted
+  // anything was wrong.
+  const falseLinkPromise =
+    !result.text.includes("/r/") && LINK_WORD_RE.test(result.text);
+  if (
+    !PRICE_TOKEN_RE.test(result.text) &&
+    !NO_AVAIL_RE.test(result.text) &&
+    !falseLinkPromise
+  ) {
     return null;
   }
+  // get_package_link covers both legs of a combined ask in one call — if it
+  // already ran this turn, don't ALSO force the individual flight/hotel
+  // tools on top of it (they'd be redundant, and the package branch above
+  // already stood down deliberately once get_package_link ran).
+  if (tools.includes("get_package_link")) return null;
   if (FLIGHT_INTENT_RE.test(userMessage) && !tools.includes("search_flights")) {
     return "search_flights";
   }
