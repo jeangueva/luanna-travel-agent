@@ -27,6 +27,32 @@ describe("detectStaleReprint", () => {
     );
   });
 
+  test("flight ask + PAST-TENSE accented 'No encontré' + no search → force search_flights (DeepSeek regression)", () => {
+    // \w is ASCII-only in JS regex — "encontr\w+" silently never matched
+    // "encontré". Found live: DeepSeek wrote "No encontré vuelos de LATAM
+    // para Lima → Madrid" and promised a link it never wrote, and this
+    // exact phrasing sailed through undetected because of the accent gap.
+    assert.equal(
+      detectStaleReprint("vuelos solo de LATAM de Lima a Madrid", {
+        text: "No encontré vuelos de LATAM para Lima → Madrid el 15 de septiembre 😅 Pero igual te dejé el link directo.",
+        ...withTools(),
+      }),
+      "search_flights",
+    );
+  });
+
+  test("flight ask + irregular stem-changed 'No encuentro' + no search → force search_flights", () => {
+    // "encontrar" is irregular: present tense diphthongizes to "encuentro",
+    // a different stem than "encontr-" (infinitive/preterite/encontramos).
+    assert.equal(
+      detectStaleReprint("vuelos a Asunción", {
+        text: "No encuentro vuelos LIM → Asunción en los próximos 6 meses, Jean 😅",
+        ...withTools(),
+      }),
+      "search_flights",
+    );
+  });
+
   test("search_flights ran → no retry", () => {
     assert.equal(
       detectStaleReprint("busca vuelos a Cusco", {

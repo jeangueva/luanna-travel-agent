@@ -32,7 +32,9 @@ MINIMAX_BASE_URL = "https://api.minimax.io/anthropic/v1"
 # the extra tokens it generates per reply. Keep M3; re-benchmark before any
 # swap instead of trusting provider throughput numbers.
 MINIMAX_MODEL = "MiniMax-M3"
-# GEMINI_MODEL default: "gemini-2.5-flash". DEEPSEEK_MODEL default: "deepseek-chat".
+# GEMINI_MODEL default: "gemini-3.5-flash" (gemini-2.5-flash/2.0-flash 404
+# "no longer available to new users" as of 2026-07, verified live — don't
+# revert to those without re-checking). DEEPSEEK_MODEL default: "deepseek-chat".
 # Neither has been prod-benchmarked yet on Luanna's actual tool-calling flow —
 # re-run the same 5-prompt benchmark as MiniMax before trusting published
 # throughput/pricing numbers for this specific search_flights/hotels/stays

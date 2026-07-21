@@ -56,16 +56,18 @@ export async function repairTrackedLinks(
   const realIds = new Set(realUrls.map((u) => u.split("/r/")[1]));
 
   const textMatches = [...text.matchAll(R_URL_CAPTURE_RE)];
-  // The model sometimes promises a link ("acá lo ves en vivo:") and then just
-  // never writes the URL token — a genuinely different failure than a
-  // fabricated/stale code, since there's nothing in the text to repair. If a
-  // tool created a real link this turn and NONE of it made it into the reply,
-  // append the first one rather than silently dropping the only thing the
-  // user asked for.
+  // The model sometimes promises links ("Ver en Airbnb: / Ver en Booking:")
+  // and then writes every label with nothing after it — a genuinely
+  // different failure than a fabricated/stale code, since there's nothing in
+  // the text to repair. If a tool created real links this turn and NONE of
+  // them made it into the reply, append ALL of them (not just one — tools
+  // like search_stays/get_package_link routinely create 2-3 links at once,
+  // and backfilling only the first still leaves the other labeled slots
+  // pointing at nothing).
   if (textMatches.length === 0) {
     if (realUrls.length === 0) return text;
     const sep = /[.!?…\s]$/.test(text) ? " " : "\n\n";
-    return text + sep + realUrls[0];
+    return text + sep + realUrls.join("\n");
   }
   if (textMatches.every((m) => realIds.has(m[2]))) return text; // all valid
 
@@ -210,12 +212,13 @@ export function createLinkGuardStream(
         const emitted = await rewrite(buffer);
         if (emitted) controller.enqueue(emitted);
       }
-      // Same "model promised a link and never wrote it" gap as the batch
-      // repair (see repairTrackedLinks): a real link existed this turn but
-      // zero ids ever resolved into the visible stream. Append the first one
-      // rather than let the promise go unfulfilled.
+      // Same "model promised links and never wrote them" gap as the batch
+      // repair (see repairTrackedLinks): real links existed this turn but
+      // zero ids ever resolved into the visible stream. Append ALL of them —
+      // a tool can create 2-3 links at once (search_stays, get_package_link),
+      // and backfilling only the first leaves the rest of the promise broken.
       if (usedIds.size === 0 && realUrls.length > 0) {
-        controller.enqueue("\n\n" + realUrls[0]);
+        controller.enqueue("\n\n" + realUrls.join("\n"));
       }
     },
   });

@@ -159,6 +159,20 @@ describe("repairTrackedLinks: model promised a link and never wrote it", () => {
     const out = await repairTrackedLinks(failingSql(), text, steps());
     assert.equal(out, text);
   });
+
+  test("TWO real links created this turn but text has zero /r/ tokens → BOTH appended (Cancún airbnb bug)", async () => {
+    // search_stays creates airbnb_url + booking_url together; the model
+    // wrote "Ver en Airbnb: / Ver en Booking:" with nothing after either
+    // label. Backfilling only the first link still leaves the second
+    // labeled slot pointing at nothing.
+    const out = await repairTrackedLinks(
+      failingSql(),
+      "🏡 Ver en Airbnb: \n🏨 Ver en Booking: \n\n¿Algo más?",
+      steps("https://luanna.app/r/AirBnb1", "https://luanna.app/r/Booking2"),
+    );
+    assert.ok(out.includes("https://luanna.app/r/AirBnb1"));
+    assert.ok(out.includes("https://luanna.app/r/Booking2"));
+  });
 });
 
 describe("scrubHistoryLinks", () => {
@@ -219,6 +233,16 @@ describe("createLinkGuardStream", () => {
       ["https://luanna.app/r/9GlckM"],
     );
     assert.ok(out.includes("https://luanna.app/r/9GlckM"));
+  });
+
+  test("TWO real links this turn, neither referenced → BOTH appended on flush", async () => {
+    const out = await runGuard(
+      failingSql(),
+      ["🏡 Ver en Airbnb: \n🏨 Ver en Booking: "],
+      ["https://luanna.app/r/AirBnb1", "https://luanna.app/r/Booking2"],
+    );
+    assert.ok(out.includes("https://luanna.app/r/AirBnb1"));
+    assert.ok(out.includes("https://luanna.app/r/Booking2"));
   });
 
   test("no real link this turn → nothing appended", async () => {

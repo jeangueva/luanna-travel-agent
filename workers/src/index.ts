@@ -465,7 +465,11 @@ function getModel(env: Env) {
     // whichever provider is primary (the backstop itself always falls back
     // to Claude regardless, so this only affects the FIRST attempt).
     const gemini = createGoogleGenerativeAI({ apiKey: env.GEMINI_API_KEY ?? "" });
-    return gemini(env.GEMINI_MODEL ?? "gemini-2.5-flash");
+    // gemini-2.5-flash and gemini-2.0-flash both 404 "no longer available to
+    // new users" as of 2026-07 — verified live against the Gemini API
+    // (ListModels still lists them, but generateContent rejects them for
+    // this key). gemini-3.5-flash is the current working flash-tier default.
+    return gemini(env.GEMINI_MODEL ?? "gemini-3.5-flash");
   }
   if (env.LLM_PROVIDER === "deepseek") {
     // The dedicated @ai-sdk/deepseek package only ships on a newer provider-
@@ -477,7 +481,12 @@ function getModel(env: Env) {
       apiKey: env.DEEPSEEK_API_KEY ?? "",
       baseURL: "https://api.deepseek.com/v1",
     });
-    return deepseek(env.DEEPSEEK_MODEL ?? "deepseek-chat");
+    // Calling the provider directly (deepseek(modelId)) defaults to the
+    // newer OpenAI Responses API (/responses) as of @ai-sdk/openai's recent
+    // versions — DeepSeek only implements the classic Chat Completions API
+    // (/chat/completions), so that path 404s ("Not Found", verified in prod).
+    // .chat() forces the compatible endpoint.
+    return deepseek.chat(env.DEEPSEEK_MODEL ?? "deepseek-chat");
   }
   const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
   return anthropic(env.LUANNA_MODEL ?? DEFAULT_MODEL);
@@ -893,8 +902,15 @@ const STAYS_HINT_RE = /\b(airbnb|depa(rtamento)?s?|casas?|estad[ií]as?)\b/i;
 const PRICE_TOKEN_RE = /\$\s?\d|\bS\/\s?\.?\d|\bUSD\b/i;
 // "No availability" claims are the other unsearched-answer shape: the model
 // asserts there's nothing ("no hay precios en cache…") without having looked.
+// Two things `\w` misses here (JS regex `\w` is ASCII-only, no `u` flag):
+// accents ("encontr\w+" never matched "encontré" — found in prod: DeepSeek's
+// past-tense "No encontré vuelos..." sailed through uncorrected, with a link
+// the model promised but never wrote and no backstop to catch it), and
+// "encontrar" is irregular — present tense diphthongizes the stem
+// (encuentro/encuentras/encuentra/encuentran) while the infinitive,
+// preterite, and encontramos/encontráis keep "encontr-". Both stems covered.
 const NO_AVAIL_RE =
-  /\bno\s+(?:hay|encontr\w+|veo|tengo|existen?)\b[^.\n]{0,40}\b(?:precios?|vuelos?|hotel(es)?|alojamientos?|estad[ií]as?|habitaci[oó]n(es)?|cach[eé]|resultados?|opciones)/i;
+  /\bno\s+(?:hay|enc(?:ontr|uentr)[a-záéíóúñ]*|veo|tengo|existen?)\b[^.\n]{0,40}\b(?:precios?|vuelos?|hotel(es)?|alojamientos?|estad[ií]as?|habitaci[oó]n(es)?|cach[eé]|resultados?|opciones)/i;
 // Combined flight+hotel asks route to get_package_link, which returns TWO
 // urls (flight + hotel) in one call. Distinct failure shape from the
 // price/no-avail cases below: the model can claim "abre los links" with
