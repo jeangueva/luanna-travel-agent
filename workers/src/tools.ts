@@ -14,8 +14,10 @@ import {
   getPreferences,
   getUserEngagement,
   recordPriceObservation,
+  setPendingLinkOptions,
   upsertPreferences,
   type ClickKind,
+  type PendingLinkOption,
   type Sql,
 } from "./db";
 
@@ -984,6 +986,34 @@ export function makeFlightSearchTool(
           };
         }),
       );
+      // Deterministic numbered-link fallback: persist EVERY option's real
+      // link keyed by its rank (1-based) so a bare "2" reply can resolve to
+      // the real /r/ URL via a DB lookup — no model transcription involved.
+      // Exists because the model has repeatedly proven unreliable at
+      // copying an opaque tracking code correctly for every option in a
+      // list (verified live multiple times, including fabricating
+      // placeholder text in place of real links it was given). Only the
+      // TOP option's link is left in what the model sees below — the rest
+      // get a bare option_number instead, so there's no link-shaped field
+      // for the model to garble in the first place.
+      if (click && click.userId > 0) {
+        const pending: PendingLinkOption[] = flights
+          .map((f, i) => ({ f, i }))
+          .filter(({ f }) => !!f.link)
+          .map(({ f, i }) => ({
+            idx: i + 1,
+            url: f.link as string,
+            label: `${f.airline} $${f.price_usd} — ${f.departure_at.slice(0, 10)}`,
+          }));
+        await setPendingLinkOptions(click.sql, click.userId, pending).catch(
+          (err) => console.error("setPendingLinkOptions failed", err),
+        );
+      }
+      const flightsForModel = flights.map((f, i) => {
+        if (i === 0) return f;
+        const { link: _omit, ...rest } = f;
+        return { ...rest, option_number: i + 1 };
+      });
       // WhatsApp teaser: push the cheapest option to the user NOW (the model
       // still needs seconds to write). Await it — the "don't repeat it" hint
       // below must only appear when the message actually went out.
@@ -1028,7 +1058,7 @@ export function makeFlightSearchTool(
         );
       }
       return {
-        flights,
+        flights: flightsForModel,
         resolved_origin: originIata,
         resolved_destination: destIata,
         scanned_months: scannedMonths,
@@ -1042,13 +1072,21 @@ export function makeFlightSearchTool(
               note: "No tenemos precios guardados para esta ruta en los próximos 6 meses (la búsqueda ya incluyó vuelos con escala, no solo directos). NUNCA uses palabras técnicas como 'cache', 'API' o 'error' — habla como persona. NO te disculpes ni digas que hubo un problema técnico: entrega el search_url TAL CUAL para que el usuario vea las opciones en vivo, y sugiere alternativas (otra fecha, aeropuerto cercano, confirmar origen/destino).",
             }
           : {}),
-        ...(topSent
+        ...(flights.length > 1
           ? {
-              top_option_already_sent: true,
               note:
-                "IMPORTANTE: la opción MÁS BARATA (la primera de flights) YA le llegó al usuario en un mensaje aparte con su link. NO la repitas. Tu respuesta: una línea breve de contexto + las OTRAS opciones (de la 2da en adelante, máx 4, una por línea con su link si lo tienen) + siguiente paso. Si solo había 1 opción, comenta brevemente y sugiere el siguiente paso sin repetir precio ni link.",
+                "REGLA DURA — OPCIONES NUMERADAS: solo la PRIMERA opción de 'flights' trae 'link' (real, cópialo tal cual si topSent no la mandó ya). Las demás traen 'option_number' en vez de 'link' — para esas, NUNCA escribas ni inventes un link ni texto de marcador: escribe SOLO 'Opción N: aerolínea, precio, fecha'. Al final de tu respuesta pregunta '¿Cuál te interesa? Respóndeme con el número y te paso el link 👆'. Cuando el usuario responda con un número, el sistema le manda el link real automáticamente — tú no tienes que hacer nada más." +
+                (topSent
+                  ? " La opción MÁS BARATA (la primera) YA le llegó al usuario en un mensaje aparte con su link — NO la repitas ni vuelvas a mandar su link, solo dale contexto breve + las opciones numeradas restantes."
+                  : ""),
             }
-          : {}),
+          : topSent
+            ? {
+                top_option_already_sent: true,
+                note:
+                  "La opción MÁS BARATA (la primera de flights) YA le llegó al usuario en un mensaje aparte con su link. NO la repitas ni su link.",
+              }
+            : {}),
         currency_note: LOCAL_CURRENCY_NOTE,
       };
     },

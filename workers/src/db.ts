@@ -861,6 +861,53 @@ export async function createClickRedirect(
   `;
 }
 
+// ── Deterministic numbered-option link fallback ───────────────────────────
+// When search_flights shows multiple options, only the top one gets its real
+// link inline (the model has repeatedly proven unreliable at transcribing an
+// opaque tracking code for EVERY option in a list — verified live multiple
+// times this includes just fabricating placeholder text instead). The rest
+// are numbered; a bare number reply resolves deterministically via this
+// table, no LLM transcription involved. Replaced wholesale on every new
+// search — never appended to, so a stale number from an old search can't
+// resolve to the wrong (or a dead) link.
+export interface PendingLinkOption {
+  idx: number;
+  url: string;
+  label: string;
+}
+
+export async function setPendingLinkOptions(
+  sql: Sql,
+  userId: number,
+  options: PendingLinkOption[],
+): Promise<void> {
+  await sql`DELETE FROM pending_link_options WHERE user_id = ${userId}`;
+  if (options.length === 0) return;
+  // Neon's HTTP driver has no multi-row VALUES helper (unlike postgres.js'
+  // sql(array) — this is a plain tagged-template client), and the list is
+  // always small (<=5 options), so individual inserts are simplest and safe.
+  await Promise.all(
+    options.map(
+      (o) => sql`
+        INSERT INTO pending_link_options (user_id, idx, url, label)
+        VALUES (${userId}, ${o.idx}, ${o.url}, ${o.label})
+      `,
+    ),
+  );
+}
+
+export async function getPendingLinkOption(
+  sql: Sql,
+  userId: number,
+  idx: number,
+): Promise<PendingLinkOption | null> {
+  const rows = (await sql`
+    SELECT idx, url, label FROM pending_link_options
+    WHERE user_id = ${userId} AND idx = ${idx}
+  `) as PendingLinkOption[];
+  return rows[0] ?? null;
+}
+
 export interface ClickRedirect {
   id: string;
   user_id: number | null;

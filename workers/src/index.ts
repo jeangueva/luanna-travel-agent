@@ -53,6 +53,7 @@ import {
   findReferrerByCode,
   getDashboardStats,
   getDb,
+  getPendingLinkOption,
   getOrCreateUser,
   getPreferences,
   getRecentMessages,
@@ -276,6 +277,16 @@ function spokenSummary(reply: string): string {
 const PREFS_INTENT_RE =
   /\b(configura|configurar|preferencia|preferencias|gustos|perfil|prefer)\b/i;
 
+// Deterministic numbered-link fallback (see setPendingLinkOptions in db.ts
+// for why): the WHOLE message must be just a number, optionally with a
+// light prefix ("opción 2", "el 2", "#2") — "2 personas" or "vuelo 2 horas"
+// must NOT match, since a bare number is genuinely ambiguous outside this
+// exact context. Deliberately narrow; if it doesn't match, or no pending
+// option exists for that index, the message falls through to the normal
+// LLM flow untouched.
+export const OPTION_NUMBER_RE =
+  /^\s*(?:opci[oó]n\s*|el\s*|la\s*|n[uú]mero\s*|#\s*)?(\d{1,2})\s*[.!]?\s*$/i;
+
 function buildFirstContactWelcome(): string {
   return [
     "¡Hola! ✈️ Soy Luanna, tu agente de viajes en WhatsApp.",
@@ -343,6 +354,23 @@ async function generateReply(
       });
     }
     return buildFirstContactWelcome();
+  }
+
+  // Deterministic numbered-link fallback: a bare number reply resolves
+  // directly against pending_link_options, no LLM call at all — faster and
+  // never depends on the model transcribing anything. Falls through to the
+  // normal flow untouched when the message isn't a bare number or no
+  // matching pending option exists (so "2 personas" or a stray "3" outside
+  // this context behaves exactly as before).
+  const optionMatch = OPTION_NUMBER_RE.exec(userMessage);
+  if (optionMatch && ctx.userId > 0) {
+    const idx = parseInt(optionMatch[1], 10);
+    const option = await getPendingLinkOption(ctx.sql, ctx.userId, idx).catch(
+      () => null,
+    );
+    if (option) {
+      return `Acá tienes 👉 ${option.label}\n${option.url}`;
+    }
   }
 
   if (PREFS_INTENT_RE.test(userMessage)) {
@@ -3102,6 +3130,22 @@ async function handleChat(
       await appendMessage(sql, user.id, "user", resolvedText);
       await appendMessage(sql, user.id, "assistant", ack);
       return Response.json({ reply: ack });
+    }
+  }
+
+  // Same deterministic numbered-link fallback as WhatsApp's generateReply
+  // (see setPendingLinkOptions in db.ts) — web's primary reply path is
+  // streamReply, which never calls generateReply, so this needs its own
+  // short-circuit here rather than relying on the WhatsApp one.
+  const optionMatch = OPTION_NUMBER_RE.exec(resolvedText);
+  if (optionMatch && user.id > 0) {
+    const idx = parseInt(optionMatch[1], 10);
+    const option = await getPendingLinkOption(sql, user.id, idx).catch(() => null);
+    if (option) {
+      const reply = `Acá tienes 👉 ${option.label}\n${option.url}`;
+      await appendMessage(sql, user.id, "user", resolvedText);
+      await appendMessage(sql, user.id, "assistant", reply);
+      return Response.json({ reply });
     }
   }
 
