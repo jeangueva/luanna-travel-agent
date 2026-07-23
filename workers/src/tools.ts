@@ -402,7 +402,35 @@ export function makeStartItineraryTool(args: {
 }
 
 // Sticker moods → served from luanna.app/stickers/<mood>.webp
-const STICKER_MOODS = ["deal", "alert", "thanks"] as const;
+const STICKER_MOODS = ["deal", "alert", "thanks", "favorite"] as const;
+
+// Jean's own WhatsApp sticker pack (99 sent to Luanna directly, 2026-07-23),
+// filtered to what WhatsApp will actually accept: static webp <=100KB,
+// animated webp <=500KB (Meta's real limits — 5 animated ones came in over
+// 500KB and were dropped, not just the naive 100KB-for-everything guess).
+// "favorite" mood below picks one at random — a lighter-touch surprise
+// distinct from the fixed mood stickers, for casual/fun moments.
+const FAVORITE_STICKER_FILES = [
+  "fav-002.webp", "fav-004.webp", "fav-005.webp", "fav-006.webp", "fav-007.webp",
+  "fav-008.webp", "fav-009.webp", "fav-010.webp", "fav-011.webp", "fav-012.webp",
+  "fav-014.webp", "fav-015.webp", "fav-016.webp", "fav-017.webp", "fav-018.webp",
+  "fav-019.webp", "fav-020.webp", "fav-021.webp", "fav-022.webp", "fav-023.webp",
+  "fav-024.webp", "fav-025.webp", "fav-026.webp", "fav-027.webp", "fav-028.webp",
+  "fav-029.webp", "fav-031.webp", "fav-032.webp", "fav-033.webp", "fav-034.webp",
+  "fav-035.webp", "fav-036.webp", "fav-037.webp", "fav-038.webp", "fav-039.webp",
+  "fav-040.webp", "fav-041.webp", "fav-042.webp", "fav-043.webp", "fav-044.webp",
+  "fav-045.webp", "fav-046.webp", "fav-047.webp", "fav-048.webp", "fav-049.webp",
+  "fav-050.webp", "fav-051.webp", "fav-052.webp", "fav-053.webp", "fav-054.webp",
+  "fav-055.webp", "fav-056.webp", "fav-057.webp", "fav-058.webp", "fav-059.webp",
+  "fav-060.webp", "fav-061.webp", "fav-063.webp", "fav-064.webp", "fav-065.webp",
+  "fav-066.webp", "fav-067.webp", "fav-068.webp", "fav-069.webp", "fav-070.webp",
+  "fav-071.webp", "fav-072.webp", "fav-073.webp", "fav-074.webp", "fav-075.webp",
+  "fav-076.webp", "fav-077.webp", "fav-078.webp", "fav-079.webp", "fav-080.webp",
+  "fav-081.webp", "fav-082.webp", "fav-083.webp", "fav-084.webp", "fav-085.webp",
+  "fav-086.webp", "fav-087.webp", "fav-088.webp", "fav-089.webp", "fav-090.webp",
+  "fav-091.webp", "fav-092.webp", "fav-093.webp", "fav-094.webp", "fav-095.webp",
+  "fav-096.webp", "fav-097.webp", "fav-098.webp", "fav-099.webp",
+] as const;
 
 export function makeSendStickerTool(args: {
   apiKey: string;
@@ -415,19 +443,27 @@ export function makeSendStickerTool(args: {
       "Envía un sticker de Luanna. DEBES llamarla (además del texto) en estos momentos: " +
       "mood 'thanks' cuando el usuario agradece o se despide (gracias / thank you / obrigado / chau); " +
       "mood 'alert' cuando confirmas que creaste una alerta de precio; " +
-      "mood 'deal' cuando muestras un vuelo/oferta muy barata que entusiasma. " +
-      "Tope máx 1 por conversación, no repitas. Fuera de esos momentos no la uses.",
+      "mood 'deal' cuando muestras un vuelo/oferta muy barata que entusiasma; " +
+      "mood 'favorite' DE VEZ EN CUANDO (no siempre, es un extra ocasional) en un momento casual/divertido de la conversación — manda uno de los stickers favoritos de Jean al azar. " +
+      "Tope máx 1 sticker POR CONVERSACIÓN (cualquier mood, no combines). Fuera de esos momentos no la uses.",
     inputSchema: z.object({
       mood: z
         .enum(STICKER_MOODS)
-        .describe("Tipo de sticker según el momento: deal | alert | thanks"),
+        .describe("Tipo de sticker según el momento: deal | alert | thanks | favorite"),
     }),
     execute: async ({ mood }) => {
+      const file =
+        mood === "favorite"
+          ? FAVORITE_STICKER_FILES[
+              Math.floor(Math.random() * FAVORITE_STICKER_FILES.length)
+            ]
+          : `${mood}.webp`;
+      const path = mood === "favorite" ? `favorites/${file}` : file;
       await sendKapsoSticker({
         apiKey: args.apiKey,
         phoneNumberId: args.phoneNumberId,
         to: args.to,
-        link: `${args.baseUrl}/stickers/${mood}.webp`,
+        link: `${args.baseUrl}/stickers/${path}`,
       });
       return { ok: true, mood };
     },
