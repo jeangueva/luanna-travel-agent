@@ -92,6 +92,19 @@ const AURA_MODELS: Record<string, string> = {
   es: "@cf/deepgram/aura-2-es",
   en: "@cf/deepgram/aura-2-en",
 };
+// Explicit feminine speaker per language — Luanna is a female persona.
+// Checked against Deepgram's own Aura-2 voice catalog (Expressed Gender
+// column), not guessed from the name: the ES model's default speaker
+// ("aquila") is actually MASCULINE, which is why this needs pinning at
+// all. "selena" is Deepgram's Latin American-accented feminine ES voice
+// (vs. celeste/Colombian, estrella/Mexican, carina+diana/Peninsular) — the
+// best regional match for Luanna's Peru-based audience. EN's own default
+// ("luna") is already feminine; pinned anyway so a future default change
+// upstream can't silently flip Luanna's voice.
+const AURA_SPEAKERS: Record<string, string> = {
+  es: "selena",
+  en: "luna",
+};
 const MELO_LANGS = new Set(["fr", "zh", "ja", "ko"]);
 
 function base64ToBytes(b64: string): Uint8Array {
@@ -139,6 +152,7 @@ export async function generateSpeech(
       const result = await env.AI.run(aura, {
         text: prompt,
         encoding: "mp3",
+        speaker: AURA_SPEAKERS[code],
       });
       return await toAudioBytes(result);
     }

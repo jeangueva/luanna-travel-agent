@@ -768,6 +768,7 @@ export interface FlightTeaser {
   priceLocal?: { amount: number; symbol: string };
   airline: string;
   departureAt: string;
+  returnAt: string | null;
   transfers: number;
   link: string | null;
 }
@@ -787,9 +788,13 @@ export function formatFlightTeaser(
     : `${d.getUTCDate()} ${SPANISH_MONTHS_SHORT[d.getUTCMonth()]}`;
   const local = t.priceLocal ? ` (~${t.priceLocal.symbol}${t.priceLocal.amount})` : "";
   const stops = t.transfers === 0 ? "directo" : `${t.transfers} escala${t.transfers > 1 ? "s" : ""}`;
+  // Deterministic template (not LLM-written) — the round-trip/one-way label
+  // must be added here explicitly too, same rule as the prompt: don't make
+  // the user infer it from date formatting, say it outright.
+  const tripType = t.returnAt ? "ida y vuelta" : "solo ida";
   const lines = [
     `🥇 Lo más barato ${t.originIata} → ${t.destIata}:`,
-    `*$${t.priceUsd}*${local} | ${t.airline} | ${when}, ${stops}`,
+    `*$${t.priceUsd}*${local} | ${t.airline} | ${when}, ${stops} (${tripType})`,
   ];
   if (t.link && !opts?.omitLink) lines.push(t.link);
   lines.push("");
@@ -1055,7 +1060,14 @@ export function makeFlightSearchTool(
       // below must only appear when the message actually went out.
       let topSent = false;
       const top = flights[0] as
-        | { price_usd: number; airline: string; departure_at: string; transfers: number; link: string | null }
+        | {
+            price_usd: number;
+            airline: string;
+            departure_at: string;
+            return_at: string | null;
+            transfers: number;
+            link: string | null;
+          }
         | undefined;
       if (onTopResult && top) {
         topSent = await onTopResult({
@@ -1067,6 +1079,7 @@ export function makeFlightSearchTool(
             : undefined,
           airline: top.airline,
           departureAt: top.departure_at,
+          returnAt: top.return_at,
           transfers: top.transfers,
           link: top.link,
         }).catch(() => false);
