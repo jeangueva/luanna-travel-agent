@@ -7,6 +7,89 @@ const withTools = (...names: string[]) => ({
 });
 
 describe("detectStaleReprint", () => {
+  // Real production transcript (2026-07-22): the bot's most recent reply
+  // before the user's correction ("aquí está el link… ¿te arme paquete con
+  // hotel?") doesn't say "vuelo" — only the turn BEFORE that does, via
+  // "paquete vuelo+hotel". Neither message alone would trip FLIGHT_INTENT_RE
+  // reliably; recentAssistantContext joins the last two for exactly this
+  // shape (WhatsApp's teaser-then-short-follow-up pattern).
+  const realPrevTeaser =
+    "🥇 Lo más barato LIM → BUE: *$314* (~S/1067) | JA | 22 oct, directo. " +
+    "Abre el primer link, Jean — directo y baratito en octubre 🔥 ¿Te busco hotel en Buenos Aires o paquete vuelo+hotel? 🏨";
+  const realPrevFollowUp =
+    "Listo Jean, aquí está el link para que veas los precios en vivo 👇 " +
+    "Abre y compara — ahí te salen todas las opciones reales para esas fechas 🔍 ¿Quieres que te arme paquete con hotel? 🏨";
+
+  test("follow-up price correction (no 'vuelo' in this turn, no price, no honest failure admission) → joined last-2-assistant-turns context still forces search_flights (reported live: bot hallucinated a bracket-placeholder link after 'el mas barato no es ese, hay uno de Sky a 276')", () => {
+    assert.equal(
+      detectStaleReprint(
+        "El mas barato no es ese, entre al link y es uno de Sky a 276",
+        {
+          text: "Uy Jean, tienes razón 😬\n\nAquí tienes los links actualizados — ábrelos y mira los precios reales:\n\n**Lima → Buenos Aires (octubre):** [link vencimiento — busca de nuevo]\n\nSky suele ser lo más barato a Buenos Aires en temporada baja 🛫",
+          ...withTools(),
+        },
+        `${realPrevTeaser} ${realPrevFollowUp}`,
+      ),
+      "search_flights",
+    );
+  });
+
+  test("with only the SINGLE most recent message (no 'vuelo', just 'hotel'/'paquete') the correction is missed — this is why the fix joins the last TWO turns, not just one", () => {
+    assert.equal(
+      detectStaleReprint(
+        "El mas barato no es ese, entre al link y es uno de Sky a 276",
+        {
+          text: "Uy Jean, tienes razón 😬 Aquí tienes los links actualizados — [link vencimiento — busca de nuevo]",
+          ...withTools(),
+        },
+        realPrevFollowUp,
+      ),
+      "search_hotels", // "hotel"/"paquete" alone still misfires onto the wrong tool
+    );
+  });
+
+  test("without ANY prior context, the same correction is missed entirely (documents why history threading was needed at all)", () => {
+    assert.equal(
+      detectStaleReprint(
+        "El mas barato no es ese, entre al link y es uno de Sky a 276",
+        {
+          text: "Uy Jean, tienes razón 😬 Aquí tienes los links actualizados — [link vencimiento — busca de nuevo]",
+          ...withTools(),
+        },
+      ),
+      null,
+    );
+  });
+
+  test("prior flight context (via 'vuelo' in the recent-context window) + reply falsely claims links → still forces search_flights even on a generic-sounding current turn", () => {
+    assert.equal(
+      detectStaleReprint(
+        "gracias, eso es todo",
+        {
+          text: "¡De nada Jean! Aquí tienes los links por si cambias de opinión",
+          ...withTools(),
+        },
+        "🥇 Lo más barato LIM → BUE: *$314* | JA | 22 oct, vuelo directo. ¿Te busco hotel?",
+      ),
+      "search_flights",
+    );
+    // Note: this intentionally still fires — "los links" + prior flight
+    // context is exactly the false-promise shape the fix targets. A truly
+    // unrelated close-out without any link mention in the reply would
+    // correctly return null; see next test.
+  });
+
+  test("genuinely unrelated closing message, no link mention → no retry despite prior flight context", () => {
+    assert.equal(
+      detectStaleReprint(
+        "gracias, eso es todo",
+        { text: "¡De nada Jean! Que tengas buen viaje ✈️", ...withTools() },
+        "🥇 Lo más barato LIM → BUE: *$314* | JA | 22 oct, directo.",
+      ),
+      null,
+    );
+  });
+
   test("itinerary opt-in + 'armando tu itinerario' ack + no start_itinerary call → force start_itinerary (reproduced live, zero trips row created)", () => {
     assert.equal(
       detectStaleReprint(
@@ -133,6 +216,26 @@ describe("detectStaleReprint", () => {
     assert.equal(
       detectStaleReprint("busca vuelos a Cusco", {
         text: "El más barato: $59",
+        ...withTools("search_flights"),
+      }),
+      null,
+    );
+  });
+
+  test("stall claim with NO price/no-avail/link-word ('voy a por ello, dame un instante') + tool never ran → force search_flights (reproduced live, no follow-up ever arrived)", () => {
+    assert.equal(
+      detectStaleReprint("busca vuelos de Lima a Buenos Aires en octubre", {
+        text: "Voy a por ello — dame un instante mientras lo traigo 🔎",
+        ...withTools(),
+      }),
+      "search_flights",
+    );
+  });
+
+  test("legit flight teaser's own 'dame unos segundos' line + search_flights DID run → no retry (the stall-claim signal must not misfire on real results)", () => {
+    assert.equal(
+      detectStaleReprint("busca vuelos a Cusco", {
+        text: "🥇 Lo más barato: $59\nDame unos segundos para el resto de opciones… ⏳",
         ...withTools("search_flights"),
       }),
       null,

@@ -409,6 +409,7 @@ async function generateReply(
   const staleTool = detectStaleReprint(
     userMessage,
     result as unknown as { text: string; steps?: ToolCallStep[] },
+    recentAssistantContext(ctx.history),
   );
   if (staleTool) {
     // Give the retry only what's ACTUALLY left of the outer 26s budget
@@ -853,10 +854,14 @@ function streamReply(
       controller.enqueue(chunk);
     },
     async flush(controller) {
-      const staleTool = detectStaleReprint(userMessage, {
-        text: streamedText,
-        steps: [{ toolCalls: streamToolNames.map((toolName) => ({ toolName })) }],
-      });
+      const staleTool = detectStaleReprint(
+        userMessage,
+        {
+          text: streamedText,
+          steps: [{ toolCalls: streamToolNames.map((toolName) => ({ toolName })) }],
+        },
+        recentAssistantContext(history),
+      );
       if (!staleTool) return;
       try {
         controller.enqueue("\n\nDéjame verificar los precios actuales… 🔄\n\n");
@@ -956,6 +961,19 @@ const PRICE_TOKEN_RE = /\$\s?\d|\bS\/\s?\.?\d|\bUSD\b/i;
 // preterite, and encontramos/encontráis keep "encontr-". Both stems covered.
 const NO_AVAIL_RE =
   /\bno\s+(?:hay|enc(?:ontr|uentr)[a-záéíóúñ]*|veo|tengo|existen?)\b[^.\n]{0,40}\b(?:precios?|vuelos?|hotel(es)?|alojamientos?|estad[ií]as?|habitaci[oó]n(es)?|cach[eé]|resultados?|opciones)/i;
+// Fourth observed shape (no price, no honest "no encontré", no link
+// mention — just an empty stall): "Voy a por ello — dame un instante
+// mientras lo traigo 🔎" for a fresh search_flights request, tool never
+// called, no follow-up ever arrived (reproduced live). Whack-a-mole risk is
+// real here (this is the 4th distinct hallucinated phrasing found this
+// session for the same underlying failure), but this signal is safe to
+// widen because it's still gated by !tools.includes(...) below — it can
+// only ever fire when the tool genuinely didn't run, same as every other
+// branch. The teaser's own "Dame unos segundos para el resto de
+// opciones… ⏳" line matches this too, but that ONLY ever appears after a
+// real search_flights call, so tools.includes(...) already protects it.
+const STALL_CLAIM_RE =
+  /\b(voy a (por ello|buscarlo|buscarte|revisarlo|traerlo)|dame (un|unos) (instante|momento|segundo)s?|ya (te|lo|la) (traigo|busco|consigo)|d[ée]jame (buscar|revisar|ver)|un (momento|segundo) por favor)\b/i;
 // Combined flight+hotel asks route to get_package_link, which returns TWO
 // urls (flight + hotel) in one call. Distinct failure shape from the
 // price/no-avail cases below: the model can claim "abre los links" with
@@ -1043,6 +1061,20 @@ async function forcedSearchRetry(
   return retry;
 }
 
+// Last TWO assistant turns, not just one — found live that the SINGLE most
+// recent reply is often a short teaser/follow-up ("aquí está el link… ¿te
+// armo paquete con hotel?") that never repeats "vuelo" even when the turn
+// right before it was the actual flight results. WhatsApp's teaser-then-
+// full-reply pattern routinely produces exactly this back-to-back shape.
+function recentAssistantContext(history: Message[]): string | undefined {
+  const recent = history
+    .filter((m) => m.role === "assistant")
+    .slice(-2)
+    .map((m) => m.content)
+    .join(" ");
+  return recent || undefined;
+}
+
 // Which search tool (if any) should have run this turn but didn't, while the
 // reply still shows prices or claims no availability? Clarifying-question
 // replies ("¿de dónde sales?", "¿qué fechas?") carry neither signal, so they
@@ -1052,6 +1084,16 @@ async function forcedSearchRetry(
 export function detectStaleReprint(
   userMessage: string,
   result: { text: string; steps?: ToolCallStep[] },
+  // The immediately preceding assistant message, if any. A follow-up
+  // correction ("el mas barato no es ese, hay uno de Sky a 276") doesn't
+  // repeat "vuelo" — it doesn't need to, the topic is obvious from context —
+  // but FLIGHT_INTENT_RE only ever saw userMessage in isolation. Found live:
+  // this exact correction got a hallucinated bracket-placeholder reply with
+  // zero real link because the flight-intent gate missed it. Folding in the
+  // last assistant turn (not the whole history — a narrow, low-false-
+  // positive window) lets a bare correction still register as flight/hotel
+  // context.
+  previousAssistantMessage?: string,
 ):
   | "search_flights"
   | "search_hotels"
@@ -1060,6 +1102,9 @@ export function detectStaleReprint(
   | "start_itinerary"
   | null {
   const tools = collectToolNames(result);
+  const topicText = previousAssistantMessage
+    ? `${userMessage} ${previousAssistantMessage}`
+    : userMessage;
   // Itinerary hallucination: user explicitly opted in (itinerario + a
   // confirmation word, same turn) but start_itinerary never ran — no trip
   // gets created and the user waits forever for a plan that's never coming.
@@ -1076,7 +1121,13 @@ export function detectStaleReprint(
   // Package hallucination: reply references "los links" for a combined
   // flight+hotel ask, get_package_link never ran, and there isn't even a
   // real /r/ link anywhere to fall back on (nothing for the append-fix to
-  // grab) — the model invented the whole promise.
+  // grab) — the model invented the whole promise. Deliberately gated on
+  // userMessage alone, NOT topicText: the bot routinely offers "paquete
+  // vuelo+hotel" as a follow-up suggestion, so recent context often
+  // contains both words together even when the user is only correcting a
+  // FLIGHT price (found live — widening this branch to topicText made a
+  // plain flight correction misfire into a package search instead of a
+  // flight search). A combined ask has to be explicit THIS turn.
   if (
     !tools.includes("get_package_link") &&
     !result.text.includes("/r/") &&
@@ -1098,7 +1149,8 @@ export function detectStaleReprint(
   if (
     !PRICE_TOKEN_RE.test(result.text) &&
     !NO_AVAIL_RE.test(result.text) &&
-    !falseLinkPromise
+    !falseLinkPromise &&
+    !STALL_CLAIM_RE.test(result.text)
   ) {
     return null;
   }
@@ -1107,15 +1159,15 @@ export function detectStaleReprint(
   // tools on top of it (they'd be redundant, and the package branch above
   // already stood down deliberately once get_package_link ran).
   if (tools.includes("get_package_link")) return null;
-  if (FLIGHT_INTENT_RE.test(userMessage) && !tools.includes("search_flights")) {
+  if (FLIGHT_INTENT_RE.test(topicText) && !tools.includes("search_flights")) {
     return "search_flights";
   }
   if (
-    LODGING_INTENT_RE.test(userMessage) &&
+    LODGING_INTENT_RE.test(topicText) &&
     !tools.includes("search_hotels") &&
     !tools.includes("search_stays")
   ) {
-    return STAYS_HINT_RE.test(userMessage) ? "search_stays" : "search_hotels";
+    return STAYS_HINT_RE.test(topicText) ? "search_stays" : "search_hotels";
   }
   return null;
 }

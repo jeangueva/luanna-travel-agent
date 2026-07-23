@@ -182,7 +182,7 @@ describe("scrubHistoryLinks", () => {
     );
     assert.ok(!out.includes("/r/CpbWiH"));
     assert.ok(!out.includes("/r/AbC123"));
-    assert.ok(out.includes("[link vencido — busca de nuevo]"));
+    assert.ok(out.includes("[SISTEMA: link vencido, no reutilizar]"));
     assert.ok(out.includes("✈️"));
   });
 

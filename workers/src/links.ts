@@ -234,7 +234,17 @@ export function createLinkGuardStream(
 // a link is to run the search tool this turn, which is exactly the product
 // guarantee: every link points at THIS recommendation's live result.
 const R_URL_FULL_RE = /https?:\/\/[^\s"'<>)\]]+\/r\/[A-Za-z0-9_-]{4,32}/g;
-export const EXPIRED_LINK_PLACEHOLDER = "[link vencido — busca de nuevo]";
+// Deliberately NOT natural Spanish prose (found live: a model shown
+// "[link vencido — busca de nuevo]" in scrubbed history later wrote its OWN
+// similar-looking bracketed placeholder — "[link vencimiento — busca de
+// nuevo]" — when it lacked a real link, having apparently learned the
+// bracket-phrase as an acceptable reply shape from seeing it in history.
+// The literal string is stripped from every outbound reply regardless (see
+// sanitizeReply), but a paraphrased copy sails past that exact-match strip.
+// An ALL-CAPS system-token style reads as machinery, not a phrase worth
+// imitating in a warm chat reply — the sanitizeReply strip is now dead code
+// for defense-in-depth rather than the primary defense.
+export const EXPIRED_LINK_PLACEHOLDER = "[SISTEMA: link vencido, no reutilizar]";
 export function scrubHistoryLinks(text: string): string {
   if (!text.includes("/r/")) return text;
   return text.replace(R_URL_FULL_RE, EXPIRED_LINK_PLACEHOLDER);

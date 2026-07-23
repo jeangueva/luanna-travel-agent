@@ -175,13 +175,19 @@ async function findCheapest(
   };
   const flight = json.data?.[0];
   if (!flight) return null;
+  // TP's prices_for_dates sometimes omits `link` on a result (seen live: a
+  // real price-drop alert went out with NO link at all — user had no way to
+  // act on it). Every proactive notification (drop alert, daily offer,
+  // weekend getaway) must always carry something bookable, so fall back to
+  // a generic route search instead of silently dropping the link.
+  const deepLink = flight.link
+    ? `https://www.aviasales.com${flight.link}${flight.link.includes("?") ? "&" : "?"}marker=${env.TRAVELPAYOUTS_MARKER}`
+    : `https://www.aviasales.com/search/${origin}${destination}1?marker=${env.TRAVELPAYOUTS_MARKER}`;
   return {
     price: flight.price,
     airline: flight.airline,
     departure_at: flight.departure_at,
-    link: flight.link
-      ? `https://www.aviasales.com${flight.link}${flight.link.includes("?") ? "&" : "?"}marker=${env.TRAVELPAYOUTS_MARKER}`
-      : null,
+    link: deepLink,
   };
 }
 
