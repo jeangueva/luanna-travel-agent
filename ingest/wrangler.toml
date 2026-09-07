@@ -1,0 +1,38 @@
+name = "luanna-eventos-ingest"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Domingos 02:00 UTC — el pipeline completo (N queries × Brave + 1 llamada al
+# LLM por query) tarda minutos, no segundos. Un cron semanal cabe de sobra en
+# los 15 min de CPU de un scheduled handler en el plan de pago.
+[triggers]
+crons = ["0 2 * * 0"]
+
+[vars]
+# Matriz de búsqueda: categorías × países × años. El cron genera una query por
+# combinación, así que crecer esto multiplica el costo de Brave y del LLM.
+INGEST_CATEGORIAS = "triatlon,aguas_abiertas,maraton,ciclismo"
+INGEST_PAISES = "peru,chile,colombia,mexico,espana"
+INGEST_ANOS = "2026,2027"
+# Modelo de extracción. El PRD pedía claude-3-5-sonnet-20240620; ese id ya no
+# es el vigente ni el más capaz — ver ingest/README.md.
+LLM_MODEL = "claude-opus-5"
+# Tope duro de queries por corrida, para que ampliar la matriz por accidente
+# no se traduzca en una factura sorpresa.
+MAX_QUERIES_POR_CORRIDA = "40"
+
+# Trazados .gpx / .kml. Crear una vez con:
+#   npx wrangler r2 bucket create luanna-gpx
+[[r2_buckets]]
+binding = "GPX"
+bucket_name = "luanna-gpx"
+
+# Secretos (npx wrangler secret put <NOMBRE>):
+#   DATABASE_URL      — el mismo Neon del worker de WhatsApp
+#   BRAVE_API_KEY     — https://brave.com/search/api/
+#   ANTHROPIC_API_KEY — https://console.anthropic.com
+#   MAPBOX_TOKEN      — geocoding de respaldo cuando el LLM no da coordenadas
+#   ADMIN_API_KEY     — protege /admin/* de este worker
+#   REVALIDATE_URL    — https://<web>/api/revalidate (opcional)
+#   REVALIDATE_SECRET — compartido con web/ (opcional)

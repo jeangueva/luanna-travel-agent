@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+.vinext/
+.next/
+next-env.d.ts
+.wrangler/
+*.cpuprofile
+
+.env
+.env.local
