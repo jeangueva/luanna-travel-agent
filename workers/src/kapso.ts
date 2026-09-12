@@ -707,6 +707,7 @@ export async function sendKapsoCtaUrl(params: {
   url: string;
   headerText?: string;
   footerText?: string;
+  timeoutMs?: number;
 }): Promise<void> {
   const url = `https://api.kapso.ai/meta/whatsapp/v24.0/${params.phoneNumberId}/messages`;
   const interactive: Record<string, unknown> = {
@@ -726,19 +727,23 @@ export async function sendKapsoCtaUrl(params: {
   if (params.footerText) {
     interactive.footer = { text: params.footerText.slice(0, 60) };
   }
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": params.apiKey,
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": params.apiKey,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: params.to,
+        type: "interactive",
+        interactive,
+      }),
     },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: params.to,
-      type: "interactive",
-      interactive,
-    }),
-  });
+    { dep: "kapso:send_cta_url", timeoutMs: params.timeoutMs ?? 10000 },
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Kapso CTA url send failed ${res.status}: ${text}`);

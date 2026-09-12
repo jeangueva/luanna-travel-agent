@@ -20,6 +20,7 @@ describe("deriveSuggestions", () => {
   test("last tool with follow-ups wins", () => {
     const s = deriveSuggestions(["search_flights", "search_hotels"]);
     assert.equal(s[0].id, "qr_flights");
+    assert.equal(s[1].id, "qr_hotel_alert");
   });
 
   test("start_itinerary suppresses everything", () => {
@@ -38,6 +39,7 @@ describe("deriveSuggestions", () => {
       "suggest_itinerary",
       "trip_prep",
       "add_watchlist",
+      "add_hotel_watchlist",
     ]) {
       const s = deriveSuggestions([tool]);
       assert.ok(s.length >= 1 && s.length <= 3, tool);
@@ -52,6 +54,10 @@ describe("deriveSuggestions", () => {
 describe("mapTapToMessage", () => {
   test("known id maps to the canned user message", () => {
     assert.match(mapTapToMessage("qr_alert", "🔔 Crear alerta"), /alerta de precio/);
+    assert.match(
+      mapTapToMessage("qr_hotel_alert", "🔔 Alerta hotel"),
+      /estos hoteles.*fechas/i,
+    );
   });
 
   test("unknown id falls back to the visible title", () => {

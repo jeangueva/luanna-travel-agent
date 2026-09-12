@@ -2,6 +2,7 @@ import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   sendKapsoButtons,
+  sendKapsoCtaUrl,
   sendKapsoLocationRequest,
   sendKapsoReaction,
 } from "../src/kapso";
@@ -60,6 +61,36 @@ describe("sendKapsoButtons", () => {
     await assert.rejects(
       sendKapsoButtons({ ...base, bodyText: "x", buttons: [{ id: "a", title: "A" }] }),
       /500/,
+    );
+  });
+});
+
+describe("sendKapsoCtaUrl", () => {
+  test("builds a native URL CTA with the live flight-search link", async () => {
+    await sendKapsoCtaUrl({
+      ...base,
+      bodyText: "✈️ LIM → MAD\nCompara las opciones en vivo",
+      buttonText: "Ver vuelos ✈️",
+      url: "https://luanna.app/r/Live12",
+    });
+    assert.equal(calls.length, 1);
+    const body = calls[0].body as {
+      type: string;
+      interactive: {
+        type: string;
+        action: {
+          name: string;
+          parameters: { display_text: string; url: string };
+        };
+      };
+    };
+    assert.equal(body.type, "interactive");
+    assert.equal(body.interactive.type, "cta_url");
+    assert.equal(body.interactive.action.name, "cta_url");
+    assert.equal(body.interactive.action.parameters.display_text, "Ver vuelos ✈️");
+    assert.equal(
+      body.interactive.action.parameters.url,
+      "https://luanna.app/r/Live12",
     );
   });
 });

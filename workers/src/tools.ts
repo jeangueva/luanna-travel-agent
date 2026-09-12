@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { createWebviewToken } from "./auth";
-import { fetchWithTimeout } from "./http";
+import { fetchWithTimeout, UpstreamTimeoutError } from "./http";
 import {
   sendKapsoCtaUrl,
   sendKapsoFlow,
@@ -13,6 +13,7 @@ import {
   createClickRedirect,
   getPreferences,
   getUserEngagement,
+  recordHotelPriceObservation,
   recordPriceObservation,
   setPendingLinkOptions,
   upsertPreferences,
@@ -181,24 +182,230 @@ export interface TravelpayoutsEnv {
   TRAVELPAYOUTS_MARKER: string;
 }
 
-// Hotel price source, switchable at runtime. "amadeus" pulls real offers from
-// the Amadeus Self-Service API (independent of the Travelpayouts Hotels Data
-// API approval); anything else (default) uses the Hotellook price cache. The
-// booking link stays the Travelpayouts affiliate URL in all cases, so bookings
-// always monetize through TP — Amadeus only supplies display prices.
+// Hotel price source, switchable at runtime. "apify" pulls live Google Hotels
+// results without requiring Travelpayouts Hotels Data API approval; "amadeus"
+// pulls real offers from Amadeus Self-Service; anything else uses the
+// Hotellook price cache. Booking/search links stay separate from the display
+// data, so the provider never receives the user's payment details.
 export interface HotelProviderOpts {
   provider?: string;
+  apify?: { apiToken: string; actorId: string };
   amadeus?: { clientId: string; clientSecret: string; baseURL: string };
 }
 
-interface HotelRow {
+export interface HotelRow {
   name: string | null;
   stars: number | null;
   price_from_usd: number | null;
   price_avg_usd: number | null;
+  price_total_usd?: number | null;
+  rating?: number | null;
+  reviews?: number | null;
+  image_url?: string | null;
+  amenities?: string[];
+  property_token?: string | null;
   location: string | null;
   country: string | null;
   [k: string]: unknown; // local-currency display fields (see localPriceFields)
+}
+
+const APIFY_HOTELS_RUN_TIMEOUT_SECS = 17;
+const APIFY_HOTELS_FETCH_TIMEOUT_MS = 18_000;
+const APIFY_HOTELS_MAX_CHARGE_USD = 0.05;
+
+const ApifyMoneySchema = z
+  .object({
+    extracted: z.union([z.number(), z.string()]).nullish(),
+    currency: z.string().nullish(),
+  })
+  .passthrough();
+
+const ApifyHotelPropertySchema = z
+  .object({
+    name: z.string().nullish(),
+    property_token: z.string().nullish(),
+    rate_per_night: ApifyMoneySchema.nullish(),
+    total_rate: ApifyMoneySchema.nullish(),
+    hotel_class: z.string().nullish(),
+    extracted_hotel_class: z.union([z.number(), z.string()]).nullish(),
+    overall_rating: z.union([z.number(), z.string()]).nullish(),
+    reviews: z.union([z.number(), z.string()]).nullish(),
+    address: z.string().nullish(),
+    images: z.array(z.string()).nullish(),
+    amenities: z.array(z.string()).nullish(),
+  })
+  .passthrough();
+
+const ApifyHotelPagesSchema = z.array(
+  z
+    .object({
+      properties: z.array(ApifyHotelPropertySchema).nullish(),
+    })
+    .passthrough(),
+);
+
+function positiveNumber(
+  value: number | string | null | undefined,
+): number | null {
+  const parsed =
+    typeof value === "string" ? Number(value.replace(/,/g, "")) : value;
+  return typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : null;
+}
+
+function usdAmount(
+  money: z.infer<typeof ApifyMoneySchema> | null | undefined,
+): number | null {
+  if (money?.currency && money.currency.toUpperCase() !== "USD") return null;
+  return positiveNumber(money?.extracted);
+}
+
+function parsedStars(
+  extracted: number | string | null | undefined,
+  label: string | null | undefined,
+): number | null {
+  const direct = positiveNumber(extracted);
+  const fromLabel = label?.match(/([1-5](?:\.\d+)?)\s*star/i)?.[1];
+  const stars = direct ?? positiveNumber(fromLabel);
+  return stars != null && stars <= 5 ? stars : null;
+}
+
+function stayNights(checkin: string, checkout: string): number {
+  const from = Date.parse(`${checkin}T00:00:00Z`);
+  const to = Date.parse(`${checkout}T00:00:00Z`);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 1;
+  return Math.max(1, Math.round((to - from) / 86_400_000));
+}
+
+/**
+ * Validate and normalize Apify's one-dataset-item-per-page response. Rates are
+ * requested in USD; an explicitly different currency is rejected rather than
+ * mislabeled. Missing nightly/total values are derived from the other value.
+ */
+export function normalizeApifyHotelPages(
+  raw: unknown,
+  nights: number,
+  fx: LocalFx | null,
+): HotelRow[] {
+  const parsed = ApifyHotelPagesSchema.safeParse(raw);
+  if (!parsed.success) return [];
+
+  const safeNights = Math.max(1, Math.round(nights));
+  const rows: HotelRow[] = [];
+  const seen = new Set<string>();
+  for (const page of parsed.data) {
+    for (const property of page.properties ?? []) {
+      const name = property.name?.trim();
+      if (!name) continue;
+      const statedNightly = usdAmount(property.rate_per_night);
+      const statedTotal = usdAmount(property.total_rate);
+      const nightly =
+        statedNightly ??
+        (statedTotal != null ? statedTotal / safeNights : null);
+      if (nightly == null) continue;
+      const total = statedTotal ?? nightly * safeNights;
+      const priceNightly = Math.round(nightly);
+      const priceTotal = Math.round(total);
+      const dedupeKey =
+        property.property_token?.trim() ||
+        `${name.toLowerCase()}|${property.address?.trim().toLowerCase() ?? ""}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const rating = positiveNumber(property.overall_rating);
+      const reviews = positiveNumber(property.reviews);
+      rows.push({
+        name,
+        stars: parsedStars(property.extracted_hotel_class, property.hotel_class),
+        price_from_usd: priceNightly,
+        ...localPriceFields(priceNightly, fx, "price_from"),
+        price_avg_usd: null,
+        price_total_usd: priceTotal,
+        ...localPriceFields(priceTotal, fx, "price_total"),
+        rating: rating != null && rating <= 5 ? rating : null,
+        reviews: reviews != null ? Math.round(reviews) : null,
+        location: property.address?.trim() || null,
+        country: null,
+        image_url: property.images?.find((image) => image.trim()) ?? null,
+        amenities: (property.amenities ?? []).slice(0, 5),
+        property_token: property.property_token?.trim() || null,
+      });
+    }
+  }
+
+  return rows
+    .sort((a, b) => (a.price_from_usd ?? 0) - (b.price_from_usd ?? 0))
+    .slice(0, 5);
+}
+
+function normalizeApifyActorId(actorId: string): string | null {
+  const normalized = actorId.trim().replace(/\//g, "~");
+  return /^[A-Za-z0-9._-]+(?:~[A-Za-z0-9._-]+)?$/.test(normalized)
+    ? normalized
+    : null;
+}
+
+export async function searchApifyHotels(
+  cfg: { apiToken: string; actorId: string },
+  city: string,
+  checkin: string,
+  checkout: string,
+  adults: number,
+  fx: LocalFx | null,
+): Promise<HotelRow[] | null> {
+  const actorId = normalizeApifyActorId(cfg.actorId);
+  if (!actorId || !cfg.apiToken) return null;
+
+  const url = new URL(
+    `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/run-sync-get-dataset-items`,
+  );
+  // One search page is enough for the five options shown in WhatsApp. The
+  // charge ceiling protects the MVP from accidental pagination/price changes;
+  // the actor timeout ends the run before our HTTP timeout, avoiding orphaned
+  // paid work after the interactive reply has already fallen back.
+  url.searchParams.set("clean", "1");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("timeout", String(APIFY_HOTELS_RUN_TIMEOUT_SECS));
+  url.searchParams.set(
+    "maxTotalChargeUsd",
+    String(APIFY_HOTELS_MAX_CHARGE_USD),
+  );
+
+  try {
+    const res = await fetchWithTimeout(
+      url.toString(),
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${cfg.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          search_type: "search",
+          q: `hotels in ${city}`,
+          gl: "us",
+          hl: "es",
+          currency: "USD",
+          check_in_date: checkin,
+          check_out_date: checkout,
+          adults,
+          max_pages: 1,
+        }),
+      },
+      { dep: "apify:google_hotels", timeoutMs: APIFY_HOTELS_FETCH_TIMEOUT_MS },
+    );
+    if (!res.ok) return null;
+    const data: unknown = await res.json().catch(() => null);
+    return normalizeApifyHotelPages(
+      data,
+      stayNights(checkin, checkout),
+      fx,
+    );
+  } catch {
+    return null;
+  }
 }
 
 // OAuth2 client-credentials token for Amadeus. Fetched per search (Workers are
@@ -615,6 +822,7 @@ export function makeAddWatchlistTool(args: { sql: Sql; userId: number }) {
         // always alerts on real price drops (it uses drop detection, not this
         // value). Matches the web /api/watchlist behavior.
         destination,
+        alert_type: "flight",
         destination_iata: destination_iata.toUpperCase(),
         origin_iata: origin_iata.toUpperCase(),
         max_price: max_price_usd ?? 999_999,
@@ -622,6 +830,105 @@ export function makeAddWatchlistTool(args: { sql: Sql; userId: number }) {
         frequency_days,
       });
       return { id, ok: true };
+    },
+  });
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isExactIsoDate(value: string): boolean {
+  if (!ISO_DATE_PATTERN.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return (
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value
+  );
+}
+
+export function isValidHotelStayRange(
+  checkin: string,
+  checkout: string,
+  today = new Date().toISOString().slice(0, 10),
+): boolean {
+  return (
+    isExactIsoDate(checkin) &&
+    isExactIsoDate(checkout) &&
+    checkin >= today &&
+    checkout > checkin
+  );
+}
+
+export function makeAddHotelWatchlistTool(args: {
+  sql: Sql;
+  userId: number;
+}) {
+  return tool({
+    description:
+      "Crea una alerta de precio de HOTEL para una ciudad y fechas exactas. " +
+      "Úsala cuando el usuario diga 'avísame si bajan los hoteles', 'monitorea alojamiento en X' o quiera vigilar la tarifa de hotel de una estadía. " +
+      "Necesita ciudad, check-in y check-out. El precio máximo por noche es OPCIONAL: si no lo menciona, crea la alerta igual sin preguntarlo.",
+    inputSchema: z.object({
+      city: z.string().min(2).max(100).describe("Ciudad en idioma natural"),
+      checkin: z.string().describe("Check-in YYYY-MM-DD"),
+      checkout: z.string().describe("Check-out YYYY-MM-DD"),
+      adults: z
+        .number()
+        .int()
+        .min(1)
+        .max(16)
+        .default(2)
+        .describe("Número de huéspedes adultos"),
+      max_price_per_night_usd: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Tope por noche en USD, solo si el usuario lo indicó"),
+      frequency_days: z
+        .number()
+        .int()
+        .min(1)
+        .max(30)
+        .optional()
+        .describe("Cada cuántos días revisar; default 1"),
+    }),
+    execute: async ({
+      city,
+      checkin,
+      checkout,
+      adults,
+      max_price_per_night_usd,
+      frequency_days,
+    }) => {
+      if (!isValidHotelStayRange(checkin, checkout)) {
+        return {
+          ok: false,
+          error:
+            "Las fechas deben ser YYYY-MM-DD, el check-in no puede estar en el pasado y el check-out debe ser posterior.",
+        };
+      }
+      const cleanCity = city.trim();
+      const { id } = await addWatchlistItem(args.sql, args.userId, {
+        alert_type: "hotel",
+        destination: cleanCity,
+        destination_iata: null,
+        origin_iata: null,
+        checkin,
+        checkout,
+        adults,
+        max_price: max_price_per_night_usd ?? 999_999,
+        currency: "USD",
+        frequency_days: frequency_days ?? 1,
+      });
+      return {
+        id,
+        ok: true,
+        city: cleanCity,
+        checkin,
+        checkout,
+        adults,
+        max_price_per_night_usd: max_price_per_night_usd ?? null,
+      };
     },
   });
 }
@@ -705,20 +1012,43 @@ export function makePreferencesFlowTool(args: {
   });
 }
 
-interface TravelpayoutsFlight {
-  origin: string;
-  destination: string;
-  price: number;
-  airline: string;
-  flight_number: string | number;
-  departure_at: string;
-  return_at?: string;
-  transfers: number;
-  return_transfers?: number;
-  duration_to?: number;
-  duration_back?: number;
-  link?: string;
-}
+const TravelpayoutsFlightSchema = z
+  .object({
+    origin: z.string(),
+    destination: z.string(),
+    price: z.number().finite().nonnegative(),
+    airline: z.string(),
+    flight_number: z.union([z.string(), z.number()]),
+    departure_at: z.string(),
+    return_at: z.string().nullish(),
+    transfers: z.number().int().nonnegative(),
+    return_transfers: z.number().int().nonnegative().nullish(),
+    duration_to: z.number().nonnegative().nullish(),
+    duration_back: z.number().nonnegative().nullish(),
+    link: z.string().nullish(),
+  })
+  .passthrough();
+
+const TravelpayoutsFlightsResponseSchema = z
+  .object({ data: z.array(z.unknown()) })
+  .passthrough();
+
+type TravelpayoutsFlight = z.infer<typeof TravelpayoutsFlightSchema>;
+
+type FlightFetchFailureReason =
+  | "authentication_error"
+  | "invalid_response"
+  | "rate_limited"
+  | "upstream_error"
+  | "upstream_timeout";
+
+export type FlightSearchFallbackReason =
+  | "authentication_error"
+  | "no_cached_prices"
+  | "partial_upstream_failure"
+  | "rate_limited"
+  | "upstream_error"
+  | "upstream_timeout";
 
 // Resolve a user-supplied place (city name OR IATA, any language) to a
 // Travelpayouts city/airport code via the public autocomplete. The model is
@@ -773,6 +1103,17 @@ export interface FlightTeaser {
   link: string | null;
 }
 
+export interface FlightSearchFallback {
+  originIata: string;
+  destIata: string;
+  departureWindow: string | null;
+  returnDate: string | null;
+  oneWay: boolean;
+  passengers: number;
+  searchUrl: string;
+  reason: FlightSearchFallbackReason;
+}
+
 const SPANISH_MONTHS_SHORT = [
   "ene", "feb", "mar", "abr", "may", "jun",
   "jul", "ago", "sep", "oct", "nov", "dic",
@@ -802,10 +1143,60 @@ export function formatFlightTeaser(
   return lines.join("\n");
 }
 
+function formatFlightSearchDate(value: string): string {
+  const exact = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const month = value.match(/^(\d{4})-(\d{2})$/);
+  const yyyy = Number(exact?.[1] ?? month?.[1]);
+  const mm = Number(exact?.[2] ?? month?.[2]);
+  if (!Number.isInteger(yyyy) || mm < 1 || mm > 12) return value;
+  const monthLabel = SPANISH_MONTHS_SHORT[mm - 1];
+  return exact ? `${Number(exact[3])} ${monthLabel} ${yyyy}` : `${monthLabel} ${yyyy}`;
+}
+
+/** Deterministic live-search fallback used outside the language model. */
+export function formatFlightSearchFallback(
+  fallback: FlightSearchFallback,
+  opts?: { omitLink?: boolean },
+): string {
+  const tripType = fallback.oneWay ? "solo ida" : "ida y vuelta";
+  const dates: string[] = [];
+  if (fallback.departureWindow) {
+    dates.push(`sale ${formatFlightSearchDate(fallback.departureWindow)}`);
+  } else {
+    dates.push("fechas flexibles");
+  }
+  if (!fallback.oneWay && fallback.returnDate) {
+    dates.push(`vuelve ${formatFlightSearchDate(fallback.returnDate)}`);
+  }
+  const group = fallback.passengers > 1
+    ? ` · ${fallback.passengers} pasajeros`
+    : "";
+  const lines = [
+    `✈️ ${fallback.originIata} → ${fallback.destIata}`,
+    `${tripType} · ${dates.join(" · ")}${group}`,
+    "Te dejo la búsqueda en vivo con todas las opciones disponibles 👇",
+  ];
+  if (!opts?.omitLink) lines.push(fallback.searchUrl);
+  return lines.join("\n");
+}
+
+function classifyFlightFallbackReason(
+  successfulWindows: number,
+  failures: FlightFetchFailureReason[],
+): FlightSearchFallbackReason {
+  if (failures.length === 0) return "no_cached_prices";
+  if (successfulWindows > 0) return "partial_upstream_failure";
+  if (failures.includes("authentication_error")) return "authentication_error";
+  if (failures.includes("rate_limited")) return "rate_limited";
+  if (failures.includes("upstream_timeout")) return "upstream_timeout";
+  return "upstream_error";
+}
+
 export function makeFlightSearchTool(
   env: TravelpayoutsEnv,
   click?: ClickContext,
   onTopResult?: (teaser: FlightTeaser) => Promise<boolean>,
+  onFallbackResult?: (fallback: FlightSearchFallback) => Promise<boolean>,
 ) {
   return tool({
     description:
@@ -875,6 +1266,7 @@ export function makeFlightSearchTool(
         return {
           flights: [],
           error: "place_unresolved",
+          search_status: "place_unresolved",
           note: `No pude identificar ${which} ("${!originIata ? origin : destination}"). Pídele al usuario que confirme la ciudad o el aeropuerto.`,
         };
       }
@@ -883,6 +1275,8 @@ export function makeFlightSearchTool(
       // a return_at it picks) when one_way=false, even if the user didn't give
       // a return date. Only search one-way when explicitly requested.
       const oneWay = one_way ?? false;
+      const fetchFailures: FlightFetchFailureReason[] = [];
+      let successfulWindows = 0;
       // When filtering by a specific airline, pull a wider pool so enough of
       // that carrier's flights survive the filter; otherwise 5 is plenty.
       const fetchLimit = airline ? "100" : "5";
@@ -895,6 +1289,7 @@ export function makeFlightSearchTool(
         if (departureAt) url.searchParams.set("departure_at", departureAt);
         if (return_date) url.searchParams.set("return_at", return_date);
         url.searchParams.set("one_way", oneWay ? "true" : "false");
+        url.searchParams.set("direct", "false");
         url.searchParams.set("currency", "usd");
         url.searchParams.set("sorting", "price");
         url.searchParams.set("limit", fetchLimit);
@@ -914,17 +1309,54 @@ export function makeFlightSearchTool(
         // parallel, so one slow Travelpayouts response must not stall the whole
         // turn. A timed-out/failed window degrades to no results for that month
         // instead of hanging — the other windows still return.
+        const failed = (
+          reason: FlightFetchFailureReason,
+          status?: number,
+        ): TravelpayoutsFlight[] => {
+          fetchFailures.push(reason);
+          console.error(JSON.stringify({
+            message: "travelpayouts flight window failed",
+            origin: originIata,
+            destination: destIata,
+            departure_window: departureAt ?? null,
+            reason,
+            status: status ?? null,
+          }));
+          return [];
+        };
         try {
           const res = await fetchWithTimeout(
             buildUrl(departureAt),
             { headers: baseHeaders },
             { dep: "travelpayouts:flights", timeoutMs: 8000 },
           );
-          if (!res.ok) return [];
-          const json = (await res.json()) as { data?: TravelpayoutsFlight[] };
-          return json.data ?? [];
-        } catch {
-          return [];
+          if (!res.ok) {
+            const reason: FlightFetchFailureReason =
+              res.status === 401 || res.status === 403
+                ? "authentication_error"
+                : res.status === 429
+                  ? "rate_limited"
+                  : "upstream_error";
+            return failed(reason, res.status);
+          }
+          const rawJson: unknown = await res.json().catch(() => null);
+          const envelope = TravelpayoutsFlightsResponseSchema.safeParse(rawJson);
+          if (!envelope.success) return failed("invalid_response", res.status);
+          const parsedFlights = envelope.data.data.flatMap((row) => {
+            const parsed = TravelpayoutsFlightSchema.safeParse(row);
+            return parsed.success ? [parsed.data] : [];
+          });
+          if (envelope.data.data.length > 0 && parsedFlights.length === 0) {
+            return failed("invalid_response", res.status);
+          }
+          successfulWindows += 1;
+          return parsedFlights;
+        } catch (err) {
+          return failed(
+            err instanceof UpstreamTimeoutError
+              ? "upstream_timeout"
+              : "upstream_error",
+          );
         }
       };
 
@@ -1084,13 +1516,11 @@ export function makeFlightSearchTool(
           link: top.link,
         }).catch(() => false);
       }
-      // True zero: TP's fare cache has nothing for this route in the next 6
-      // months (already includes connections — prices_for_dates has no
-      // direct-only filter). Rather than leave the user with just "no
-      // encontré", hand them a live Aviasales search deep-link — same
-      // fallback pattern search_hotels uses with booking_url. DDMM date
-      // segments are optional in Aviasales's path format (verified: bare
-      // "LIMASU1" resolves), so this works even with no date given.
+      // No-card path: either the recent-price data is empty or an upstream
+      // window failed. Never translate either state into "there are no
+      // flights". Hand the user a live Aviasales search deep-link instead.
+      // DDMM date segments are optional in Aviasales's path format (verified:
+      // bare "LIMASU1" resolves), so this also works without an exact date.
       let noResultsSearchUrl: string | null = null;
       if (flights.length === 0) {
         const toDDMM = (date: string | undefined): string => {
@@ -1106,19 +1536,52 @@ export function makeFlightSearchTool(
           `https://www.aviasales.com/search/${flightPath}?marker=${env.TRAVELPAYOUTS_MARKER}`,
         );
       }
+      const fallbackReason = classifyFlightFallbackReason(
+        successfulWindows,
+        fetchFailures,
+      );
+      let fallbackSent = false;
+      if (onFallbackResult && noResultsSearchUrl) {
+        fallbackSent = await onFallbackResult({
+          originIata,
+          destIata,
+          departureWindow: departure_date ?? departure_month ?? null,
+          returnDate: return_date ?? null,
+          oneWay,
+          passengers: pax,
+          searchUrl: noResultsSearchUrl,
+          reason: fallbackReason,
+        }).catch((err) => {
+          console.error(JSON.stringify({
+            message: "flight live-search fallback delivery failed",
+            origin: originIata,
+            destination: destIata,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+          return false;
+        });
+      }
       return {
         flights: flightsForModel,
         resolved_origin: originIata,
         resolved_destination: destIata,
         scanned_months: scannedMonths,
+        search_status: flights.length > 0 ? "results" : fallbackReason,
+        ...(flights.length === 0 && fetchFailures.length > 0
+          ? { upstream_failure_reasons: [...new Set(fetchFailures)] }
+          : {}),
         // True when the user's exact date/month had nothing and we broadened the
         // window. The model should tell the user the shown options are for other
         // dates, not their requested one.
         widened_search: widened,
         ...(flights.length === 0
           ? {
-              search_url: noResultsSearchUrl,
-              note: "No tenemos precios guardados para esta ruta en los próximos 6 meses (la búsqueda ya incluyó vuelos con escala, no solo directos). NUNCA uses palabras técnicas como 'cache', 'API' o 'error' — habla como persona. NO te disculpes ni digas que hubo un problema técnico: entrega el search_url TAL CUAL para que el usuario vea las opciones en vivo, y sugiere alternativas (otra fecha, aeropuerto cercano, confirmar origen/destino).",
+              ...(fallbackSent
+                ? { live_search_already_sent: true }
+                : { search_url: noResultsSearchUrl }),
+              note: fallbackSent
+                ? "La búsqueda en vivo YA le llegó al usuario como un botón aparte. NO repitas ni inventes el link, NO digas que no existen vuelos y NO menciones palabras técnicas. Solo dile brevemente que puede comparar las opciones en el botón y ofrece probar otra fecha o aeropuerto cercano."
+                : "No hay un precio confirmado en nuestros datos para esta ruta. NUNCA digas que no existen vuelos ni uses palabras técnicas como 'cache', 'API' o 'error'. Entrega el search_url TAL CUAL para que el usuario vea todas las opciones disponibles en vivo y sugiere otra fecha o aeropuerto cercano.",
             }
           : {}),
         ...(flights.length > 1
@@ -1185,7 +1648,7 @@ function buildBookingSearchUrl(args: {
   return url.toString();
 }
 
-function buildHotelSearchUrl(args: {
+export function buildHotelSearchUrl(args: {
   city: string;
   checkin: string;
   checkout: string;
@@ -1214,7 +1677,7 @@ export function makeHotelSearchTool(
 ) {
   return tool({
     description:
-      "Busca hoteles en una ciudad. SIEMPRE devuelve un 'search_url' (link Hotellook con marker afiliado) y un 'booking_url' (búsqueda directa en Booking.com con ciudad/fechas prellenadas); cuando hay datos en cache, además hasta 5 opciones con precio promedio (USD). Si no hay precios, el booking_url es la respuesta: compártelo con seguridad, sin disculparte. " +
+      "Busca hoteles reales en una ciudad. SIEMPRE devuelve un 'search_url' (comparador con marker afiliado) y un 'booking_url' (búsqueda directa en Booking.com con ciudad/fechas prellenadas); cuando el proveedor tiene inventario, además devuelve hasta 5 opciones con precio actual por noche y total en USD. Si no hay precios, el booking_url es la respuesta: compártelo con seguridad, sin disculparte. " +
       "El nombre de la ciudad debe ir en inglés o español ('Madrid', 'Cancun', 'Buenos Aires'). " +
       "Las fechas son YYYY-MM-DD. Si el usuario no las da, pídele check-in y check-out exactos antes de llamar.",
     inputSchema: z.object({
@@ -1269,6 +1732,58 @@ export function makeHotelSearchTool(
         note:
           "Sin muestras de precio para esta búsqueda. NO te disculpes ni digas que hubo un error: entrega el booking_url TAL CUAL (ya lleva ciudad y fechas) para que el usuario vea los hoteles disponibles, y menciona el search_url como comparador alternativo. Para que sea útil, agrega 1-2 líneas de contexto real de la ciudad: mejores zonas donde alojarse y un RANGO típico de precio por noche (aclara que es aproximado, NO inventes precios exactos ni nombres de hoteles). UN solo mensaje.",
       };
+
+      // Provider: live Google Hotels results through Apify. It is independent
+      // of Travelpayouts Hotels Data API approval, so it works from day one.
+      // Search/Booking links remain the action layer and preserve click data.
+      if (hotelOpts?.provider === "apify") {
+        if (hotelOpts.apify) {
+          const rows = await searchApifyHotels(
+            hotelOpts.apify,
+            city,
+            checkin,
+            checkout,
+            adults,
+            fx,
+          );
+          if (rows && rows.length > 0) {
+            const cheapest = rows[0];
+            if (
+              click &&
+              cheapest.name &&
+              cheapest.price_from_usd != null &&
+              cheapest.price_total_usd != null
+            ) {
+              try {
+                await recordHotelPriceObservation(click.sql, {
+                  city,
+                  propertyToken: cheapest.property_token,
+                  propertyName: cheapest.name,
+                  checkin,
+                  checkout,
+                  adults,
+                  pricePerNightUsd: cheapest.price_from_usd,
+                  priceTotalUsd: cheapest.price_total_usd,
+                  source: "tool_search",
+                });
+              } catch (err) {
+                console.error("hotel search observation failed", err);
+              }
+            }
+            return {
+              hotels: rows,
+              search_url,
+              booking_url,
+              price_note:
+                "price_from_usd es el precio por noche; price_total_usd es el total para las fechas solicitadas.",
+              currency_note: LOCAL_CURRENCY_NOTE,
+            };
+          }
+        }
+        // Missing token, timeout, empty inventory, or upstream failure: use
+        // the direct searches and never fall through to the gated cache.
+        return linkOnly;
+      }
 
       // Provider: Amadeus (real offers, independent of the TP Hotels Data API)
       // when enabled + configured; the booking link stays the TP affiliate URL.

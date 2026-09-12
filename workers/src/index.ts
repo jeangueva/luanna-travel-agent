@@ -99,9 +99,12 @@ import { inferOriginFromPhone, nearestAirport } from "./geo";
 import { buildLuannaSystemPrompt } from "./prompt";
 import {
   makeAddFavoritePlacesTool,
+  makeAddHotelWatchlistTool,
   makeAddWatchlistTool,
   makeStartItineraryTool,
+  formatFlightSearchFallback,
   formatFlightTeaser,
+  type FlightSearchFallback,
   type FlightTeaser,
   makeFlightSearchTool,
   makeHotelSearchTool,
@@ -117,6 +120,7 @@ import {
   makeSuggestItineraryTool,
   makeTripPrepTool,
   makeMyRewardsTool,
+  type HotelProviderOpts,
   type ItineraryRequest,
 } from "./tools";
 import {
@@ -162,8 +166,11 @@ export interface Env {
   GEMINI_MODEL?: string;
   DEEPSEEK_API_KEY?: string;
   DEEPSEEK_MODEL?: string;
-  // Hotel price source: "amadeus" (real offers) or default (Hotellook cache).
+  // Hotel price source: "apify" (live Google Hotels), "amadeus", or default
+  // (Hotellook cache). API tokens stay in Worker secrets.
   HOTELS_PROVIDER?: string;
+  APIFY_API_TOKEN?: string;
+  APIFY_HOTELS_ACTOR_ID?: string;
   AMADEUS_CLIENT_ID?: string;
   AMADEUS_CLIENT_SECRET?: string;
   AMADEUS_BASE_URL?: string;
@@ -593,19 +600,35 @@ function buildLLMArgs(
         phone: ctx.to ?? null,
       }
     : undefined;
-  const hotelOpts =
+  let hotelOpts: HotelProviderOpts | undefined;
+  if (env.HOTELS_PROVIDER === "apify") {
+    hotelOpts = {
+      provider: "apify",
+      ...(env.APIFY_API_TOKEN
+        ? {
+            apify: {
+              apiToken: env.APIFY_API_TOKEN,
+              actorId:
+                env.APIFY_HOTELS_ACTOR_ID ??
+                "johnvc~google-hotels-search-scraper",
+            },
+          }
+        : {}),
+    };
+  } else if (
     env.HOTELS_PROVIDER === "amadeus" &&
     env.AMADEUS_CLIENT_ID &&
     env.AMADEUS_CLIENT_SECRET
-      ? {
-          provider: "amadeus",
-          amadeus: {
-            clientId: env.AMADEUS_CLIENT_ID,
-            clientSecret: env.AMADEUS_CLIENT_SECRET,
-            baseURL: env.AMADEUS_BASE_URL ?? "https://test.api.amadeus.com",
-          },
-        }
-      : undefined;
+  ) {
+    hotelOpts = {
+      provider: "amadeus",
+      amadeus: {
+        clientId: env.AMADEUS_CLIENT_ID,
+        clientSecret: env.AMADEUS_CLIENT_SECRET,
+        baseURL: env.AMADEUS_BASE_URL ?? "https://test.api.amadeus.com",
+      },
+    };
+  }
   // "scrape" = Airbnb+Booking scraper service; "airbnb" kept as legacy alias.
   const staysOpts =
     (env.STAYS_PROVIDER === "scrape" || env.STAYS_PROVIDER === "airbnb") &&
@@ -676,8 +699,78 @@ function buildLLMArgs(
           return true;
         }
       : undefined;
+  // Empty-price fallback (WhatsApp only): deliver the live search as a native
+  // CTA from the Worker itself. This must not depend on the model copying or
+  // even mentioning search_url. Keep distinct date windows distinct (June and
+  // July searches should each work), while suppressing exact duplicate pushes.
+  const fallbackSearchesSent = new Set<string>();
+  const onFallbackResult =
+    inWhatsApp && ctx.userId > 0
+      ? async (fallback: FlightSearchFallback): Promise<boolean> => {
+          const key = [
+            fallback.originIata,
+            fallback.destIata,
+            fallback.departureWindow ?? "flex",
+            fallback.returnDate ?? "open",
+            fallback.oneWay ? "ow" : "rt",
+            fallback.passengers,
+          ].join("|");
+          if (fallbackSearchesSent.has(key)) return true;
+          fallbackSearchesSent.add(key);
+
+          const body = formatFlightSearchFallback(fallback, { omitLink: true });
+          try {
+            await sendKapsoCtaUrl({
+              apiKey: env.KAPSO_API_KEY,
+              phoneNumberId: ctx.phoneNumberId!,
+              to: ctx.to!,
+              bodyText: body,
+              buttonText: "Ver vuelos ✈️",
+              url: fallback.searchUrl,
+            });
+          } catch (err) {
+            console.error("flight fallback CTA failed, falling back to text", err);
+            try {
+              await sendKapsoText({
+                apiKey: env.KAPSO_API_KEY,
+                phoneNumberId: ctx.phoneNumberId!,
+                to: ctx.to!,
+                body: formatFlightSearchFallback(fallback),
+              });
+            } catch (textErr) {
+              fallbackSearchesSent.delete(key);
+              throw textErr;
+            }
+          }
+
+          // Store the actionable URL even when WhatsApp rendered it behind a
+          // CTA button. Explicit `void` marks these best-effort background
+          // operations as intentionally detached from the search latency.
+          void appendMessage(
+            ctx.sql,
+            ctx.userId,
+            "assistant",
+            formatFlightSearchFallback(fallback),
+          ).catch((err) =>
+            console.error("appendMessage flight fallback failed", err),
+          );
+          if (ctx.typingMessageId) {
+            void sendKapsoTypingIndicator({
+              apiKey: env.KAPSO_API_KEY,
+              phoneNumberId: ctx.phoneNumberId!,
+              messageId: ctx.typingMessageId,
+            });
+          }
+          return true;
+        }
+      : undefined;
   const tools = {
-    search_flights: makeFlightSearchTool(tpEnv, clickCtx, onTopResult),
+    search_flights: makeFlightSearchTool(
+      tpEnv,
+      clickCtx,
+      onTopResult,
+      onFallbackResult,
+    ),
     search_hotels: makeHotelSearchTool(tpEnv, clickCtx, hotelOpts),
     search_stays: makeStaysSearchTool(tpEnv, clickCtx, staysOpts),
     get_package_link: makePackageLinkTool(tpEnv, clickCtx),
@@ -718,6 +811,10 @@ function buildLLMArgs(
             }),
           }),
     add_watchlist: makeAddWatchlistTool({
+      sql: ctx.sql,
+      userId: ctx.userId,
+    }),
+    add_hotel_watchlist: makeAddHotelWatchlistTool({
       sql: ctx.sql,
       userId: ctx.userId,
     }),
@@ -2092,7 +2189,10 @@ async function handleKapsoWebhook(
           }
           // Alert created this turn → react ✅ to the user's message. Cosmetic,
           // fire-and-forget, never blocks or fails the reply.
-          if (toolsUsed.value.includes("add_watchlist")) {
+          if (
+            toolsUsed.value.includes("add_watchlist") ||
+            toolsUsed.value.includes("add_hotel_watchlist")
+          ) {
             ctx.waitUntil(
               sendKapsoReaction({
                 apiKey: env.KAPSO_API_KEY,

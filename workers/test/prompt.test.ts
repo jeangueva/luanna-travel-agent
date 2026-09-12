@@ -77,5 +77,9 @@ describe("buildLuannaSystemPrompt — personality is non-empty", () => {
     assert.match(prompt, /search_hotels/);
     assert.match(prompt, /get_package_link/);
     assert.match(prompt, /add_watchlist/);
+    assert.match(prompt, /add_hotel_watchlist/);
+    assert.match(prompt, /YA probó la fecha exacta, el mes y hasta 6 meses/);
+    assert.match(prompt, /NO vuelvas a llamarla sin fechas/);
+    assert.match(prompt, /live_search_already_sent/);
   });
 });

@@ -1,16 +1,19 @@
 import {
   cleanupRateLimitsAndWebhooks,
   createClickRedirect,
+  deactivateWatchlistItem,
   findNudgeCandidates,
   findStaggeredNudgeCandidates,
   getDb,
   getDueWatchlist,
+  getHotelPriceBaseline,
   getOfferEligibleUsers,
   getPriceBaseline,
   markUserNudged,
   markUserOfferSent,
   markWatchlistChecked,
   recordError,
+  recordHotelPriceObservation,
   recordPriceObservation,
   summarizeRecentErrors,
   type DueWatchlistRow,
@@ -21,7 +24,13 @@ import {
 import { sendKapsoText, sendKapsoTemplate, isOutside24hWindow } from "./kapso";
 import { distinctIdForUser, track } from "./posthog";
 import { HOLIDAYS, holidaysWithinDays } from "./holidays";
-import { isShortLink, wrapClickUrl } from "./tools";
+import {
+  buildHotelSearchUrl,
+  isShortLink,
+  searchApifyHotels,
+  wrapClickUrl,
+  type HotelRow,
+} from "./tools";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 
@@ -30,6 +39,8 @@ export interface CronEnv {
   KAPSO_API_KEY: string;
   TRAVELPAYOUTS_TOKEN: string;
   TRAVELPAYOUTS_MARKER: string;
+  APIFY_API_TOKEN?: string;
+  APIFY_HOTELS_ACTOR_ID?: string;
   ANTHROPIC_API_KEY?: string;
   LUANNA_MODEL?: string;
   ALERT_WEBHOOK_URL?: string;
@@ -259,11 +270,249 @@ async function sendProactive(
   }
 }
 
+export type HotelOpportunityKind =
+  | "activation"
+  | "target"
+  | "drop"
+  | "none";
+
+export interface HotelOpportunity {
+  kind: HotelOpportunityKind;
+  pctBelowAverage: number | null;
+}
+
+export function classifyHotelOpportunity(args: {
+  currentPricePerNightUsd: number;
+  maxPricePerNightUsd: number;
+  marketBaseline: {
+    observations: number;
+    avg_price_usd: number;
+    min_price_usd: number;
+  } | null;
+  watchlistBaseline: {
+    observations: number;
+    avg_price_usd: number;
+    min_price_usd: number;
+  } | null;
+  hasNotified: boolean;
+  dropCooldownSatisfied: boolean;
+}): HotelOpportunity {
+  const hasTarget = args.maxPricePerNightUsd < 999_999;
+  const targetWasNotPreviouslySeen =
+    !args.watchlistBaseline ||
+    args.watchlistBaseline.min_price_usd > args.maxPricePerNightUsd;
+  if (
+    hasTarget &&
+    args.currentPricePerNightUsd <= args.maxPricePerNightUsd &&
+    targetWasNotPreviouslySeen
+  ) {
+    return { kind: "target", pctBelowAverage: null };
+  }
+
+  if (!args.hasNotified) {
+    return { kind: "activation", pctBelowAverage: null };
+  }
+
+  if (
+    args.dropCooldownSatisfied &&
+    args.marketBaseline &&
+    args.marketBaseline.observations >= 3 &&
+    args.marketBaseline.avg_price_usd > 0
+  ) {
+    const pctBelowAverage = Math.round(
+      ((args.marketBaseline.avg_price_usd - args.currentPricePerNightUsd) /
+        args.marketBaseline.avg_price_usd) *
+        100,
+    );
+    if (pctBelowAverage >= 10) {
+      return { kind: "drop", pctBelowAverage };
+    }
+  }
+
+  return { kind: "none", pctBelowAverage: null };
+}
+
+function hotelPrice(row: HotelRow): {
+  name: string;
+  nightly: number;
+  total: number;
+  propertyToken: string | null;
+} | null {
+  if (
+    !row.name ||
+    row.price_from_usd == null ||
+    row.price_total_usd == null
+  ) {
+    return null;
+  }
+  return {
+    name: row.name,
+    nightly: row.price_from_usd,
+    total: row.price_total_usd,
+    propertyToken: row.property_token ?? null,
+  };
+}
+
+function formatHotelAlertNotification(args: {
+  row: DueWatchlistRow;
+  hotel: { name: string; nightly: number; total: number };
+  opportunity: HotelOpportunity;
+  link: string | null;
+}): string {
+  const { row, hotel, opportunity } = args;
+  const heading =
+    opportunity.kind === "target"
+      ? `🎯 Encontré hotel dentro de tu presupuesto en ${row.destination}`
+      : opportunity.kind === "drop"
+        ? `🔥 Los hoteles bajaron en ${row.destination}`
+        : `🏨 Tu alerta de hoteles en ${row.destination} está activa`;
+  const reason =
+    opportunity.kind === "target"
+      ? `Está en $${hotel.nightly}/noche (tu tope: $${row.max_price}).`
+      : opportunity.kind === "drop" && opportunity.pctBelowAverage != null
+        ? `$${hotel.nightly}/noche está ${opportunity.pctBelowAverage}% debajo del promedio reciente.`
+        : `Precio actual desde $${hotel.nightly}/noche; te aviso si aparece una oportunidad.`;
+  const lines = [
+    heading,
+    `${hotel.name} · ${reason}`,
+    `${row.checkin} → ${row.checkout} · total $${hotel.total}`,
+  ];
+  if (args.link) lines.push(args.link);
+  return lines.join("\n");
+}
+
+async function processHotelWatchlistRow(
+  env: CronEnv,
+  sql: Sql,
+  row: DueWatchlistRow,
+): Promise<void> {
+  if (!row.checkin || !row.checkout || !row.phone_number_id) {
+    await markWatchlistChecked(sql, row.id, false);
+    return;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  if (row.checkin < today) {
+    await deactivateWatchlistItem(sql, row.id);
+    return;
+  }
+  if (!env.APIFY_API_TOKEN) {
+    await markWatchlistChecked(sql, row.id, false);
+    return;
+  }
+
+  const rows = await searchApifyHotels(
+    {
+      apiToken: env.APIFY_API_TOKEN,
+      actorId:
+        env.APIFY_HOTELS_ACTOR_ID ??
+        "johnvc~google-hotels-search-scraper",
+    },
+    row.destination,
+    row.checkin,
+    row.checkout,
+    row.adults,
+    null,
+  );
+  const cheapest = rows?.[0] ? hotelPrice(rows[0]) : null;
+  if (!cheapest) {
+    await markWatchlistChecked(sql, row.id, false);
+    return;
+  }
+
+  const [marketBaseline, watchlistBaseline] = await Promise.all([
+    getHotelPriceBaseline(sql, {
+      city: row.destination,
+      checkin: row.checkin,
+      checkout: row.checkout,
+      adults: row.adults,
+      windowDays: 30,
+    }),
+    getHotelPriceBaseline(sql, {
+      city: row.destination,
+      checkin: row.checkin,
+      checkout: row.checkout,
+      adults: row.adults,
+      windowDays: 30,
+      watchlistId: row.id,
+    }),
+  ]);
+
+  try {
+    await recordHotelPriceObservation(sql, {
+      watchlistId: row.id,
+      city: row.destination,
+      propertyToken: cheapest.propertyToken,
+      propertyName: cheapest.name,
+      checkin: row.checkin,
+      checkout: row.checkout,
+      adults: row.adults,
+      pricePerNightUsd: cheapest.nightly,
+      priceTotalUsd: cheapest.total,
+      source: "watchlist_cron",
+    });
+  } catch (err) {
+    console.error("hotel watchlist observation failed", err);
+  }
+
+  const opportunity = classifyHotelOpportunity({
+    currentPricePerNightUsd: cheapest.nightly,
+    maxPricePerNightUsd: row.max_price,
+    marketBaseline,
+    watchlistBaseline,
+    hasNotified: row.last_notified_at != null,
+    dropCooldownSatisfied:
+      row.last_notified_at == null ||
+      Date.now() - Date.parse(row.last_notified_at) >= 72 * 60 * 60 * 1000,
+  });
+  if (opportunity.kind === "none") {
+    await markWatchlistChecked(sql, row.id, false);
+    return;
+  }
+
+  const baseUrl = env.PUBLIC_BASE_URL ?? "https://luanna.app";
+  const longSearchUrl = buildHotelSearchUrl({
+    city: row.destination,
+    checkin: row.checkin,
+    checkout: row.checkout,
+    adults: row.adults,
+    marker: env.TRAVELPAYOUTS_MARKER,
+  });
+  const wrapped = await wrapClickUrl(
+    { sql, userId: row.user_id, baseUrl },
+    "watchlist",
+    longSearchUrl,
+  );
+  const link = isShortLink(wrapped, baseUrl) ? wrapped : null;
+  const body = formatHotelAlertNotification({
+    row,
+    hotel: cheapest,
+    opportunity,
+    link,
+  });
+
+  await sendProactive(env, {
+    phoneNumberId: row.phone_number_id,
+    to: row.phone,
+    body,
+    templateName: "alerta_precio",
+    templateParams: {
+      nombre: "viajero",
+      ruta: `Hoteles en ${row.destination}`,
+      precio: `$${cheapest.nightly}/noche`,
+    },
+  });
+  await markWatchlistChecked(sql, row.id, true);
+}
+
 async function processWatchlistRow(
   env: CronEnv,
   row: DueWatchlistRow,
 ): Promise<void> {
   const sql = getDb(env.DATABASE_URL);
+  if (row.alert_type === "hotel") {
+    await processHotelWatchlistRow(env, sql, row);
+    return;
+  }
   if (!row.origin_iata || !row.destination_iata || !row.phone_number_id) {
     await markWatchlistChecked(sql, row.id, false);
     return;

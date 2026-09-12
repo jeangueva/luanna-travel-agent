@@ -154,9 +154,13 @@ export async function upsertPreferences(
 export interface Watchlist {
   id: number;
   user_id: number;
+  alert_type: "flight" | "hotel";
   destination: string;
   destination_iata: string | null;
   origin_iata: string | null;
+  checkin: string | null;
+  checkout: string | null;
+  adults: number;
   max_price: number;
   currency: string;
   frequency_days: number;
@@ -167,9 +171,13 @@ export async function addWatchlistItem(
   sql: Sql,
   userId: number,
   args: {
+    alert_type?: "flight" | "hotel";
     destination: string;
     destination_iata: string | null;
     origin_iata: string | null;
+    checkin?: string | null;
+    checkout?: string | null;
+    adults?: number;
     max_price: number;
     currency?: string;
     frequency_days?: number;
@@ -177,14 +185,18 @@ export async function addWatchlistItem(
 ): Promise<{ id: number }> {
   const rows = (await sql`
     INSERT INTO watchlist (
-      user_id, destination, destination_iata, origin_iata,
-      max_price, currency, frequency_days
+      user_id, alert_type, destination, destination_iata, origin_iata,
+      checkin, checkout, adults, max_price, currency, frequency_days
     )
     VALUES (
       ${userId},
+      ${args.alert_type ?? "flight"},
       ${args.destination},
       ${args.destination_iata},
       ${args.origin_iata},
+      ${args.checkin ?? null},
+      ${args.checkout ?? null},
+      ${args.adults ?? 2},
       ${args.max_price},
       ${args.currency ?? "USD"},
       ${args.frequency_days ?? 7}
@@ -205,8 +217,11 @@ export async function getDueWatchlist(
 ): Promise<DueWatchlistRow[]> {
   const rows = (await sql`
     SELECT
-      w.id, w.user_id, w.destination, w.destination_iata, w.origin_iata,
-      w.max_price, w.currency, w.frequency_days, w.last_notified_at,
+      w.id, w.user_id, w.alert_type, w.destination,
+      w.destination_iata, w.origin_iata,
+      w.checkin::text AS checkin, w.checkout::text AS checkout, w.adults,
+      w.max_price, w.currency, w.frequency_days,
+      w.last_notified_at::text AS last_notified_at,
       u.phone, u.phone_number_id
     FROM watchlist w
     JOIN users u ON u.id = w.user_id
@@ -224,9 +239,13 @@ export async function getDueWatchlist(
 
 export interface UserWatchlistRow {
   id: number;
+  alert_type: "flight" | "hotel";
   destination: string;
   destination_iata: string | null;
   origin_iata: string | null;
+  checkin: string | null;
+  checkout: string | null;
+  adults: number;
   max_price: number;
   currency: string;
   frequency_days: number;
@@ -239,9 +258,11 @@ export async function getUserWatchlist(
   userId: number,
 ): Promise<UserWatchlistRow[]> {
   const rows = (await sql`
-    SELECT id, destination, destination_iata, origin_iata,
+    SELECT id, alert_type, destination, destination_iata, origin_iata,
+           checkin::text AS checkin, checkout::text AS checkout, adults,
            max_price, currency, frequency_days,
-           last_checked_at, last_notified_at
+           last_checked_at::text AS last_checked_at,
+           last_notified_at::text AS last_notified_at
     FROM watchlist
     WHERE user_id = ${userId} AND active = TRUE
     ORDER BY created_at DESC
@@ -260,6 +281,17 @@ export async function deleteWatchlistItem(
     RETURNING id
   `) as { id: number }[];
   return rows.length > 0;
+}
+
+export async function deactivateWatchlistItem(
+  sql: Sql,
+  id: number,
+): Promise<void> {
+  await sql`
+    UPDATE watchlist
+    SET active = FALSE, last_checked_at = NOW()
+    WHERE id = ${id}
+  `;
 }
 
 export async function markWatchlistChecked(
@@ -1004,6 +1036,85 @@ export async function getPriceBaseline(
   };
 }
 
+export type HotelPriceSource = "watchlist_cron" | "tool_search";
+
+export async function recordHotelPriceObservation(
+  sql: Sql,
+  args: {
+    watchlistId?: number | null;
+    city: string;
+    propertyToken?: string | null;
+    propertyName: string;
+    checkin: string;
+    checkout: string;
+    adults: number;
+    pricePerNightUsd: number;
+    priceTotalUsd: number;
+    source: HotelPriceSource;
+  },
+): Promise<void> {
+  await sql`
+    INSERT INTO hotel_price_history (
+      watchlist_id, city, property_token, property_name,
+      checkin, checkout, adults, price_per_night_usd,
+      price_total_usd, source
+    )
+    VALUES (
+      ${args.watchlistId ?? null}, ${args.city},
+      ${args.propertyToken ?? null}, ${args.propertyName},
+      ${args.checkin}, ${args.checkout}, ${args.adults},
+      ${args.pricePerNightUsd}, ${args.priceTotalUsd}, ${args.source}
+    )
+  `;
+}
+
+export async function getHotelPriceBaseline(
+  sql: Sql,
+  args: {
+    city: string;
+    checkin: string;
+    checkout: string;
+    adults: number;
+    windowDays: number;
+    watchlistId?: number | null;
+  },
+): Promise<PriceBaseline | null> {
+  const rows = (await sql`
+    SELECT
+      COUNT(*)::int AS observations,
+      AVG(price_per_night_usd)::int AS avg_price_usd,
+      MIN(price_per_night_usd)::int AS min_price_usd
+    FROM hotel_price_history
+    WHERE LOWER(city) = LOWER(${args.city})
+      AND checkin = ${args.checkin}
+      AND checkout = ${args.checkout}
+      AND adults = ${args.adults}
+      AND (
+        ${args.watchlistId ?? null}::bigint IS NULL
+        OR watchlist_id = ${args.watchlistId ?? null}
+      )
+      AND observed_at > NOW() - (${args.windowDays} || ' days')::interval
+  `) as Array<{
+    observations: number;
+    avg_price_usd: number | null;
+    min_price_usd: number | null;
+  }>;
+  const row = rows[0];
+  if (
+    !row ||
+    row.observations === 0 ||
+    row.avg_price_usd == null ||
+    row.min_price_usd == null
+  ) {
+    return null;
+  }
+  return {
+    observations: row.observations,
+    avg_price_usd: row.avg_price_usd,
+    min_price_usd: row.min_price_usd,
+  };
+}
+
 export async function recordError(
   sql: Sql,
   context: string,
@@ -1438,4 +1549,3 @@ export async function updateTripContent(
     WHERE slug = ${slug}
   `;
 }
-

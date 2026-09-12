@@ -41,17 +41,18 @@ MINIMAX_MODEL = "MiniMax-M3"
 # workload.
 
 # ── Hotels ─────────────────────────────────────────────────────────────────
-# "amadeus" (real offers via Amadeus Self-Service) or default (Hotellook cache,
-# which needs the Travelpayouts Hotels Data API approval). Amadeus also needs
-# the AMADEUS_CLIENT_ID + AMADEUS_CLIENT_SECRET secrets. Booking links stay the
-# TP affiliate URL either way. Test host until you have production Amadeus creds.
-HOTELS_PROVIDER = "hotellook"
+# "apify" = live Google Hotels results from day one, without Travelpayouts
+# Hotels Data API approval. Each request is capped to one page and USD 0.05;
+# it needs the APIFY_API_TOKEN secret. "amadeus" remains available, while
+# "hotellook" uses the gated cache. Search links keep the TP affiliate marker.
+HOTELS_PROVIDER = "apify"
+APIFY_HOTELS_ACTOR_ID = "johnvc~google-hotels-search-scraper"
 AMADEUS_BASE_URL = "https://test.api.amadeus.com"
 
 # ── Stays (Airbnb + Booking) ────────────────────────────────────────────────
 # "scrape" routes the search_stays tool to the external Python scraping service
-# (services/stays: Airbnb + Booking.com), used while the TP Hotels Data API is
-# gated (needs 50k MAU). "airbnb" is a legacy alias for "scrape". Needs
+# (services/stays: Airbnb + Booking.com), now reserved for requests for entire
+# homes/departments. "airbnb" is a legacy alias for "scrape". Needs
 # STAYS_SERVICE_URL + STAYS_API_KEY secrets. "off" (default) → the tool still
 # works, returning the TP vacation-rental search link (monetizes).
 STAYS_PROVIDER = "off"
@@ -111,6 +112,7 @@ crons = [
 #   DATABASE_URL           — Postgres (Neon) connection string
 #   TRAVELPAYOUTS_TOKEN    — API token de Travelpayouts
 #   TRAVELPAYOUTS_MARKER   — affiliate marker para links de Travelpayouts
+#   APIFY_API_TOKEN        — token de Apify para resultados live de Google Hotels
 #   WEBVIEW_SIGNING_KEY    — HMAC key para tokens del webview (fallback)
 #   KAPSO_PREFS_FLOW_ID    — meta_flow_id del Flow de preferencias
 #   KAPSO_PREFS_FLOW_DRAFT — "1" para enviar el Flow en modo draft (preview, sin publicar)

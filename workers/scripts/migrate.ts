@@ -35,9 +35,9 @@ async function main() {
         .filter((line) => !line.trim().startsWith("--"))
         .join("\n")
         .trim();
-    const statements = content
+    const statements = stripComments(content)
       .split(";")
-      .map(stripComments)
+      .map((statement) => statement.trim())
       .filter((s) => s.length > 0);
     for (const stmt of statements) {
       await sql.query(stmt);

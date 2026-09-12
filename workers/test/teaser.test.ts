@@ -1,6 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { formatFlightTeaser } from "../src/tools";
+import {
+  formatFlightSearchFallback,
+  formatFlightTeaser,
+} from "../src/tools";
 
 describe("formatFlightTeaser", () => {
   test("full teaser: route, both currencies, date, stops, link, wait line", () => {
@@ -82,5 +85,47 @@ describe("formatFlightTeaser", () => {
     });
     assert.match(s, /\(solo ida\)/);
     assert.ok(!s.includes("(ida y vuelta)"));
+  });
+});
+
+describe("formatFlightSearchFallback", () => {
+  test("renders route, trip type, dates, group size and actionable URL", () => {
+    const s = formatFlightSearchFallback({
+      originIata: "LIM",
+      destIata: "MAD",
+      departureWindow: "2026-10-12",
+      returnDate: "2026-10-25",
+      oneWay: false,
+      passengers: 2,
+      searchUrl: "https://luanna.app/r/Live12",
+      reason: "no_cached_prices",
+    });
+    assert.match(s, /LIM → MAD/);
+    assert.match(s, /ida y vuelta/);
+    assert.match(s, /sale 12 oct 2026/);
+    assert.match(s, /vuelve 25 oct 2026/);
+    assert.match(s, /2 pasajeros/);
+    assert.match(s, /https:\/\/luanna\.app\/r\/Live12/);
+    assert.ok(!s.includes("cache"));
+    assert.ok(!s.includes("error"));
+  });
+
+  test("CTA body omits URL while retaining a flexible one-way summary", () => {
+    const s = formatFlightSearchFallback(
+      {
+        originIata: "LIM",
+        destIata: "CUZ",
+        departureWindow: null,
+        returnDate: null,
+        oneWay: true,
+        passengers: 1,
+        searchUrl: "https://luanna.app/r/Live34",
+        reason: "upstream_timeout",
+      },
+      { omitLink: true },
+    );
+    assert.match(s, /solo ida/);
+    assert.match(s, /fechas flexibles/);
+    assert.ok(!s.includes("https://"));
   });
 });

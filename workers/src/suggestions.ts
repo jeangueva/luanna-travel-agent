@@ -20,6 +20,12 @@ const CATALOG: Record<string, Suggestion> = {
     title: "🔔 Crear alerta",
     message: "Crea una alerta de precio para esa ruta y avísame cuando baje",
   },
+  qr_hotel_alert: {
+    id: "qr_hotel_alert",
+    title: "🔔 Alerta hotel",
+    message:
+      "Crea una alerta para estos hoteles y estas fechas, y avísame cuando bajen",
+  },
   qr_hotels: {
     id: "qr_hotels",
     title: "🏨 Ver hoteles",
@@ -42,12 +48,13 @@ const CATALOG: Record<string, Suggestion> = {
 // arrives in a separate push, so a button row in between reads as noise.
 const FOLLOW_UPS: Record<string, string[]> = {
   search_flights: ["qr_alert", "qr_hotels", "qr_itinerary"],
-  search_hotels: ["qr_flights", "qr_alert", "qr_itinerary"],
-  search_stays: ["qr_flights", "qr_alert", "qr_itinerary"],
+  search_hotels: ["qr_flights", "qr_hotel_alert", "qr_itinerary"],
+  search_stays: ["qr_flights", "qr_hotel_alert", "qr_itinerary"],
   get_package_link: ["qr_alert", "qr_itinerary"],
   suggest_itinerary: ["qr_itinerary", "qr_flights", "qr_alert"],
   trip_prep: ["qr_flights", "qr_itinerary"],
   add_watchlist: ["qr_flights", "qr_hotels"],
+  add_hotel_watchlist: ["qr_flights", "qr_hotels"],
 };
 
 const SUPPRESSORS = new Set(["start_itinerary"]);

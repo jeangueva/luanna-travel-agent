@@ -1,9 +1,9 @@
 # Stays service (Airbnb + Booking.com)
 
 Standalone Python microservice that returns lodging listings for a city + dates,
-scraped from Airbnb and Booking.com. Used while the Travelpayouts Hotels Data
-API is gated (needs 50k MAU). The Cloudflare Worker calls this over HTTP via
-the `search_stays` tool.
+scraped from Airbnb and Booking.com. It is now optional and reserved for
+requests for homes/departments through `search_stays`; classic hotel searches
+use the Apify Google Hotels provider directly from the Cloudflare Worker.
 
 ## Why a separate service
 Crawl4AI + Playwright need a real browser + Python runtime — they can't run in a
@@ -109,7 +109,8 @@ and flip `STAYS_PROVIDER = "scrape"` in `wrangler.toml` + deploy.
 ```
 `rating_scale` matters: Airbnb rates 0-5, Booking 0-10 — don't compare raw.
 
-## Next phase (TP Hotels Data API)
-Once Luanna hits 50k MAU, Travelpayouts unlocks the Hotels Data API — switch
-`HOTELS_PROVIDER` in the Worker and retire this scraper (or keep it for
-Airbnb-only entire homes, which TP hotels don't cover).
+## Hotel searches
+`search_hotels` no longer waits for the Travelpayouts Hotels Data API gate. The
+Worker uses Apify for live display prices and keeps the affiliate/direct search
+URLs as the reservation layer. Keep this service only if Luanna needs Airbnb
+or Booking listings for entire-home/depa requests.
