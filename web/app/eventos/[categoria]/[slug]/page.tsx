@@ -7,13 +7,14 @@ import JsonLdEvento from "@/components/eventos/JsonLdEvento";
 import LeyendaTramos from "@/components/eventos/LeyendaTramos";
 import LienzoLogistico from "@/components/eventos/LienzoLogistico";
 import MapaEvento from "@/components/eventos/MapaEvento";
+import ModuloVuelos from "@/components/eventos/ModuloVuelos";
 import PanelAlojamiento from "@/components/eventos/PanelAlojamiento";
 import TarjetaEvento from "@/components/eventos/TarjetaEvento";
 import { listarPublicados, obtenerEvento, relacionados } from "@/lib/eventos";
 import { ETIQUETA_CATEGORIA, esCategoria } from "@/lib/eventos-types";
 import { tramosDelEvento } from "@/lib/tramos";
 import { MAPBOX_TOKEN, SITE_URL } from "@/lib/config";
-import { fechaLarga } from "@/lib/fechas";
+import { diasFaltantes, fechaLarga } from "@/lib/fechas";
 
 export const revalidate = 3600;
 
@@ -42,10 +43,13 @@ export async function generateMetadata({
   if (!evento) return { title: "Evento no encontrado — Luanna" };
 
   const lugar = [evento.ciudad_sede, evento.pais].filter(Boolean).join(", ");
-  const titulo = `${evento.nombre_oficial} ${evento.fecha_inicio.slice(0, 4)} — dónde dormir cerca de la partida`;
+  // Solo se promete lo que la página ofrece: sin IATA verificado no hay módulo
+  // de vuelos, y un título que lo anuncia sería publicidad engañosa para Google.
+  const conVuelos = Boolean(evento.aeropuerto_iata && evento.ciudad_sede);
+  const titulo = `${evento.nombre_oficial} ${evento.fecha_inicio.slice(0, 4)} — ${conVuelos ? "vuelos, hoteles y cómo llegar" : "dónde dormir cerca de la partida"}`;
   const descripcion =
     evento.descripcion ??
-    `${evento.nombre_oficial}: ${fechaLarga(evento.fecha_inicio)}${lugar ? ` en ${lugar}` : ""}. Recorrido en el mapa y alojamiento a distancia caminable de la línea de partida.`;
+    `${evento.nombre_oficial}: ${fechaLarga(evento.fecha_inicio)}${lugar ? ` en ${lugar}` : ""}. ${conVuelos ? "Vuelos a la sede, recorrido" : "Recorrido"} en el mapa y alojamiento a distancia caminable de la línea de partida.`;
 
   return {
     title: { absolute: titulo },
@@ -72,6 +76,11 @@ export default async function EventoPage({
 
   const tramos = tramosDelEvento(evento);
   const otros = await relacionados(evento);
+  // Vuelos solo con un destino verificado y un evento que todavía no pasó: sin
+  // IATA el módulo no tiene a dónde buscar, y a un evento pasado no se vuela.
+  const ofreceVuelos =
+    Boolean(evento.aeropuerto_iata && evento.ciudad_sede) &&
+    diasFaltantes(evento.fecha_inicio) >= 1;
 
   return (
     <main>
@@ -79,6 +88,15 @@ export default async function EventoPage({
       <div className="mx-auto max-w-6xl">
         <HeroEvento evento={evento} />
       </div>
+
+      {ofreceVuelos && (
+        <ModuloVuelos
+          slug={evento.slug}
+          ciudad={evento.ciudad_sede!}
+          destinoIata={evento.aeropuerto_iata!}
+          fechaEvento={evento.fecha_inicio}
+        />
+      )}
 
       <LienzoLogistico
         leyenda={<LeyendaTramos tramos={tramos} />}
@@ -105,7 +123,7 @@ export default async function EventoPage({
       />
 
       <div className="mx-auto max-w-6xl">
-        <BarraCrossSelling evento={evento} />
+        <BarraCrossSelling evento={evento} conModuloVuelos={ofreceVuelos} />
 
         {evento.descripcion && (
           <section className="px-4 pb-8 md:px-6">

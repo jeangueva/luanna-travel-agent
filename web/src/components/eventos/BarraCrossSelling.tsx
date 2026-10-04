@@ -13,7 +13,10 @@ function conContextoDelEvento(base: string, evento: Evento): string {
   if (!base) return "";
   try {
     const url = new URL(base);
-    if (evento.ciudad_sede) url.searchParams.set("destination", evento.ciudad_sede);
+    // Los widgets de Travelpayouts buscan por código IATA; el nombre de la
+    // ciudad solo se usa si el evento todavía no tiene uno verificado.
+    const destino = evento.aeropuerto_iata ?? evento.ciudad_sede;
+    if (destino) url.searchParams.set("destination", destino);
     url.searchParams.set("depart_date", sumarDias(evento.fecha_inicio, -2));
     url.searchParams.set("return_date", sumarDias(evento.fecha_inicio, 1));
     return url.toString();
@@ -22,9 +25,19 @@ function conContextoDelEvento(base: string, evento: Evento): string {
   }
 }
 
-export default function BarraCrossSelling({ evento }: { evento: Evento }) {
+export default function BarraCrossSelling({
+  evento,
+  conModuloVuelos = false,
+}: {
+  evento: Evento;
+  /** Si la página ya tiene el módulo de vuelos propio, el widget genérico sobra. */
+  conModuloVuelos?: boolean;
+}) {
   const modulos = [
-    { src: conContextoDelEvento(TP_WIDGET_VUELOS, evento), titulo: "Vuelos a la sede" },
+    {
+      src: conModuloVuelos ? "" : conContextoDelEvento(TP_WIDGET_VUELOS, evento),
+      titulo: "Vuelos a la sede",
+    },
     { src: conContextoDelEvento(TP_WIDGET_SEGUROS, evento), titulo: "Seguro de viaje y equipo" },
     { src: conContextoDelEvento(TP_WIDGET_ESIM, evento), titulo: "eSIM para la carrera" },
   ].filter((m) => m.src);

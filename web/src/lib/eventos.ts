@@ -155,6 +155,19 @@ export async function obtenerEvento(
   return filas[0] ?? null;
 }
 
+/** Busca por slug a secas: el endpoint de vuelos no conoce la categoría. */
+export async function obtenerEventoPorSlug(slug: string): Promise<Evento | null> {
+  const sql = db();
+  if (!sql) return null;
+  const filas = await consultar(
+    sql,
+    `SELECT ${COLUMNAS} FROM eventos_deportivos
+     WHERE estado_publicacion = 'published' AND slug = $1 LIMIT 1`,
+    [slug],
+  );
+  return filas[0] ?? null;
+}
+
 /** Otros eventos de la misma disciplina, para enlazado interno. */
 export async function relacionados(evento: Evento, limite = 3): Promise<Evento[]> {
   const sql = db();

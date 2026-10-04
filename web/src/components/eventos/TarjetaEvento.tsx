@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { ETIQUETA_CATEGORIA, type Evento } from "@/lib/eventos-types";
+import { formatoCosto } from "@/lib/costo";
+import { ETIQUETA_CATEGORIA, nombreEtiqueta, type Evento } from "@/lib/eventos-types";
 import { fechaCorta } from "@/lib/fechas";
 
 export default function TarjetaEvento({ evento }: { evento: Evento }) {
   const lugar = [evento.ciudad_sede, evento.pais].filter(Boolean).join(", ");
+  const costo = formatoCosto(evento.costo_min, evento.costo_max, evento.moneda);
 
   return (
     <li>
@@ -19,10 +21,25 @@ export default function TarjetaEvento({ evento }: { evento: Evento }) {
             {evento.nombre_oficial}
           </h3>
           {lugar && <p className="mt-1 text-sm text-luanna-muted">{lugar}</p>}
+          {evento.etiquetas.length > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {evento.etiquetas.slice(0, 3).map((e) => (
+                <li
+                  key={e}
+                  className="rounded-full border border-black/10 px-2 py-0.5 text-xs text-luanna-muted"
+                >
+                  {nombreEtiqueta(e)}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        <time dateTime={evento.fecha_inicio} className="text-sm font-medium">
-          {fechaCorta(evento.fecha_inicio)}
-        </time>
+        <div className="flex items-baseline justify-between gap-3">
+          <time dateTime={evento.fecha_inicio} className="text-sm font-medium">
+            {fechaCorta(evento.fecha_inicio)}
+          </time>
+          {costo && <span className="text-xs text-luanna-muted">≈ {costo}</span>}
+        </div>
       </Link>
     </li>
   );

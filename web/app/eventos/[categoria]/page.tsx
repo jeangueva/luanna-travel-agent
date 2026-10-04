@@ -16,7 +16,7 @@ export function generateStaticParams() {
   return CATEGORIAS.map((categoria) => ({ categoria }));
 }
 
-// Las cuatro categorías son un conjunto cerrado: cualquier otra ruta es un 404,
+// Las categorías son un conjunto cerrado: cualquier otra ruta es un 404,
 // no una página generada bajo demanda.
 export const dynamicParams = false;
 
@@ -29,7 +29,7 @@ export async function generateMetadata({
   if (!esCategoria(categoria)) return {};
   return {
     title: {
-      absolute: `${ETIQUETA_CATEGORIA[categoria]} — calendario y alojamiento | Luanna`,
+      absolute: `${ETIQUETA_CATEGORIA[categoria]} — calendario, costos y vuelos | Luanna`,
     },
     description: DESCRIPCION_CATEGORIA[categoria],
     alternates: { canonical: `${SITE_URL}/eventos/${categoria}` },

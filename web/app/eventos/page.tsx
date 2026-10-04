@@ -15,7 +15,7 @@ export const revalidate = 3600;
 export const metadata: Metadata = {
   title: { absolute: "Calendario de eventos deportivos — Luanna" },
   description:
-    "Triatlones, maratones, travesías de aguas abiertas y granfondos, cada uno con el mapa del recorrido y el alojamiento a distancia caminable de la partida.",
+    "Maratones, trail, ciclismo, triatlón, duatlón, acuatlón y aguas abiertas en Latinoamérica: fechas, costo aproximado, vuelos a la sede y alojamiento a distancia caminable de la partida.",
   alternates: { canonical: `${SITE_URL}/eventos` },
 };
 
@@ -26,8 +26,9 @@ export default async function EventosPage() {
     <main className="mx-auto max-w-6xl px-4 py-12 md:px-6">
       <h1 className="font-display text-4xl md:text-5xl">Calendario deportivo</h1>
       <p className="mt-3 max-w-2xl text-luanna-muted">
-        Cada evento con su recorrido en el mapa y los hoteles que quedan
-        caminando desde la línea de partida o el box de transición.
+        Fechas, costo aproximado y vuelos a la sede de cada evento, con el
+        recorrido en el mapa y los hoteles que quedan caminando desde la línea
+        de partida o el box de transición.
       </p>
 
       <nav aria-label="Categorías" className="mt-8 grid gap-4 sm:grid-cols-2">
