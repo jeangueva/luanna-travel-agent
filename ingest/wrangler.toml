@@ -5,15 +5,17 @@ compatibility_flags = ["nodejs_compat"]
 
 # Domingos 02:00 UTC — el pipeline completo (N queries × Brave + 1 llamada al
 # LLM por query) tarda minutos, no segundos. Un cron semanal cabe de sobra en
-# los 15 min de CPU de un scheduled handler en el plan de pago.
+# los 15 min de CPU de un scheduled handler en el plan de pago. La matriz
+# completa (224 combinaciones) no cabe en una corrida: la ventana de
+# MAX_QUERIES_POR_CORRIDA rota cada semana y recorre todo en unas 6.
 [triggers]
 crons = ["0 2 * * 0"]
 
 [vars]
 # Matriz de búsqueda: categorías × países × años. El cron genera una query por
 # combinación, así que crecer esto multiplica el costo de Brave y del LLM.
-INGEST_CATEGORIAS = "triatlon,aguas_abiertas,maraton,ciclismo"
-INGEST_PAISES = "peru,chile,colombia,mexico,espana"
+INGEST_CATEGORIAS = "running,trail_running,cycling,acuatlon,duatlon,acuabike,triatlon,aguas_abiertas"
+INGEST_PAISES = "peru,chile,colombia,mexico,argentina,brasil,ecuador,uruguay,bolivia,paraguay,costa rica,panama,republica dominicana,guatemala"
 INGEST_ANOS = "2026,2027"
 # Modelo de extracción. El PRD pedía claude-3-5-sonnet-20240620; ese id ya no
 # es el vigente ni el más capaz — ver ingest/README.md.

@@ -47,9 +47,13 @@ const BENCHMARKS = [
     flag: "olaya",
     nombre_oficial: "Reto Olaya Inverso",
     categoria: "aguas_abiertas" as const,
+    etiquetas: ["travesia"],
     fecha_inicio: "2026-11-07",
     ciudad_sede: "Callao",
     pais: "Perú",
+    // El Callao es parte del metro de Lima: el aeropuerto Jorge Chávez opera
+    // bajo el código de ciudad LIM, que es el que entiende Aviasales.
+    aeropuerto_iata: "LIM" as string | null,
     // Verificado en el calendario de natación 2026: sábado 7 de noviembre,
     // 6:00 am, La Punta, Callao — el recorrido inverso de la Ruta de Olaya,
     // que en su forma clásica va de Chorrillos a La Punta.
@@ -64,9 +68,11 @@ const BENCHMARKS = [
     flag: "triatlon",
     nombre_oficial: "Triatlón Campeonato Nacional",
     categoria: "triatlon" as const,
+    etiquetas: [] as string[],
     fecha_inicio: "2026-12-13",
     ciudad_sede: null,
     pais: "Perú",
+    aeropuerto_iata: null as string | null,
     // Sin sugerencia a propósito: al 2026-09-06 este evento no figura en el
     // calendario público de triatlón de Perú ni en el sitio de la federación.
     // Pasa --triatlon "<sede>" cuando la tengas confirmada.
@@ -107,16 +113,18 @@ async function main() {
     const slug = slugEvento(b.nombre_oficial, b.fecha_inicio);
     await sql`
       INSERT INTO eventos_deportivos (
-        slug, nombre_oficial, categoria, fecha_inicio, ciudad_sede, pais,
-        latitud_partida, longitud_partida, geo_fuente, confianza,
-        descripcion, badges, fuente_url, estado_publicacion
+        slug, nombre_oficial, categoria, etiquetas, fecha_inicio, ciudad_sede,
+        pais, aeropuerto_iata, latitud_partida, longitud_partida, geo_fuente,
+        confianza, descripcion, badges, fuente_url, estado_publicacion
       ) VALUES (
-        ${slug}, ${b.nombre_oficial}, ${b.categoria}, ${b.fecha_inicio},
-        ${b.ciudad_sede}, ${b.pais}, ${coord.lat}, ${coord.lon}, ${geoFuente}, 1.0,
+        ${slug}, ${b.nombre_oficial}, ${b.categoria}, ${b.etiquetas},
+        ${b.fecha_inicio}, ${b.ciudad_sede}, ${b.pais}, ${b.aeropuerto_iata},
+        ${coord.lat}, ${coord.lon}, ${geoFuente}, 1.0,
         ${b.descripcion}, ${JSON.stringify(b.badges)}::jsonb, ${b.fuente_url},
         'draft'
       )
       ON CONFLICT (slug) DO UPDATE SET
+        aeropuerto_iata = COALESCE(eventos_deportivos.aeropuerto_iata, EXCLUDED.aeropuerto_iata),
         latitud_partida = EXCLUDED.latitud_partida,
         longitud_partida = EXCLUDED.longitud_partida,
         geo_fuente = ${geoFuente},

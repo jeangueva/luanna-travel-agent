@@ -2,6 +2,7 @@ import {
   adjuntarGpx,
   cambiarEstado,
   corregirCoordenadas,
+  fijarIata,
   getDb,
   listarPorEstado,
 } from "./db.js";
@@ -141,6 +142,20 @@ export default {
           return json({ error: "lat/lon inválidas" }, 400);
         }
         const ev = await corregirCoordenadas(sql(), slug, body.lat!, body.lon!);
+        if (!ev) return json({ error: "evento no existe" }, 404);
+        ctx.waitUntil(revalidar(env, ev.slug, ev.categoria));
+        return json(ev);
+      }
+
+      if (accion === "iata" && request.method === "PATCH") {
+        const body = (await request.json().catch(() => null)) as {
+          iata?: string;
+        } | null;
+        const iata = body?.iata?.trim().toUpperCase() ?? "";
+        if (!/^[A-Z]{3}$/.test(iata)) {
+          return json({ error: "iata debe ser un código de 3 letras" }, 400);
+        }
+        const ev = await fijarIata(sql(), slug, iata);
         if (!ev) return json({ error: "evento no existe" }, 404);
         ctx.waitUntil(revalidar(env, ev.slug, ev.categoria));
         return json(ev);

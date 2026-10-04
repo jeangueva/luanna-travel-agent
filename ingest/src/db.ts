@@ -16,9 +16,11 @@ export interface EventoParaGuardar {
   slug: string;
   nombre_oficial: string;
   categoria: Categoria;
+  etiquetas: string[];
   fecha_inicio: string;
   ciudad_sede: string | null;
   pais: string | null;
+  aeropuerto_iata: string | null;
   latitud_partida: number;
   longitud_partida: number;
   fuente_url: string | null;
@@ -26,6 +28,10 @@ export interface EventoParaGuardar {
   confianza: number;
   descripcion: string | null;
   badges: string[];
+  costo_min: number | null;
+  costo_max: number | null;
+  moneda: string | null;
+  inscripcion_url: string | null;
 }
 
 /**
@@ -36,6 +42,10 @@ export interface EventoParaGuardar {
  *    eso la sacaría del índice de Google sin que nadie decidiera nada.
  *  · una coordenada corregida a mano (`geo_fuente = 'manual'`) gana siempre.
  *    Sin esto, la revisión humana dura exactamente una semana.
+ *
+ * Los campos que un revisor puede fijar a mano (IATA, etiquetas, costo)
+ * siguen la misma regla que `descripcion`: el cron llena lo que está vacío y
+ * nunca pisa lo que ya tiene valor.
  */
 export async function upsertEvento(
   sql: Sql,
@@ -43,14 +53,20 @@ export async function upsertEvento(
 ): Promise<"insertado" | "actualizado"> {
   const rows = (await sql`
     INSERT INTO eventos_deportivos (
-      slug, nombre_oficial, categoria, fecha_inicio, ciudad_sede, pais,
-      latitud_partida, longitud_partida, fuente_url, geo_fuente, confianza,
-      descripcion, badges
+      slug, nombre_oficial, categoria, etiquetas, fecha_inicio, ciudad_sede,
+      pais, aeropuerto_iata, latitud_partida, longitud_partida, fuente_url,
+      geo_fuente, confianza, descripcion, badges, costo_min, costo_max, moneda,
+      costo_fuente_url, costo_actualizado_at, inscripcion_url
     ) VALUES (
-      ${ev.slug}, ${ev.nombre_oficial}, ${ev.categoria}, ${ev.fecha_inicio},
-      ${ev.ciudad_sede}, ${ev.pais}, ${ev.latitud_partida},
-      ${ev.longitud_partida}, ${ev.fuente_url}, ${ev.geo_fuente},
-      ${ev.confianza}, ${ev.descripcion}, ${JSON.stringify(ev.badges)}::jsonb
+      ${ev.slug}, ${ev.nombre_oficial}, ${ev.categoria}, ${ev.etiquetas},
+      ${ev.fecha_inicio}, ${ev.ciudad_sede}, ${ev.pais}, ${ev.aeropuerto_iata},
+      ${ev.latitud_partida}, ${ev.longitud_partida}, ${ev.fuente_url},
+      ${ev.geo_fuente}, ${ev.confianza}, ${ev.descripcion},
+      ${JSON.stringify(ev.badges)}::jsonb, ${ev.costo_min}, ${ev.costo_max},
+      ${ev.moneda},
+      ${ev.costo_min === null ? null : ev.fuente_url},
+      ${ev.costo_min === null ? null : new Date().toISOString()},
+      ${ev.inscripcion_url}
     )
     ON CONFLICT (slug) DO UPDATE SET
       nombre_oficial = EXCLUDED.nombre_oficial,
@@ -58,6 +74,18 @@ export async function upsertEvento(
       fecha_inicio = EXCLUDED.fecha_inicio,
       ciudad_sede = COALESCE(EXCLUDED.ciudad_sede, eventos_deportivos.ciudad_sede),
       pais = COALESCE(EXCLUDED.pais, eventos_deportivos.pais),
+      aeropuerto_iata = COALESCE(eventos_deportivos.aeropuerto_iata, EXCLUDED.aeropuerto_iata),
+      etiquetas = CASE WHEN cardinality(eventos_deportivos.etiquetas) > 0
+        THEN eventos_deportivos.etiquetas ELSE EXCLUDED.etiquetas END,
+      costo_min = COALESCE(eventos_deportivos.costo_min, EXCLUDED.costo_min),
+      costo_max = COALESCE(eventos_deportivos.costo_max, EXCLUDED.costo_max),
+      moneda = CASE WHEN eventos_deportivos.costo_min IS NOT NULL
+        THEN eventos_deportivos.moneda ELSE EXCLUDED.moneda END,
+      costo_fuente_url = CASE WHEN eventos_deportivos.costo_min IS NOT NULL
+        THEN eventos_deportivos.costo_fuente_url ELSE EXCLUDED.costo_fuente_url END,
+      costo_actualizado_at = CASE WHEN eventos_deportivos.costo_min IS NOT NULL
+        THEN eventos_deportivos.costo_actualizado_at ELSE EXCLUDED.costo_actualizado_at END,
+      inscripcion_url = COALESCE(eventos_deportivos.inscripcion_url, EXCLUDED.inscripcion_url),
       latitud_partida = CASE WHEN eventos_deportivos.geo_fuente = 'manual'
         THEN eventos_deportivos.latitud_partida ELSE EXCLUDED.latitud_partida END,
       longitud_partida = CASE WHEN eventos_deportivos.geo_fuente = 'manual'
@@ -140,6 +168,21 @@ export async function corregirCoordenadas(
         longitud_partida = ${lon},
         geo_fuente = 'manual',
         updated_at = NOW()
+    WHERE slug = ${slug}
+    RETURNING *
+  `) as unknown as EventoDeportivo[];
+  return rows[0] ?? null;
+}
+
+/** El revisor fija el código cuando el autocomplete no lo pudo verificar. */
+export async function fijarIata(
+  sql: Sql,
+  slug: string,
+  iata: string,
+): Promise<EventoDeportivo | null> {
+  const rows = (await sql`
+    UPDATE eventos_deportivos
+    SET aeropuerto_iata = ${iata}, updated_at = NOW()
     WHERE slug = ${slug}
     RETURNING *
   `) as unknown as EventoDeportivo[];

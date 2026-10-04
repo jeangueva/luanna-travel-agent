@@ -2,7 +2,8 @@ import { buscarBrave, componerContexto } from "./brave.js";
 import { abrirCorrida, cerrarCorrida, getDb, upsertEvento } from "./db.js";
 import { extraerEventos } from "./extract.js";
 import { resolverCoordenadas } from "./geocode.js";
-import { configDesdeEnv, generarQueries } from "./queries.js";
+import { resolverIata } from "./iata.js";
+import { configDesdeEnv, generarQueries, semanaDesdeEpoca } from "./queries.js";
 import { slugEvento } from "./slug.js";
 import type { ResumenCorrida } from "./types.js";
 import { validarExtraido } from "./validar.js";
@@ -19,7 +20,7 @@ const PAUSA_ENTRE_QUERIES_MS = 1200;
 export async function ejecutarIngesta(env: Env): Promise<ResumenCorrida> {
   const sql = getDb(env.DATABASE_URL);
   const config = configDesdeEnv(env as unknown as Record<string, string>);
-  const queries = generarQueries(config);
+  const queries = generarQueries(config, semanaDesdeEpoca());
   const hoy = new Date().toISOString().slice(0, 10);
 
   const resumen: ResumenCorrida = {
@@ -89,13 +90,22 @@ export async function ejecutarIngesta(env: Env): Promise<ResumenCorrida> {
           continue;
         }
 
+        // Sin IATA verificado el evento entra igual, solo que sin vuelos.
+        const aeropuerto_iata = await resolverIata({
+          ciudad_sede: ev.ciudad_sede,
+          lat: coord.lat,
+          lon: coord.lon,
+        });
+
         const accion = await upsertEvento(sql, {
           slug,
           nombre_oficial: ev.nombre_oficial,
           categoria: ev.categoria,
+          etiquetas: ev.etiquetas,
           fecha_inicio: ev.fecha_inicio,
           ciudad_sede: ev.ciudad_sede,
           pais: ev.pais,
+          aeropuerto_iata,
           latitud_partida: coord.lat,
           longitud_partida: coord.lon,
           fuente_url: ev.fuente_url,
@@ -103,6 +113,10 @@ export async function ejecutarIngesta(env: Env): Promise<ResumenCorrida> {
           confianza: ev.confianza,
           descripcion: ev.descripcion,
           badges: ev.badges,
+          costo_min: ev.costo_min,
+          costo_max: ev.costo_max,
+          moneda: ev.moneda,
+          inscripcion_url: ev.inscripcion_url,
         });
 
         if (accion === "insertado") resumen.insertados++;
