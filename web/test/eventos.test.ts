@@ -21,9 +21,13 @@ const evento: Evento = {
   slug: "reto-olaya-inverso-2026",
   nombre_oficial: "Reto Olaya Inverso",
   categoria: "aguas_abiertas",
+  etiquetas: [],
   fecha_inicio: "2026-11-07",
+  fecha_fin: null,
+  fecha_precision: "exacta",
   ciudad_sede: "Lima",
   pais: "Perú",
+  aeropuerto_iata: "LIM",
   latitud_partida: -12.1745,
   longitud_partida: -77.0221,
   ruta_gpx_url: null,
@@ -32,6 +36,10 @@ const evento: Evento = {
   descripcion: null,
   badges: [],
   tramos: [],
+  costo_min: null,
+  costo_max: null,
+  moneda: null,
+  inscripcion_url: null,
 };
 
 test("la fecha se interpreta en calendario local, no en UTC", () => {
@@ -109,7 +117,7 @@ test("un evento de una disciplina obtiene su tramo con el color correcto", () =>
   assert.equal(
     tramosDelEvento({
       ...evento,
-      categoria: "ciclismo",
+      categoria: "cycling",
       ruta_gpx_url: "https://x/r.gpx",
     })[0].tipo,
     "ciclismo",
@@ -117,7 +125,7 @@ test("un evento de una disciplina obtiene su tramo con el color correcto", () =>
   assert.equal(
     tramosDelEvento({
       ...evento,
-      categoria: "maraton",
+      categoria: "running",
       ruta_gpx_url: "https://x/r.gpx",
     })[0].tipo,
     "carrera",

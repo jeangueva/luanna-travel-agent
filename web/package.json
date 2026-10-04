@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vinext dev",
-    "build": "tsc --noEmit && vinext build && mkdir -p dist/.openai && cp .openai/hosting.json dist/.openai/hosting.json",
+    "build": "vinext typegen && tsc --noEmit && vinext build && mkdir -p dist/.openai && cp .openai/hosting.json dist/.openai/hosting.json",
     "start": "vinext start",
     "preview": "vinext start",
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "vinext typegen && tsc --noEmit"
   },
   "dependencies": {
     "@mapbox/togeojson": "^0.16.2",
