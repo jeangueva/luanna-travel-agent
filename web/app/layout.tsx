@@ -1,28 +1,22 @@
 import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 import '@/index.css'
+import '@/glass.css'
 
-/**
- * El título y la descripción viven acá, no en un <title> escrito a mano dentro
- * del <head>: ese literal no lo puede sobreescribir `generateMetadata`, así que
- * cada página de evento salía con DOS <title> — el suyo y el de la landing.
- * Un buscador se queda con uno solo, y no necesariamente con el correcto.
- */
 export const metadata: Metadata = {
   title: {
-    default: 'Luanna — Tu próximo viaje empieza con un mensaje',
-    // Las páginas de evento traen su propio título completo; esta plantilla
-    // solo aplica a las que definan un título corto.
-    template: '%s | Luanna',
+    default: 'Luanna Ancla — Alojamiento para eventos y clínicas',
+    template: '%s | Luanna Ancla',
   },
   description:
-    'Planea tu viaje por WhatsApp con Luanna. Recibe un itinerario personalizado con vuelos y hoteles reales en menos de 60 segundos.',
+    'Crea portales de alojamiento cerca de la sede de tu evento o clínica. Gestiona fechas, ubicación y enlaces para compartir con tus visitantes.',
 }
 
 export const viewport: Viewport = {
-  themeColor: '#f4f1ed',
+  themeColor: '#171717',
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -32,11 +26,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Geist:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Source+Serif+4:ital,wght@1,400;1,500&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body className="bg-ancla-canvas text-ancla-ink antialiased selection:bg-ancla-signal selection:text-white">
+        {children}
+      </body>
     </html>
   )
 }

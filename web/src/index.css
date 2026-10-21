@@ -2,38 +2,222 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --surface-canvas: oklch(0.973 0.007 78);
+  --surface-paper: oklch(0.991 0.004 78);
+  --surface-tray: oklch(0.926 0.011 76);
+  --surface-obsidian: oklch(0.165 0.008 70);
+  --surface-obsidian-elevated: oklch(0.205 0.009 70);
+  --ink-primary: oklch(0.18 0.008 70);
+  --ink-secondary: oklch(0.41 0.01 72);
+  --ink-muted: oklch(0.51 0.01 74);
+  --border-mineral: oklch(0.885 0.012 75);
+  --border-strong: oklch(0.81 0.015 75);
+  --signal-terracotta: oklch(0.54 0.155 38);
+  --clinical-emerald: oklch(0.47 0.11 162);
+
+  /* Emil Kowalski / Motionsites curves */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 html {
   scroll-behavior: smooth;
+  background-color: var(--surface-canvas);
+  color: var(--ink-primary);
 }
 
 body {
   margin: 0;
-  font-family: 'Geist', sans-serif;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
   overflow-x: hidden;
-  background: #fff;
-  color: #1a1a1a;
+  background-color: var(--surface-canvas);
+  color: var(--ink-primary);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-button {
+button,
+a,
+input,
+select,
+textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
-::selection {
-  color: #fff;
-  background: #905831;
+/* Tabular numbers for telemetry, coordinates, prices and timers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
+/* Topographic coordinate subtle background pattern */
+.bg-topographic-grid {
+  background-image:
+    linear-gradient(to right, rgba(22, 22, 20, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(22, 22, 20, 0.045) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.bg-topographic-grid-dark {
+  background-image:
+    linear-gradient(to right, rgba(253, 252, 250, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(253, 252, 250, 0.055) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* HorizonX Doppelrand / Double-Bezel Machined Enclosures */
+.doppelrand-light {
+  background-color: rgba(234, 230, 221, 0.78);
+  padding: 6px;
+  border-radius: 22px;
+  border: 1px solid rgba(22, 22, 20, 0.08);
+}
+
+.doppelrand-light-core {
+  background-color: #fdfcfa;
+  border-radius: 16px;
+  border: 1px solid rgba(22, 22, 20, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.doppelrand-dark {
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 6px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.doppelrand-dark-core {
+  background-color: #151513;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ReactBits Spotlight Surface (pointer-gated for fine pointers only) */
+.spotlight-card {
+  position: relative;
+  overflow: hidden;
+  --spot-x: 50%;
+  --spot-y: 50%;
+  --spot-opacity: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .spotlight-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      460px circle at var(--spot-x) var(--spot-y),
+      rgba(184, 68, 33, 0.075),
+      transparent 65%
+    );
+    opacity: var(--spot-opacity);
+    transition: opacity 220ms var(--ease-out);
+    z-index: 0;
+  }
+
+  .spotlight-card-dark::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      480px circle at var(--spot-x) var(--spot-y),
+      rgba(253, 252, 250, 0.07),
+      transparent 65%
+    );
+    opacity: var(--spot-opacity);
+    transition: opacity 220ms var(--ease-out);
+    z-index: 0;
+  }
+
+  .hover-lift {
+    transition:
+      transform 200ms var(--ease-out),
+      border-color 200ms ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+}
+
+/* Button physical press feedback */
+.press-scale {
+  transition:
+    transform 140ms var(--ease-out),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.press-scale:active {
+  transform: scale(0.97);
+}
+
+/* Staggered scroll entry reveal */
+.reveal-item {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 450ms var(--ease-out),
+    transform 450ms var(--ease-out);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.reveal-item[data-visible='true'] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Radar pulse for active geo-anchor coordinate */
+@keyframes anchor-pulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+.animate-anchor-pulse {
+  animation: anchor-pulse 2.6s var(--ease-out) infinite;
+}
+
+/* High-contrast accessible focus ring */
+:focus-visible {
+  outline: 2px solid var(--signal-terracotta);
+  outline-offset: 3px;
+}
+
+/* Strict Reduced Motion compliance: keep gentle opacity/color, drop movement */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
 
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+  .reveal-item {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: opacity 150ms ease !important;
+  }
+
+  .animate-anchor-pulse {
+    animation: none !important;
+  }
+
+  .press-scale:active,
+  .hover-lift:hover {
+    transform: none !important;
   }
 }
