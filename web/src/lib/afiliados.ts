@@ -72,3 +72,23 @@ export function urlHotelesFallback(args: {
   wrapped.searchParams.set("campaign_id", "101");
   return wrapped.toString();
 }
+
+/**
+ * Búsqueda de vuelos ida y vuelta hacia la sede, con la misma forma de ruta
+ * que el worker de WhatsApp: ORIGEN DDMM DESTINO DDMM PASAJEROS. El visitante
+ * pone su origen; la sede pone el destino y las fechas.
+ */
+export function urlVuelos(args: {
+  marker: string;
+  origen: string;
+  destino: string;
+  ida: string;
+  vuelta: string;
+  adultos?: number;
+}): string {
+  const ddmm = (fecha: string) => fecha.slice(8, 10) + fecha.slice(5, 7);
+  const ruta = `${args.origen}${ddmm(args.ida)}${args.destino}${ddmm(args.vuelta)}${args.adultos ?? 1}`;
+  const url = new URL(`https://www.aviasales.com/search/${ruta}`);
+  if (args.marker) url.searchParams.set("marker", args.marker);
+  return url.toString();
+}

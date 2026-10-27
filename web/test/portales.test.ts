@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { validarPortal, esIdPortal } from '../src/lib/portales'
+import { urlVuelos } from '../src/lib/afiliados'
 import { crearSesion, sesionValida, mismoOrigen, DURACION_SESION } from '../src/lib/portal-auth'
 import { POST as login, DELETE as logout } from '../app/api/plataforma/sesion/route'
 import { GET as list, POST as save } from '../app/api/plataforma/portales/route'
@@ -75,4 +76,15 @@ test('API privada rechaza acceso anónimo, valida entradas y crea cookies segura
     if (original === undefined) delete process.env.ANCLA_ADMIN_SECRET
     else process.env.ANCLA_ADMIN_SECRET = original
   }
+})
+
+test('el aeropuerto es opcional, se normaliza y rechaza códigos inválidos', () => {
+  assert.equal(validarPortal(config).aeropuerto, '')
+  assert.equal(validarPortal({ ...config, aeropuerto: ' uio ' }).aeropuerto, 'UIO')
+  assert.throws(() => validarPortal({ ...config, aeropuerto: 'QUITO' }), /3 letras/)
+})
+
+test('la búsqueda de vuelos lleva origen, destino, fechas y marker', () => {
+  const url = urlVuelos({ marker: 'm1', origen: 'MEX', destino: 'UIO', ida: '2027-01-30', vuelta: '2027-02-02' })
+  assert.equal(url, 'https://www.aviasales.com/search/MEX3001UIO02021?marker=m1')
 })

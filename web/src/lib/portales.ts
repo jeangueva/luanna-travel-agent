@@ -6,6 +6,8 @@ export interface Portal {
   ciudad: string
   lat: number
   lon: number
+  /** Código IATA del aeropuerto de llegada; vacío si la sede no ofrece vuelos. */
+  aeropuerto: string
   checkin: string
   checkout: string
   publicado: boolean
@@ -42,6 +44,8 @@ export function validarPortal(input: unknown): Omit<Portal, 'id'> {
   if (data.vertical !== 'clinica' && data.vertical !== 'evento') {
     throw new Error('Selecciona clínica o evento.')
   }
+  const aeropuerto = typeof data.aeropuerto === 'string' ? data.aeropuerto.trim().toUpperCase() : ''
+  if (aeropuerto && !/^[A-Z]{3}$/.test(aeropuerto)) throw new Error('El aeropuerto debe ser un código de 3 letras, como LIM.')
   if (typeof data.publicado !== 'boolean') throw new Error('Revisa el estado de publicación.')
   const checkin = fecha('checkin')
   const checkout = fecha('checkout')
@@ -54,6 +58,7 @@ export function validarPortal(input: unknown): Omit<Portal, 'id'> {
     vertical: data.vertical,
     lat: coordenada('lat', 90),
     lon: coordenada('lon', 180),
+    aeropuerto,
     checkin, checkout,
     publicado: data.publicado,
   }

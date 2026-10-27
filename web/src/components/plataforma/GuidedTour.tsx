@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ArrowLeft, ArrowRight, Check, Compass, X } from 'lucide-react'
 
-export const TOUR_KEY = 'luanna-onboarding-v1'
+export const TOUR_KEY = 'luanna-onboarding-v2'
 const steps = [
   { target: 'tour-sedes', title: 'Tu punto de partida.', text: 'Aquí encontrarás tus sedes. Crea una para cada evento o clínica y vuelve a editarla cuando quieras.' },
-  { target: 'tour-datos', title: 'Dale un lugar al encuentro.', text: 'Escribe el nombre, la ciudad y las coordenadas. Estos datos sitúan el alojamiento alrededor de tu sede.' },
-  { target: 'tour-fechas', title: 'Elige la estancia.', text: 'Define las fechas de entrada y salida sugeridas. Puedes cambiarlas antes o después de publicar.' },
+  { target: 'tour-datos', title: 'Dale un lugar al encuentro.', text: 'Escribe el nombre, la ciudad y las coordenadas. Añade el aeropuerto de llegada para que tus visitantes puedan buscar vuelos.' },
+  { target: 'tour-fechas', title: 'Elige la estancia.', text: 'Las fechas de llegada y salida. Se usan para los vuelos y el alojamiento, y puedes cambiarlas cuando quieras.' },
   { target: 'tour-publicar', title: 'Publica cuando esté listo.', text: 'Guarda como borrador o activa “Portal público”. Desactívalo y guarda para retirar el enlace.' },
-  { target: 'tour-compartir', title: 'Un enlace. Todo más cerca.', text: 'Después de publicar, copia el enlace o el código para tu web. Puedes repetir esta guía desde “Ayuda”.' },
+  { target: 'tour-compartir', title: 'Un enlace. Todo más cerca.', text: 'Tus visitantes abren el enlace y encuentran cómo llegar y dónde quedarse. Puedes repetir esta guía desde “Ayuda”.' },
 ]
 
 export function GuidedTour({ open, onClose }: { open: boolean; onClose: () => void }) {

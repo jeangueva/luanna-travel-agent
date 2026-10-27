@@ -5,11 +5,11 @@ import '@/glass.css'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Luanna Ancla — Alojamiento para eventos y clínicas',
+    default: 'Luanna Ancla — Vuelos y alojamiento para eventos y clínicas',
     template: '%s | Luanna Ancla',
   },
   description:
-    'Crea portales de alojamiento cerca de la sede de tu evento o clínica. Gestiona fechas, ubicación y enlaces para compartir con tus visitantes.',
+    'Un enlace para que tus visitantes, desde cualquier país, encuentren cómo llegar y dónde quedarse cerca de tu evento o clínica.',
 }
 
 export const viewport: Viewport = {

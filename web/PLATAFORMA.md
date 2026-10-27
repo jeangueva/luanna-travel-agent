@@ -1,7 +1,7 @@
 # Portales de alojamiento
 
 La plataforma en `/plataforma` administra un único espacio privado. La landing
-mantiene su simulador comercial; sus cifras no son reservas ni ingresos reales.
+explica el flujo con ejemplos ilustrativos, sin prometer reservas ni ingresos.
 Esta versión no es multicliente: todas las personas que tengan la clave comparten
 las mismas sedes. No admite datos de pacientes.
 
@@ -42,6 +42,21 @@ Las mutaciones requieren sesión y origen coincidente. No se genera ni consulta
 inventario ficticio en los portales públicos.
 
 ## Verificación
+
+### Experiencia visual y recorrido
+
+`/plataforma/demo` permite explorar el editor sin credenciales. Sus cambios viven
+solo en memoria y no publican portales ni escriben en la base de datos.
+El recorrido de cinco pasos aparece en la primera visita por navegador; se puede
+omitir, cerrar con Escape y repetir desde Ayuda. La demo usa una preferencia
+separada para no ocultar el recorrido del espacio real.
+
+La landing, el acceso y el editor comparten Poppins, acentos Source Serif 4 y
+superficies liquid glass en escala de grises. El video externo se puede pausar;
+con movimiento reducido se usa inicialmente un fondo estático. Si falla la
+carga del video, el contenido y los controles siguen disponibles.
+
+### Pruebas técnicas
 
 `npm test` cubre validación, firma y expiración de sesión, acceso anónimo,
 origen cruzado y cookies. `npm run build` verifica TypeScript y compilación.

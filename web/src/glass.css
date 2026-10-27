@@ -116,6 +116,7 @@
 .map-pin svg { width: auto; height: auto; stroke: currentColor; stroke-width: 1.5; }
 .map-pin-main { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #f1f1f1; color: #242424; box-shadow: 0 0 0 9px #fff1; }
 .map-pin-hotel { left: 23%; top: 24%; width: 32px; height: 32px; }
+.map-pin-plane { right: 18%; top: 18%; width: 32px; height: 32px; }
 .map-label { position: absolute; bottom: 15px; right: 3px; font-size: 9px; color: #bbb; }
 .product-caption { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .product-caption h2 { font-size: 18px; margin: 0 0 8px; }
@@ -308,6 +309,12 @@ dialog::backdrop { background: rgb(0 0 0 / .63); }
 .public-portal .portal-note { color: #bdbdbd; font-size: 11px; margin: 20px 0; line-height: 1.9; }
 .hotel-embed { width: 100%; height: 560px; border: 0; border-radius: 18px; background: #eee; margin: 20px 0; }
 .portal-unavailable { padding: 40px 28px; border-radius: 18px; background: #ffffff05; margin-top: 30px; text-align: center; }
+.portal-flights { padding: 26px; border-radius: 18px; background: #ffffff08; margin: 8px 0 30px; }
+.portal-flights p { color: #ccc; font-size: 13px; margin: 10px 0 18px; }
+.flight-search { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.flight-search label { flex: 1 1 200px; display: grid; gap: 8px; font-size: 12px; }
+.flight-search input { text-transform: uppercase; letter-spacing: .12em; }
+.portal-stay-heading { margin-top: 8px; }
 .portal-unavailable svg { margin: 0 auto 16px; }
 .portal-unavailable h2 { font-size: 20px; }
 .portal-unavailable p { font-size: 12px; color: #bbb; margin: 12px auto 0; max-width: 45ch; }

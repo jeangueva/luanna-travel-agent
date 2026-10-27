@@ -1,15 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { ArrowLeft, ArrowUpRight, CalendarDays, Check, ChevronDown, CircleHelp, Code2, Copy, ExternalLink, Eye, FileText, Link2, Loader2, LogOut, MapPin, Plus, RefreshCw, Search, Settings2, X } from 'lucide-react'
+import { Plane, ArrowLeft, ArrowUpRight, CalendarDays, Check, ChevronDown, CircleHelp, Code2, Copy, ExternalLink, Eye, FileText, Link2, Loader2, LogOut, MapPin, Plus, RefreshCw, Search, Settings2, X } from 'lucide-react'
 import { validarPortal, type Portal } from '@/lib/portales'
 import { Brand, GlassShell } from '@/components/ui/GlassShell'
 import { ConfirmLeave } from '@/components/ui/ConfirmLeave'
 import { GuidedTour, TOUR_KEY } from './GuidedTour'
 
 type Borrador = Omit<Portal, 'id'> & { id?: string }
-const vacio: Borrador = { organizacion: '', titulo: '', vertical: 'evento', ciudad: '', lat: NaN, lon: NaN, checkin: '', checkout: '', publicado: false }
-const ejemplo: Portal = { id: 'ca70c75e-2cf6-4d98-bbf9-1f5e2e871790', organizacion: 'Encuentros del Pacífico', titulo: 'Encuentro en Lima', vertical: 'evento', ciudad: 'Lima', lat: -12.1211, lon: -77.0305, checkin: '2027-03-18', checkout: '2027-03-21', publicado: false }
+const vacio: Borrador = { organizacion: '', titulo: '', vertical: 'evento', ciudad: '', lat: NaN, lon: NaN, aeropuerto: '', checkin: '', checkout: '', publicado: false }
+const ejemplo: Portal = { id: 'ca70c75e-2cf6-4d98-bbf9-1f5e2e871790', organizacion: 'Encuentros del Pacífico', titulo: 'Encuentro en Lima', vertical: 'evento', ciudad: 'Lima', lat: -12.1211, lon: -77.0305, aeropuerto: 'LIM', checkin: '2027-03-18', checkout: '2027-03-21', publicado: false }
 
 export function PortalAdmin({ demo = false }: { demo?: boolean }) {
   const [portales, setPortales] = useState<Portal[]>([])
@@ -111,7 +111,7 @@ export function PortalAdmin({ demo = false }: { demo?: boolean }) {
     help.current?.focus({ preventScroll: true })
   }
   const link = saved?.publicado && !demo ? origin + '/p/' + saved.id : ''
-  const iframe = link ? '<iframe src="' + link + '" title="Alojamiento cerca de la sede" width="100%" height="760" loading="lazy" style="border:0"></iframe>' : ''
+  const iframe = link ? '<iframe src="' + link + '" title="Cómo llegar y dónde quedarse" width="100%" height="760" loading="lazy" style="border:0"></iframe>' : ''
   const visibles = portales.filter(item => (item.titulo + ' ' + item.ciudad + ' ' + item.organizacion).toLocaleLowerCase('es').includes(query.toLocaleLowerCase('es')))
   const nights = form.checkin && form.checkout ? (Date.parse(form.checkout) - Date.parse(form.checkin)) / 86400000 : 0
   const fechas = (value: string) => value ? new Date(value + 'T12:00:00Z').toLocaleDateString('es', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : 'Sin fecha'
@@ -153,6 +153,8 @@ export function PortalAdmin({ demo = false }: { demo?: boolean }) {
                     <label>Longitud<input required type="number" min={-180} max={180} step="any" placeholder="-77.0305" value={Number.isNaN(form.lon) ? '' : form.lon} onChange={e => editar('lon', e.target.valueAsNumber)} aria-describedby="coords-help" /></label>
                   </div>
                   <p className="field-hint" id="coords-help"><MapPin size={14} /> Copia las coordenadas de la sede desde tu mapa habitual.</p>
+                  <div className="form-grid"><label className="full-width">Aeropuerto de llegada <small>(opcional)</small><input maxLength={3} placeholder="Ej. LIM" autoCapitalize="characters" autoComplete="off" value={form.aeropuerto} onChange={e => editar('aeropuerto', e.target.value.toUpperCase())} aria-describedby="airport-help" /></label></div>
+                  <p className="field-hint" id="airport-help"><Plane size={14} /> El código de 3 letras del aeropuerto más cercano. Con él, tus visitantes pueden buscar vuelos desde su país.</p>
                 </section>
                 <section id="tour-fechas" className="form-section">
                   <div className="form-section-heading"><span className="section-index">02</span><h2>La estancia sugerida</h2></div>
@@ -170,12 +172,12 @@ export function PortalAdmin({ demo = false }: { demo?: boolean }) {
             <aside className="editor-preview">
               <section className="portal-preview liquid-glass" aria-labelledby="preview-title"><div className="preview-heading"><span className="eyebrow"><Eye size={14} /> VISTA PREVIA</span><span className="subtle-badge">Sin publicar cambios</span></div>
                 <div className="preview-map" aria-hidden="true"><svg viewBox="0 0 400 130"><path d="M-20 110L400 10M0 10L420 100M70 -10L180 140M230 -10L330 140" /><circle cx="200" cy="65" r="46" /><circle cx="200" cy="65" r="25" /></svg><span className="map-pin map-pin-main"><MapPin size={23} /></span></div>
-                <div className="portal-preview-content"><span className="eyebrow">{form.vertical === 'clinica' ? 'CLÍNICA' : 'EVENTO'}{form.ciudad ? ' · ' + form.ciudad : ''}</span><h2 id="preview-title">{form.titulo || 'El nombre de tu sede'}</h2><p>{form.organizacion || 'Tu organización'}</p><div className="preview-dates"><CalendarDays size={16} /><span>{fechas(form.checkin)}<ArrowRightTiny />{fechas(form.checkout)}</span></div><p className="preview-caption">Alojamiento alrededor de tu punto de encuentro.</p></div>
+                <div className="portal-preview-content"><span className="eyebrow">{form.vertical === 'clinica' ? 'CLÍNICA' : 'EVENTO'}{form.ciudad ? ' · ' + form.ciudad : ''}</span><h2 id="preview-title">{form.titulo || 'El nombre de tu sede'}</h2><p>{form.organizacion || 'Tu organización'}</p><div className="preview-dates"><CalendarDays size={16} /><span>{fechas(form.checkin)}<ArrowRightTiny />{fechas(form.checkout)}</span></div><p className="preview-caption">{form.aeropuerto ? 'Vuelos a ' + form.aeropuerto + ' y alojamiento alrededor de tu sede.' : 'Alojamiento alrededor de tu sede.'}</p></div>
               </section>
               <section id="tour-compartir" className="share-panel liquid-glass"><div className="form-section-heading"><Link2 size={18} /><h2>Tu enlace, listo para viajar.</h2></div>
                 {link ? <><label className="field-hint" htmlFor="share-url">Versión guardada y publicada</label><input id="share-url" readOnly value={link} onFocus={e => e.target.select()} /><div className="share-actions"><button className="glass-button glass-primary" onClick={() => copiar(link)}><Copy size={15} /> Copiar enlace</button><a href={link} className="icon-button liquid-glass" target="_blank" rel="noreferrer" aria-label="Abrir portal publicado en otra pestaña"><ExternalLink size={17} /></a></div><details><summary><Code2 size={15} /> Insertar en mi web <ChevronDown size={14} /></summary><pre><code>{iframe}</code></pre><button className="text-action" onClick={() => copiar(iframe)}><Copy size={14} /> Copiar código</button></details></> : <><p>{demo ? 'En esta demo puedes explorar el flujo. Los enlaces públicos se crean desde tu cuenta.' : 'Activa “Portal público” y guarda la sede. Aquí aparecerá el enlace para compartir.'}</p><span className="share-placeholder"><Link2 size={14} /> {demo ? 'Vista de prueba' : 'Tu enlace aparecerá aquí'}</span></>}
               </section>
-              <details className="integration-details"><summary><Settings2 size={15} /> Alojamiento <span>{stay22 ? 'Configurado' : 'Por conectar'}</span><ChevronDown size={14} /></summary><p>{stay22 ? 'Stay22 consulta la disponibilidad y gestiona las reservas.' : 'La búsqueda de hoteles se habilitará cuando tu organización conecte Stay22. Puedes preparar tus sedes mientras tanto.'}</p><p>Vuelos, seguros y pagos aún no están disponibles.</p></details>
+              <details className="integration-details"><summary><Settings2 size={15} /> Qué ven tus visitantes <ChevronDown size={14} /></summary><p><strong>Vuelos:</strong> {form.aeropuerto ? 'buscan desde su ciudad hasta ' + form.aeropuerto + ', con tus fechas.' : 'añade el aeropuerto de llegada para activarlos.'}</p><p><strong>Alojamiento:</strong> {stay22 || demo ? 'mapa de hoteles alrededor de tu sede.' : 'se activará cuando se conecte Stay22.'}</p><p>Las reservas se hacen con cada proveedor. Seguros y pagos aún no están disponibles.</p></details>
             </aside>
           </div>
           <div className="editor-feedback" aria-live="polite">
