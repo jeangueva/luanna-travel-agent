@@ -2,7 +2,7 @@ export interface Portal {
   id: string
   organizacion: string
   titulo: string
-  vertical: 'clinica' | 'evento'
+  vertical: 'servicio' | 'evento' | 'clinica'
   ciudad: string
   lat: number
   lon: number
@@ -41,8 +41,8 @@ export function validarPortal(input: unknown): Omit<Portal, 'id'> {
     }
     return value
   }
-  if (data.vertical !== 'clinica' && data.vertical !== 'evento') {
-    throw new Error('Selecciona clínica o evento.')
+  if (data.vertical !== 'servicio' && data.vertical !== 'clinica' && data.vertical !== 'evento') {
+    throw new Error('Selecciona el tipo de sede.')
   }
   const aeropuerto = typeof data.aeropuerto === 'string' ? data.aeropuerto.trim().toUpperCase() : ''
   if (aeropuerto && !/^[A-Z]{3}$/.test(aeropuerto)) throw new Error('El aeropuerto debe ser un código de 3 letras, como LIM.')

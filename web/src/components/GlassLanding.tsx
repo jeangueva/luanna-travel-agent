@@ -5,9 +5,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Brand, GlassShell } from '@/components/ui/GlassShell'
 import { BlurWordReveal } from '@/components/ui/reactbits'
 
+const ejemplos = {
+  servicio: { tab: 'Empresas', titulo: 'Clientes de cualquier país.', texto: 'Escuelas, retiros, cursos, estudios o despachos. Si tus clientes viajan para verte, encuentran su vuelo y dónde quedarse cerca de ti.', nota: 'Se comparte al confirmar la reserva o la inscripción.' },
+  evento: { tab: 'Eventos', titulo: 'El encuentro, sin las vueltas.', texto: 'Congresos, carreras o celebraciones. Tus asistentes llegan desde otras ciudades o países y encuentran vuelo y alojamiento cerca del evento.', nota: 'Se comparte después de la inscripción.' },
+  clinica: { tab: 'Salud', titulo: 'Pacientes de todo el mundo.', texto: 'Clínicas y centros de salud. Tus pacientes ven cómo volar hasta tu ciudad y dónde quedarse cerca, en las fechas de su tratamiento.', nota: 'Se comparte después de coordinar la cita.' },
+}
+
 export default function GlassLanding() {
   const [menu, setMenu] = useState(false)
-  const [example, setExample] = useState<'evento' | 'clinica'>('evento')
+  const [example, setExample] = useState<keyof typeof ejemplos>('servicio')
   const menuButton = useRef<HTMLButtonElement>(null)
   const menuContainer = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -30,7 +36,7 @@ export default function GlassLanding() {
             </button>
             {menu && <nav id="landing-menu" aria-label="Navegación principal" className="glass-dropdown liquid-glass-strong">
               <a href="#como-funciona" onClick={() => setMenu(false)}>Cómo funciona <ArrowDown size={16} /></a>
-              <a href="#para-quien" onClick={() => setMenu(false)}>Eventos y clínicas <ArrowDown size={16} /></a>
+              <a href="#para-quien" onClick={() => setMenu(false)}>Para quién es <ArrowDown size={16} /></a>
               <a href="/plataforma">Mi plataforma <ArrowUpRight size={16} /></a>
             </nav>}
           </div>
@@ -39,9 +45,9 @@ export default function GlassLanding() {
           <div className="hero-emblem" aria-hidden="true"><Compass size={62} strokeWidth={0.8} /></div>
           <p className="eyebrow">EL ENCUENTRO EMPIEZA AQUÍ</p>
           <h1>Un destino.<br /><em>Todo más cerca.</em></h1>
-          <p className="hero-description">Vuelos y alojamiento para tu gente,<br className="desktop-break" /> desde cualquier país hasta tu evento o clínica.</p>
+          <p className="hero-description">Vuelos y alojamiento para tu gente,<br className="desktop-break" /> desde cualquier país hasta tu negocio.</p>
           <a className="glass-button glass-primary hero-cta" href="/plataforma">Crear mi portal <span className="button-orb"><ArrowUpRight size={17} /></span></a>
-          <div className="hero-pills" aria-label="Para quién es Luanna"><a href="#para-quien" className="liquid-glass">Eventos</a><a href="#para-quien" className="liquid-glass">Clínicas</a><a href="#como-funciona" className="liquid-glass">Tu propia web</a></div>
+          <div className="hero-pills" aria-label="Para quién es Luanna"><a href="#para-quien" className="liquid-glass">Empresas</a><a href="#para-quien" className="liquid-glass">Eventos</a><a href="#para-quien" className="liquid-glass">Salud</a></div>
         </main>
         <footer className="hero-footer"><span className="eyebrow">MENOS COORDINACIÓN. MÁS ENCUENTROS.</span><p>Tú eliges el lugar.<br /><em>Ellos encuentran cómo llegar.</em></p><a href="#como-funciona" className="text-action">Descubre cómo <ArrowDown size={15} /></a></footer>
       </section>
@@ -65,10 +71,10 @@ export default function GlassLanding() {
       ].map(([number, title, text]) => <li key={number}><span className="step-number">{number}</span><h3>{title}</h3><p>{text}</p></li>)}</ol>
     </section>
     <section id="para-quien" className="landing-section audience-section">
-      <div><span className="eyebrow">DOS CONTEXTOS. LA MISMA CALMA.</span><h2>Cerca de lo<br /><em>que importa.</em></h2><p>Para una gran cita o un encuentro personal.<br />La estancia también forma parte de la experiencia.</p>
-        <div className="glass-segments" role="group" aria-label="Ver ejemplo por tipo de sede"><button aria-pressed={example === 'evento'} onClick={() => setExample('evento')}>Eventos</button><button aria-pressed={example === 'clinica'} onClick={() => setExample('clinica')}>Clínicas</button></div>
+      <div><span className="eyebrow">PARA QUIEN TE ESPERA</span><h2>Cerca de lo<br /><em>que importa.</em></h2><p>Si tu gente viaja para llegar a ti,<br />Luanna le muestra el camino.</p>
+        <div className="glass-segments" role="group" aria-label="Ver ejemplo por tipo de sede">{(Object.keys(ejemplos) as (keyof typeof ejemplos)[]).map(key => <button key={key} aria-pressed={example === key} onClick={() => setExample(key)}>{ejemplos[key].tab}</button>)}</div>
       </div>
-      <article className="audience-example liquid-glass-strong" aria-live="polite"><div className="preview-heading"><CalendarDays size={22} strokeWidth={1.25} /><span className="subtle-badge">Ejemplo ilustrativo</span></div><h3>{example === 'evento' ? 'El encuentro, sin las vueltas.' : 'Pacientes de todo el mundo.'}</h3><p>{example === 'evento' ? 'Congresos, carreras o celebraciones. Tus asistentes llegan desde otras ciudades o países y encuentran vuelo y alojamiento cerca del evento.' : 'Recibe pacientes de otros países. Ellos ven cómo volar hasta tu ciudad y dónde quedarse cerca de tu clínica, en las fechas de su tratamiento.'}</p><p className="example-note"><Check size={16} /> {example === 'evento' ? 'Se comparte después de la inscripción.' : 'Se comparte después de coordinar la cita.'}</p><a href="/plataforma" className="text-action">Preparar mi portal <ArrowRight size={17} /></a></article>
+      <article className="audience-example liquid-glass-strong" aria-live="polite"><div className="preview-heading"><CalendarDays size={22} strokeWidth={1.25} /><span className="subtle-badge">Ejemplo ilustrativo</span></div><h3>{ejemplos[example].titulo}</h3><p>{ejemplos[example].texto}</p><p className="example-note"><Check size={16} /> {ejemplos[example].nota}</p><a href="/plataforma" className="text-action">Preparar mi portal <ArrowRight size={17} /></a></article>
     </section>
     <footer className="landing-end"><Brand /><span>Cómo llegar y dónde quedarse.</span><a href="/plataforma" className="text-action">Mi plataforma <ArrowUpRight size={16} /></a></footer>
   </GlassShell>

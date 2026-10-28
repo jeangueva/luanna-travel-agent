@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, Check, Compass, X } from 'lucide-react'
 
 export const TOUR_KEY = 'luanna-onboarding-v2'
 const steps = [
-  { target: 'tour-sedes', title: 'Tu punto de partida.', text: 'Aquí encontrarás tus sedes. Crea una para cada evento o clínica y vuelve a editarla cuando quieras.' },
+  { target: 'tour-sedes', title: 'Tu punto de partida.', text: 'Aquí encontrarás tus sedes. Crea una por cada lugar al que tu gente deba llegar y vuelve a editarla cuando quieras.' },
   { target: 'tour-datos', title: 'Dale un lugar al encuentro.', text: 'Escribe el nombre, la ciudad y las coordenadas. Añade el aeropuerto de llegada para que tus visitantes puedan buscar vuelos.' },
   { target: 'tour-fechas', title: 'Elige la estancia.', text: 'Las fechas de llegada y salida. Se usan para los vuelos y el alojamiento, y puedes cambiarlas cuando quieras.' },
   { target: 'tour-publicar', title: 'Publica cuando esté listo.', text: 'Guarda como borrador o activa “Portal público”. Desactívalo y guarda para retirar el enlace.' },
