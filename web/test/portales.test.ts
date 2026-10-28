@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { validarPortal, esIdPortal } from '../src/lib/portales'
 import { urlVuelos } from '../src/lib/afiliados'
+import { elegirIdioma } from '../src/lib/portal-i18n'
 import { crearSesion, sesionValida, mismoOrigen, DURACION_SESION } from '../src/lib/portal-auth'
 import { POST as login, DELETE as logout } from '../app/api/plataforma/sesion/route'
 import { GET as list, POST as save } from '../app/api/plataforma/portales/route'
@@ -87,4 +88,12 @@ test('el aeropuerto es opcional, se normaliza y rechaza códigos inválidos', ()
 test('la búsqueda de vuelos lleva origen, destino, fechas y marker', () => {
   const url = urlVuelos({ marker: 'm1', origen: 'MEX', destino: 'UIO', ida: '2027-01-30', vuelta: '2027-02-02' })
   assert.equal(url, 'https://www.aviasales.com/search/MEX3001UIO02021?marker=m1')
+})
+
+test('el portal elige idioma por ?lang= y luego por el navegador', () => {
+  assert.equal(elegirIdioma('en', 'es-PE,es'), 'en')
+  assert.equal(elegirIdioma(undefined, 'en-US,en;q=0.9'), 'en')
+  assert.equal(elegirIdioma(undefined, 'es-MX'), 'es')
+  assert.equal(elegirIdioma(undefined, null), 'es')
+  assert.equal(elegirIdioma('fr', 'de-DE'), 'en')
 })

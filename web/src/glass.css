@@ -432,3 +432,4 @@ dialog::backdrop { background: rgb(0 0 0 / .63); }
   .luanna-glass *, .luanna-glass *::before, .luanna-glass *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .luanna-glass .glass-button:hover, .luanna-glass .glass-button:active, .luanna-glass .icon-button:hover, .luanna-glass .icon-button:active { transform: none !important; }
 }
+.portal-topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
