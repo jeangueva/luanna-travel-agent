@@ -6,10 +6,24 @@ export default {
       fontFamily: {
         sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         display: ['"Bricolage Grotesque"', 'Geist', 'sans-serif'],
+        wordmark: ['"Special Elite"', 'Georgia', 'serif'],
         serif: ['Literata', 'Georgia', 'serif'],
         mono: ['"Chivo Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       colors: {
+        // Sistema de diseño: valores en design/tokens.json → src/tokens.css.
+        ds: {
+          ink: 'var(--color-ink)',
+          soft: 'var(--color-ink-soft)',
+          muted: 'var(--color-ink-muted)',
+          surface: 'var(--color-surface)',
+          raised: 'var(--color-surface-raised)',
+          dark: 'var(--color-surface-dark)',
+          'on-dark': 'var(--color-on-dark)',
+          accent: 'var(--color-accent)',
+          line: 'var(--color-line)',
+          focus: 'var(--color-focus)',
+        },
         luanna: {
           dark: '#11110f',
           text: '#161614',

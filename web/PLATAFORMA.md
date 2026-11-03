@@ -1,5 +1,18 @@
 # Portales de alojamiento
 
+## Demo libre del producto integrado
+
+`/demo` muestra la inscripción a un taller ficticio, con un total simulado y sin
+pedir datos personales ni tarjeta. El botón de pago solo navega a
+`/demo?paso=confirmacion`, donde se incrusta `/demo/alojamiento` en un iframe real.
+Esta demo es distinta de `/plataforma/demo`, que muestra el editor administrativo.
+
+El módulo permite cambiar fechas (1–90 noches), explorar tres alojamientos
+ficticios y simular el paso siguiente. No consulta inventario, no llama a APIs de
+pago, no crea registros y no inicia reservas. Los precios y distancias están
+rotulados como ejemplos. Es accesible sin cuenta; para compartirla fuera del
+equipo local es necesario desplegar el proyecto.
+
 La plataforma en `/plataforma` administra un único espacio privado. La landing
 explica el flujo con ejemplos ilustrativos, sin prometer reservas ni ingresos.
 Esta versión no es multicliente: todas las personas que tengan la clave comparten

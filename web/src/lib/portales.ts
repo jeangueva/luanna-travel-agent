@@ -1,3 +1,5 @@
+import { validarMarca, type Marca } from './marca'
+
 export interface Portal {
   id: string
   organizacion: string
@@ -11,6 +13,8 @@ export interface Portal {
   checkin: string
   checkout: string
   publicado: boolean
+  /** Apariencia del portal. Las sedes antiguas reciben la marca base. */
+  marca: Marca
 }
 
 export function validarPortal(input: unknown): Omit<Portal, 'id'> {
@@ -61,6 +65,7 @@ export function validarPortal(input: unknown): Omit<Portal, 'id'> {
     aeropuerto,
     checkin, checkout,
     publicado: data.publicado,
+    marca: validarMarca(data.marca),
   }
 }
 

@@ -1,0 +1,39 @@
+/* Generado desde design/tokens.json con `npm run tokens`. No editar a mano. */
+:root {
+  --color-ink: #1a1a1a;
+  --color-ink-soft: #5c5c5c;
+  --color-ink-muted: #6b6b6b;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f6f4f1;
+  --color-surface-dark: #0a0a0a;
+  --color-on-dark: #fafafa;
+  --color-accent: #905831;
+  --color-line: #e4e0da;
+  --color-focus: #1d4ed8;
+  --color-danger: #b42318;
+  --color-success: #067647;
+  --font-sans: Geist, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Special Elite', Georgia, serif;
+  --text-xs: 13px;
+  --text-sm: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-2xl: 40px;
+  --text-hero: 68px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --radius-sm: 12px;
+  --radius-md: 20px;
+  --radius-lg: 32px;
+  --radius-card: 44px;
+  --radius-pill: 999px;
+  --target-min: 44px;
+}

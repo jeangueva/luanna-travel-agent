@@ -24,7 +24,7 @@ export const textosPortal = {
     notaProveedor: 'Las tarifas, disponibilidad, condiciones y reservas las gestiona el proveedor externo. Luanna puede recibir una comisión por las reservas de vuelos y alojamiento realizadas desde esta página.',
     preparando: 'Estamos preparando tu estancia.',
     preparandoTexto: 'La búsqueda de alojamiento aún no está habilitada. Consulta a la organización para coordinar tu visita.',
-    pie: 'Cómo llegar y dónde quedarte · Luanna Ancla',
+    pie: 'Cómo llegar y dónde quedarte · Luanna',
     otroIdioma: 'English',
     vuelos: {
       titulo: 'Cómo llegar',
@@ -47,7 +47,7 @@ export const textosPortal = {
     notaProveedor: 'Rates, availability, terms and bookings are handled by the external provider. Luanna may earn a commission on flight and accommodation bookings made from this page.',
     preparando: 'We are getting your stay ready.',
     preparandoTexto: 'Accommodation search is not available yet. Contact the organizer to plan your visit.',
-    pie: 'How to get there and where to stay · Luanna Ancla',
+    pie: 'How to get there and where to stay · Luanna',
     otroIdioma: 'Español',
     vuelos: {
       titulo: 'How to get there',

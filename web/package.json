@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vinext dev",
-    "build": "tsc --noEmit && vinext build && mkdir -p dist/.openai && cp .openai/hosting.json dist/.openai/hosting.json",
+    "build": "npm run tokens && tsc --noEmit && vinext build && mkdir -p dist/.openai && cp .openai/hosting.json dist/.openai/hosting.json",
     "start": "vinext start",
     "preview": "vinext start",
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "tokens": "tsx scripts/build-tokens.ts",
+    "figma": "tsx scripts/figma-sync.ts"
   },
   "dependencies": {
     "@mapbox/togeojson": "^0.16.2",

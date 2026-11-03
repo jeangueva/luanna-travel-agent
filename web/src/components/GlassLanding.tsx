@@ -37,6 +37,7 @@ export default function GlassLanding() {
             {menu && <nav id="landing-menu" aria-label="Navegación principal" className="glass-dropdown liquid-glass-strong">
               <a href="#como-funciona" onClick={() => setMenu(false)}>Cómo funciona <ArrowDown size={16} /></a>
               <a href="#para-quien" onClick={() => setMenu(false)}>Para quién es <ArrowDown size={16} /></a>
+              <a href="/demo">Probar demo libre <ArrowUpRight size={16} /></a>
               <a href="/plataforma">Mi plataforma <ArrowUpRight size={16} /></a>
             </nav>}
           </div>
@@ -47,6 +48,7 @@ export default function GlassLanding() {
           <h1>Un destino.<br /><em>Todo más cerca.</em></h1>
           <p className="hero-description">Vuelos y alojamiento para tu gente,<br className="desktop-break" /> desde cualquier país hasta tu negocio.</p>
           <a className="glass-button glass-primary hero-cta" href="/plataforma">Crear mi portal <span className="button-orb"><ArrowUpRight size={17} /></span></a>
+          <a className="text-action" href="/demo">Ver Luanna después de un pago <ArrowRight size={16} /></a>
           <div className="hero-pills" aria-label="Para quién es Luanna"><a href="#para-quien" className="liquid-glass">Empresas</a><a href="#para-quien" className="liquid-glass">Eventos</a><a href="#para-quien" className="liquid-glass">Salud</a></div>
         </main>
         <footer className="hero-footer"><span className="eyebrow">MENOS COORDINACIÓN. MÁS ENCUENTROS.</span><p>Tú eliges el lugar.<br /><em>Ellos encuentran cómo llegar.</em></p><a href="#como-funciona" className="text-action">Descubre cómo <ArrowDown size={15} /></a></footer>

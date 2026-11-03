@@ -12,10 +12,10 @@ export function ConfirmLeave({ open, onCancel, onConfirm }: { open: boolean; onC
     node?.showModal()
     return () => { node?.close(); previous?.focus({ preventScroll: true }) }
   }, [open])
-  return <dialog ref={ref} className="luanna-glass confirm-dialog liquid-glass-strong" aria-labelledby="leave-title" aria-describedby="leave-description" onCancel={event => { event.preventDefault(); onCancel() }}>
-    <button className="icon-button dialog-close" onClick={onCancel} aria-label="Cerrar"><X size={19} /></button>
-    <h2 id="leave-title">Tienes cambios sin guardar.</h2>
-    <p id="leave-description">Puedes seguir editando o salir sin guardar estos cambios.</p>
-    <div className="dialog-actions"><button className="glass-button liquid-glass" onClick={onConfirm}>Descartar cambios</button><button autoFocus className="glass-button glass-primary" onClick={onCancel}>Seguir editando</button></div>
+  return <dialog ref={ref} className="ap-dialogo" aria-labelledby="leave-title" aria-describedby="leave-description" onCancel={event => { event.preventDefault(); onCancel() }}>
+    <button className="ap-icono ap-dialogo-cerrar" onClick={onCancel} aria-label="Cerrar"><X size={19} /></button>
+    <h2 id="leave-title">¿Salir sin guardar?</h2>
+    <p id="leave-description">Tienes cambios que se perderán.</p>
+    <div className="ap-dialogo-acciones"><button className="btn btn-light" onClick={onConfirm}>Salir sin guardar</button><button autoFocus className="btn btn-dark" onClick={onCancel}>Seguir editando</button></div>
   </dialog>
 }

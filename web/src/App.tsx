@@ -1,9 +1,9 @@
-import GlassLanding from '@/components/GlassLanding'
+import Landing from '@/components/landing/Landing'
 
 function App() {
   return (
     <div className="min-h-svh">
-      <GlassLanding />
+      <Landing />
     </div>
   )
 }

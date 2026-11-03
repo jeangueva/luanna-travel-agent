@@ -1,5 +1,9 @@
 import { neon } from '@neondatabase/serverless'
 import { esIdPortal, type Portal } from './portales'
+import { validarMarca } from './marca'
+
+/** Las sedes guardadas antes de existir la marca reciben la marca base. */
+const conMarca = (portal: Record<string, unknown>) => ({ ...portal, marca: validarMarca(portal.marca) }) as Portal
 
 function database() {
   const url = process.env.DATABASE_URL
@@ -9,7 +13,7 @@ function database() {
 
 export async function listarPortales(): Promise<Portal[]> {
   const rows = await database()`SELECT id, config FROM ancla_portales ORDER BY updated_at DESC LIMIT 200`
-  return rows.map(row => ({ aeropuerto: '', ...row.config, id: row.id }) as Portal)
+  return rows.map(row => conMarca({ aeropuerto: '', ...row.config, id: row.id }))
 }
 
 export async function guardarPortal(id: string, config: Omit<Portal, 'id'>): Promise<Portal> {
@@ -23,5 +27,5 @@ export async function portalPublicado(id: string): Promise<Portal | null> {
   if (!esIdPortal(id)) return null
   const rows = await database()`SELECT id, config FROM ancla_portales
     WHERE id = ${id} AND config->>'publicado' = 'true' LIMIT 1`
-  return rows[0] ? { aeropuerto: '', ...rows[0].config, id: rows[0].id } as Portal : null
+  return rows[0] ? conMarca({ aeropuerto: '', ...rows[0].config, id: rows[0].id }) : null
 }

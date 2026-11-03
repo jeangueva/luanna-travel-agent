@@ -7,7 +7,7 @@ import { PortalAdmin } from '@/components/plataforma/PortalAdmin'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Administrar sedes',
+  title: 'Mis sedes',
   description: 'Gestiona sedes y portales de vuelos y alojamiento para tu negocio.',
   robots: { index: false, follow: false },
 }

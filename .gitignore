@@ -51,3 +51,8 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Generados por npm run figma
+web/design/figma-push.js
+web/design/figma-pull.js
+web/design/figma-pull.result.json

@@ -1,0 +1,27 @@
+{% comment %}
+  Bloque de Luanna: vuelos y alojamiento para quien compra en la tienda.
+  Se agrega desde el editor de temas (Personalizar > Agregar bloque > Luanna),
+  por ejemplo en la página de producto o en la de pedido confirmado.
+{% endcomment %}
+{%- if block.settings.sede != blank -%}
+  <div data-luanna="{{ block.settings.sede | escape }}" {% if block.settings.idioma != 'auto' %}data-lang="{{ block.settings.idioma }}"{% endif %} style="margin: {{ block.settings.margen }}px 0;"></div>
+  <script src="https://luanna.app/embed.js" async></script>
+{%- elsif request.design_mode -%}
+  <p style="padding:16px;border:1px dashed #999;border-radius:12px;">Luanna: pega el id de tu sede en la configuración del bloque.</p>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Luanna",
+  "target": "section",
+  "settings": [
+    { "type": "text", "id": "sede", "label": "Id de tu sede", "info": "Lo encuentras en tu plataforma de Luanna, en «Compartir»." },
+    { "type": "select", "id": "idioma", "label": "Idioma", "default": "auto", "options": [
+      { "value": "auto", "label": "El del visitante" },
+      { "value": "es", "label": "Español" },
+      { "value": "en", "label": "Inglés" }
+    ] },
+    { "type": "range", "id": "margen", "label": "Espacio arriba y abajo", "min": 0, "max": 64, "step": 8, "unit": "px", "default": 24 }
+  ]
+}
+{% endschema %}

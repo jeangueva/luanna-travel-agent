@@ -1,0 +1,9 @@
+# App de Shopify que solo trae el bloque de tema de Luanna.
+# Requiere crear la app en partners.shopify.com y completar client_id.
+name = "Luanna"
+client_id = ""
+application_url = "https://luanna.app"
+embedded = false
+
+[access_scopes]
+scopes = ""

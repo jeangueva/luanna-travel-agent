@@ -24,13 +24,16 @@ export function BuscarVuelos({ destino, ciudad, ida, vuelta, marker, idioma }: {
     setError('')
     window.open(urlVuelos({ marker, origen: codigo, destino, ida, vuelta }), '_blank', 'noopener')
   }
-  return <section className="portal-flights" aria-labelledby="vuelos-title">
-    <div className="form-section-heading"><Plane size={18} /><h2 id="vuelos-title">{t.titulo}</h2></div>
+  return <section className="pp-bloque" aria-labelledby="vuelos-title">
+    <h2 id="vuelos-title"><Plane size={20} aria-hidden="true" /> {t.titulo}</h2>
     <p>{t.intro(ciudad, destino)}</p>
-    <form onSubmit={buscar} className="flight-search">
-      <label>{t.campo}<input value={origen} onChange={e => { setOrigen(e.target.value); setError('') }} maxLength={3} placeholder="MEX" autoCapitalize="characters" autoComplete="off" aria-invalid={Boolean(error)} aria-describedby={error ? 'vuelos-error' : undefined} /></label>
-      <button className="glass-button glass-primary">{t.boton} <ArrowUpRight size={17} /></button>
+    <form onSubmit={buscar} className="pp-form" noValidate>
+      <label htmlFor="vuelos-origen">{t.campo}</label>
+      <div className="pp-fila">
+        <input id="vuelos-origen" value={origen} onChange={e => { setOrigen(e.target.value); setError('') }} maxLength={3} placeholder="MEX" autoCapitalize="characters" autoComplete="off" aria-invalid={Boolean(error)} aria-describedby={error ? 'vuelos-error' : undefined} />
+        <button className="pp-boton">{t.boton} <ArrowUpRight size={17} aria-hidden="true" /></button>
+      </div>
     </form>
-    {error && <p id="vuelos-error" role="alert" className="field-hint">{error}</p>}
+    {error && <p id="vuelos-error" role="alert" className="pp-error">{error}</p>}
   </section>
 }

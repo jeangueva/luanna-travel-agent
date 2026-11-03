@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ArrowLeft, ArrowRight, Check, Compass, X } from 'lucide-react'
 
-export const TOUR_KEY = 'luanna-onboarding-v2'
+export const TOUR_KEY = 'luanna-onboarding-v3'
 const steps = [
-  { target: 'tour-sedes', title: 'Tu punto de partida.', text: 'Aquí encontrarás tus sedes. Crea una por cada lugar al que tu gente deba llegar y vuelve a editarla cuando quieras.' },
-  { target: 'tour-datos', title: 'Dale un lugar al encuentro.', text: 'Escribe el nombre, la ciudad y las coordenadas. Añade el aeropuerto de llegada para que tus visitantes puedan buscar vuelos.' },
-  { target: 'tour-fechas', title: 'Elige la estancia.', text: 'Las fechas de llegada y salida. Se usan para los vuelos y el alojamiento, y puedes cambiarlas cuando quieras.' },
-  { target: 'tour-publicar', title: 'Publica cuando esté listo.', text: 'Guarda como borrador o activa “Portal público”. Desactívalo y guarda para retirar el enlace.' },
-  { target: 'tour-compartir', title: 'Un enlace. Todo más cerca.', text: 'Tus visitantes abren el enlace y encuentran cómo llegar y dónde quedarse. Puedes repetir esta guía desde “Ayuda”.' },
+  { target: 'tour-sedes', title: 'Tus sedes', text: 'Una sede es un lugar al que tus clientes viajan. Crea una por cada local, evento o clínica.' },
+  { target: 'tour-datos', title: 'Dónde estás', text: 'La ciudad, el punto exacto y el aeropuerto más cercano. Con eso mostramos vuelos y hoteles cerca.' },
+  { target: 'tour-fechas', title: 'Cuándo vienen', text: 'Las fechas de llegada y salida. Puedes cambiarlas cuando quieras.' },
+  { target: 'tour-estilo', title: 'Tu estilo', text: 'Tus colores, tu letra y tus esquinas. Tus clientes verán tu marca, no la nuestra.' },
+  { target: 'tour-publicar', title: 'Publicar', text: 'Activa «Portal visible» y guarda. Para ocultarlo, desactívalo y guarda otra vez.' },
+  { target: 'tour-compartir', title: 'Compartir', text: 'Copia tu enlace o el código para Shopify, WordPress o tu web. Puedes repetir esta guía desde «Ayuda».' },
 ]
 
 export function GuidedTour({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -44,15 +45,15 @@ export function GuidedTour({ open, onClose }: { open: boolean; onClose: () => vo
   function finish() {
     onClose()
   }
-  return <dialog ref={dialog} className="luanna-glass tour-overlay" aria-labelledby="tour-title" aria-describedby="tour-description" onCancel={event => { event.preventDefault(); finish() }}>
-    <div className="tour-highlight" style={rect} aria-hidden="true" />
-    <section className="tour-card liquid-glass-strong">
-      <div className="preview-heading"><span className="tour-label"><Compass size={18} /> UN RECORRIDO CONTIGO</span><button className="icon-button" onClick={finish} aria-label="Cerrar recorrido"><X size={18} /></button></div>
-      <div className="tour-progress" aria-label={`Paso ${step + 1} de ${steps.length}`}>{steps.map((item, index) => <span key={item.target} data-current={index <= step} />)}</div>
-      <span className="eyebrow">PASO {step + 1} DE {steps.length}</span>
+  return <dialog ref={dialog} className="ap-tour" aria-labelledby="tour-title" aria-describedby="tour-description" onCancel={event => { event.preventDefault(); finish() }}>
+    <div className="ap-tour-foco" style={rect} aria-hidden="true" />
+    <section className="ap-tour-tarjeta">
+      <div className="ap-tour-cabecera"><span className="ap-mini"><Compass size={18} /> Guía rápida</span><button className="ap-icono" onClick={finish} aria-label="Cerrar recorrido"><X size={18} /></button></div>
+      <div className="ap-tour-progreso" aria-label={`Paso ${step + 1} de ${steps.length}`}>{steps.map((item, index) => <span key={item.target} data-current={index <= step} />)}</div>
+      <span className="ap-tour-paso">Paso {step + 1} de {steps.length}</span>
       <h2 ref={heading} id="tour-title" tabIndex={-1}>{steps[step].title}</h2>
       <p id="tour-description">{steps[step].text}</p>
-      <div className="tour-actions"><button className="text-action" onClick={step ? () => setStep(step - 1) : finish}>{step ? <><ArrowLeft size={16} /> Anterior</> : 'Omitir guía'}</button><button className="glass-button glass-primary" onClick={step === steps.length - 1 ? finish : () => setStep(step + 1)}>{step === steps.length - 1 ? <>Empezar <Check size={17} /></> : <>Siguiente <ArrowRight size={17} /></>}</button></div>
+      <div className="ap-tour-acciones"><button className="ap-texto" onClick={step ? () => setStep(step - 1) : finish}>{step ? <><ArrowLeft size={16} /> Anterior</> : 'Omitir guía'}</button><button className="btn btn-dark" onClick={step === steps.length - 1 ? finish : () => setStep(step + 1)}>{step === steps.length - 1 ? <>Empezar <Check size={17} /></> : <>Siguiente <ArrowRight size={17} /></>}</button></div>
     </section>
   </dialog>
 }
