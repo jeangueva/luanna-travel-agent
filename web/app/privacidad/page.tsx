@@ -13,8 +13,8 @@ export default function Privacidad() {
       <li><strong>De quien visita un portal:</strong> el código del aeropuerto que escribe para buscar vuelos y el idioma de su navegador. No pedimos nombre, correo ni teléfono.</li>
       <li><strong>Datos técnicos:</strong> registros básicos del servidor (dirección IP, navegador, páginas visitadas) para que el servicio funcione y sea seguro.</li>
     </ul>
-    <h2>Datos de salud</h2>
-    <p>Las sedes solo contienen información del lugar. Los negocios no deben escribir datos de pacientes o clientes en Luanna.</p>
+    <h2>Datos sensibles</h2>
+    <p>Las sedes solo contienen información del lugar. Los negocios no deben escribir en Luanna datos personales de sus clientes.</p>
     <h2>Proveedores</h2>
     <p>Cuando alguien busca un vuelo o un hotel, sale de Luanna hacia el proveedor (por ejemplo, Aviasales mediante Travelpayouts, o Stay22 y los hoteles que muestra). Cada proveedor trata los datos de la reserva según su propia política. Alojamos el servicio en Cloudflare y guardamos las sedes en Neon.</p>
     <h2>Cookies</h2>

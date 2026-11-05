@@ -14,7 +14,7 @@ export default function Terminos() {
     <h2>Lo que pedimos a los negocios</h2>
     <ul>
       <li>Usar datos reales de su sede y mantener las fechas al día.</li>
-      <li>No publicar datos personales ni de salud de sus clientes.</li>
+      <li>No publicar datos personales de sus clientes.</li>
       <li>No usar Luanna para engañar a nadie ni para actividades ilegales.</li>
     </ul>
     <h2>Cambios y disponibilidad</h2>
