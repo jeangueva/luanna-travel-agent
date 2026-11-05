@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Plane, ArrowUpRight, CalendarDays, Check, ChevronDown, CircleHelp, Copy, ExternalLink, Eye, Info, Link2, Loader2, LogOut, MapPin, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { BarChart3, Plane, ArrowUpRight, CalendarDays, Check, ChevronDown, CircleHelp, Copy, ExternalLink, Eye, Info, Link2, Loader2, LogOut, MapPin, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { validarPortal, type Portal } from '@/lib/portales'
 import { ConfirmLeave } from '@/components/ui/ConfirmLeave'
 import { GuidedTour, TOUR_KEY } from './GuidedTour'
 import { GuiaIntegraciones } from '@/components/landing/Integraciones'
 import { ControlesMarca, VistaMarca } from '@/components/landing/Personalizador'
 import { MARCA_BASE, type Marca } from '@/lib/marca'
+import type { Resumen } from '@/lib/medicion'
 
 type Borrador = Omit<Portal, 'id'> & { id?: string }
 const vacio: Borrador = { organizacion: '', titulo: '', vertical: 'servicio', ciudad: '', lat: NaN, lon: NaN, aeropuerto: '', checkin: '', checkout: '', publicado: false, marca: MARCA_BASE }
@@ -22,6 +23,7 @@ export function PortalAdmin({ demo = false }: { demo?: boolean }) {
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
   const [stay22, setStay22] = useState(false)
+  const [resumen, setResumen] = useState<Record<string, Resumen>>({})
   const [origin, setOrigin] = useState('')
   const [dirty, setDirty] = useState(false)
   const dirtyRef = useRef(false)
@@ -38,6 +40,7 @@ export function PortalAdmin({ demo = false }: { demo?: boolean }) {
     try {
       if (demo) {
         setPortales(prev => prev.length ? prev : [ejemplo])
+        setResumen({ [ejemplo.id]: { vistas: 248, vuelos: 61, hoteles: 37 } })
         setLoaded(true)
         return
       }
@@ -47,6 +50,7 @@ export function PortalAdmin({ demo = false }: { demo?: boolean }) {
       if (!response.ok) throw new Error(data.error)
       setPortales(data.portales)
       setStay22(data.stay22)
+      setResumen(data.resumen ?? {})
       setLoaded(true)
     } catch (error) { setError(error instanceof Error ? error.message : 'No pudimos cargar tus sedes. Vuelve a intentar.') }
     finally { setLoading(false) }
@@ -133,7 +137,7 @@ export function PortalAdmin({ demo = false }: { demo?: boolean }) {
         <label className="ap-buscar"><Search size={16} aria-hidden="true" /><span className="sr-only">Buscar sedes</span><input type="search" placeholder="Buscar…" value={query} onChange={e => setQuery(e.target.value)} /></label>
         <div aria-busy={loading}>
           {loading ? <p className="ap-cargando" role="status"><Loader2 size={16} className="loading-spin" aria-hidden="true" /> Cargando…</p> :
-            <ul className="ap-lista">{visibles.map(portal => <li key={portal.id}><button disabled={busy} aria-pressed={form.id === portal.id} onClick={() => seleccionar(portal)}><MapPin size={17} aria-hidden="true" /><span><strong>{portal.titulo}</strong><small>{portal.ciudad} · {portal.publicado ? 'Publicada' : 'Borrador'}</small></span></button></li>)}</ul>}
+            <ul className="ap-lista">{visibles.map(portal => <li key={portal.id}><button disabled={busy} aria-pressed={form.id === portal.id} onClick={() => seleccionar(portal)}><MapPin size={17} aria-hidden="true" /><span><strong>{portal.titulo}</strong><small>{portal.ciudad} · {portal.publicado ? 'Publicada' : 'Borrador'}{resumen[portal.id] ? ` · ${resumen[portal.id].vistas} visitas` : ''}</small></span></button></li>)}</ul>}
           {!loading && !visibles.length && <div className="ap-vacio"><p>{query ? 'No hay sedes con ese nombre.' : loaded ? 'Aún no tienes sedes.' : 'No pudimos cargar tus sedes.'}</p><small>{query ? 'Prueba con otra palabra.' : loaded ? 'Crea la primera con «Nueva sede».' : 'Toca «Actualizar» para reintentar.'}</small>{query && <button className="ap-texto" onClick={() => setQuery('')}>Limpiar búsqueda</button>}</div>}
         </div>
         <button disabled={loading || busy} onClick={cargar} className="ap-texto ap-actualizar"><RefreshCw size={15} aria-hidden="true" /> Actualizar</button>
@@ -180,6 +184,10 @@ export function PortalAdmin({ demo = false }: { demo?: boolean }) {
             <section aria-labelledby="preview-title"><h2 id="preview-title" className="ap-mini"><Eye size={15} aria-hidden="true" /> Vista previa</h2>
               <VistaMarca marca={form.marca} organizacion={form.organizacion || 'Tu negocio'} ciudad={form.ciudad || 'Tu ciudad'} titulo={form.titulo || 'El nombre de tu sede'} />
             </section>
+            {saved && (saved.publicado || demo) && <section className="ap-numeros" aria-labelledby="numeros-title"><h2 id="numeros-title" className="ap-mini"><BarChart3 size={15} aria-hidden="true" /> Últimos 30 días{demo ? ' (ejemplo)' : ''}</h2>
+              <dl>{([['vistas', 'Visitas'], ['vuelos', 'Buscaron vuelo'], ['hoteles', 'Abrieron hoteles']] as const).map(([k, etiqueta]) => <div key={k}><dt>{etiqueta}</dt><dd>{(resumen[saved.id]?.[k] ?? 0).toLocaleString('es')}</dd></div>)}</dl>
+              <p className="ap-ayuda">{resumen[saved.id]?.vistas ? `${Math.round(100 * (resumen[saved.id].vuelos + resumen[saved.id].hoteles) / resumen[saved.id].vistas)} % de las visitas buscó cómo llegar o dónde quedarse.` : 'Comparte tu enlace y aquí verás cuánta gente lo usa.'}</p>
+            </section>}
             <section id="tour-compartir" className="ap-compartir" aria-labelledby="compartir-title"><h2 id="compartir-title" className="ap-mini"><Link2 size={15} aria-hidden="true" /> Compartir</h2>
               {link && saved ? <>
                 <div className="ap-enlace"><input aria-label="Enlace de tu portal" readOnly value={link} onFocus={e => e.target.select()} /><button className="btn btn-dark" onClick={() => copiar(link)}><Copy size={15} aria-hidden="true" /> Copiar</button><a href={link} className="ap-icono" target="_blank" rel="noreferrer" aria-label="Abrir el portal en otra pestaña"><ExternalLink size={17} /></a></div>

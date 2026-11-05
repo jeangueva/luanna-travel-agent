@@ -8,6 +8,7 @@ import { variablesMarca } from '@/lib/marca'
 import { elegirIdioma, textosPortal } from '@/lib/portal-i18n'
 import { BuscarVuelos } from '@/components/plataforma/BuscarVuelos'
 import { AlturaEmbed } from '@/components/plataforma/AlturaEmbed'
+import { EnlaceHoteles, MedirVista } from '@/components/plataforma/Medicion'
 import { CalendarDays, ArrowUpRight, Hotel, Languages } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -33,6 +34,7 @@ export default async function PortalPage({ params, searchParams }: {
   return <main className={`pp ${incrustado ? 'pp-embed' : ''}`} lang={idioma} style={variablesMarca(portal.marca) as CSSProperties}>
     <title>{`${portal.titulo} · ${t.titulo}`}</title>
     {incrustado && <AlturaEmbed />}
+    <MedirVista portal={portal.id} idioma={idioma} incrustado={incrustado} />
     <div className="pp-wrap">
       <div className="pp-top">
         <p className="pp-eyebrow">{portal.organizacion} · {portal.ciudad}</p>
@@ -42,12 +44,12 @@ export default async function PortalPage({ params, searchParams }: {
       <p className="pp-sub">{portal.aeropuerto ? t.subtituloVuelos : t.subtitulo}</p>
       <dl className="pp-fechas"><div><CalendarDays size={18} aria-hidden="true" /><dt>{t.entrada}</dt><dd><time dateTime={portal.checkin}>{fecha(portal.checkin)}</time></dd></div><div><CalendarDays size={18} aria-hidden="true" /><dt>{t.salida}</dt><dd><time dateTime={portal.checkout}>{fecha(portal.checkout)}</time></dd></div></dl>
       {portal.vertical === 'clinica' && <p className="pp-nota">{t.notaClinica}</p>}
-      {portal.aeropuerto && <BuscarVuelos idioma={idioma} destino={portal.aeropuerto} ciudad={portal.ciudad} ida={portal.checkin} vuelta={portal.checkout} marker={process.env.NEXT_PUBLIC_TP_MARKER ?? ''} />}
+      {portal.aeropuerto && <BuscarVuelos portal={portal.id} incrustado={incrustado} idioma={idioma} destino={portal.aeropuerto} ciudad={portal.ciudad} ida={portal.checkin} vuelta={portal.checkout} marker={process.env.NEXT_PUBLIC_TP_MARKER ?? ''} />}
       <section className="pp-bloque" aria-labelledby="estancia-title">
         <h2 id="estancia-title"><Hotel size={20} aria-hidden="true" /> {t.dondeQuedarte}</h2>
         {url ? <>
           <iframe title={t.buscarAlojamiento(portal.titulo)} src={url} className="pp-mapa" loading="lazy" referrerPolicy="strict-origin-when-cross-origin" />
-          <a href={url} target="_blank" rel="noreferrer" className="pp-enlace">{t.otraPestana} <ArrowUpRight size={17} aria-hidden="true" /></a>
+          <EnlaceHoteles href={url} base={{ portal: portal.id, idioma, incrustado }}>{t.otraPestana} <ArrowUpRight size={17} aria-hidden="true" /></EnlaceHoteles>
         </> : <p role="status"><strong>{t.preparando}</strong> {t.preparandoTexto}</p>}
       </section>
       <p className="pp-nota">{t.notaProveedor}</p>

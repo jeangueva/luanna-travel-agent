@@ -4,14 +4,15 @@ import { useState, type FormEvent } from 'react'
 import { ArrowUpRight, Plane } from 'lucide-react'
 import { urlVuelos } from '@/lib/afiliados'
 import { textosPortal, type Idioma } from '@/lib/portal-i18n'
+import { medir } from '@/lib/medicion'
 
 /**
  * La sede ya fija destino y fechas; el visitante solo dice desde dónde sale.
  * Pedimos el código IATA porque es lo único que Aviasales acepta en la ruta
  * sin un paso de autocompletado intermedio.
  */
-export function BuscarVuelos({ destino, ciudad, ida, vuelta, marker, idioma }: {
-  destino: string; ciudad: string; ida: string; vuelta: string; marker: string; idioma: Idioma
+export function BuscarVuelos({ destino, ciudad, ida, vuelta, marker, idioma, portal, incrustado }: {
+  destino: string; ciudad: string; ida: string; vuelta: string; marker: string; idioma: Idioma; portal: string; incrustado: boolean
 }) {
   const t = textosPortal[idioma].vuelos
   const [origen, setOrigen] = useState('')
@@ -22,6 +23,7 @@ export function BuscarVuelos({ destino, ciudad, ida, vuelta, marker, idioma }: {
     if (!/^[A-Z]{3}$/.test(codigo)) { setError(t.errorCodigo); return }
     if (codigo === destino) { setError(t.errorMismo); return }
     setError('')
+    medir({ portal, tipo: 'vuelos', idioma, incrustado })
     window.open(urlVuelos({ marker, origen: codigo, destino, ida, vuelta }), '_blank', 'noopener')
   }
   return <section className="pp-bloque" aria-labelledby="vuelos-title">

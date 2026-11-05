@@ -1,5 +1,5 @@
 import { autorizado, mismoOrigen } from '@/lib/portal-auth'
-import { guardarPortal, listarPortales } from '@/lib/portal-store'
+import { guardarPortal, listarPortales, resumenEventos } from '@/lib/portal-store'
 import { esIdPortal, validarPortal } from '@/lib/portales'
 
 const headers = { 'Cache-Control': 'private, no-store' }
@@ -7,7 +7,10 @@ const headers = { 'Cache-Control': 'private, no-store' }
 export async function GET(request: Request) {
   if (!autorizado(request)) return Response.json({ error: 'Inicia sesión.' }, { status: 401, headers })
   try {
-    return Response.json({ portales: await listarPortales(), stay22: Boolean(process.env.NEXT_PUBLIC_STAY22_AID) }, { headers })
+    const portales = await listarPortales()
+    // Sin la tabla de eventos (migración 002 pendiente) la plataforma sigue funcionando, solo sin números.
+    const resumen = await resumenEventos().catch(() => ({}))
+    return Response.json({ portales, resumen, stay22: Boolean(process.env.NEXT_PUBLIC_STAY22_AID) }, { headers })
   } catch {
     return Response.json({ error: 'No se pudo cargar la base de datos. Revisa DATABASE_URL y la migración de portales.' }, { status: 503, headers })
   }
