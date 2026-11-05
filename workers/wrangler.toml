@@ -3,11 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Custom domain bindings (luanna.app zone in this Cloudflare account).
-routes = [
-  { pattern = "luanna.app", custom_domain = true },
-  { pattern = "www.luanna.app", custom_domain = true }
-]
+# El bot de WhatsApp se retiró en noviembre de 2026: luanna.app y
+# www.luanna.app ahora los sirve el Worker luanna-web (carpeta web/).
+# Sin rutas, un deploy de este Worker ya no puede quitarle el dominio.
 
 [vars]
 PUBLIC_BASE_URL = "https://luanna.app"

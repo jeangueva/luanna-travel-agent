@@ -139,6 +139,6 @@ export default function Landing() {
       </section>
     </main>
 
-    <footer className="ds-footer"><span className="wordmark wordmark-sm">luanna</span><p>Vuelos y alojamiento para quien viaja a verte.</p></footer>
+    <footer className="ds-footer"><span className="wordmark wordmark-sm">luanna</span><p>Vuelos y alojamiento para quien viaja a verte.</p><p><a href="/privacidad">Privacidad</a> · <a href="/terminos">Términos</a></p></footer>
   </div>
 }
