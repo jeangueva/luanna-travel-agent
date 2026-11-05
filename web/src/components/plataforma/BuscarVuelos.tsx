@@ -11,8 +11,8 @@ import { medir } from '@/lib/medicion'
  * Pedimos el código IATA porque es lo único que Aviasales acepta en la ruta
  * sin un paso de autocompletado intermedio.
  */
-export function BuscarVuelos({ destino, ciudad, ida, vuelta, marker, idioma, portal, incrustado }: {
-  destino: string; ciudad: string; ida: string; vuelta: string; marker: string; idioma: Idioma; portal: string; incrustado: boolean
+export function BuscarVuelos({ destino, ciudad, ida, vuelta, marker, idioma, portal, incrustado, ficha }: {
+  destino: string; ciudad: string; ida: string; vuelta: string; marker: string; idioma: Idioma; portal: string; incrustado: boolean; ficha: string
 }) {
   const t = textosPortal[idioma].vuelos
   const [origen, setOrigen] = useState('')
@@ -23,7 +23,7 @@ export function BuscarVuelos({ destino, ciudad, ida, vuelta, marker, idioma, por
     if (!/^[A-Z]{3}$/.test(codigo)) { setError(t.errorCodigo); return }
     if (codigo === destino) { setError(t.errorMismo); return }
     setError('')
-    medir({ portal, tipo: 'vuelos', idioma, incrustado })
+    medir({ portal, tipo: 'vuelos', idioma, incrustado, ficha })
     window.open(urlVuelos({ marker, origen: codigo, destino, ida, vuelta }), '_blank', 'noopener')
   }
   return <section className="pp-bloque" aria-labelledby="vuelos-title">

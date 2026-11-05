@@ -31,11 +31,12 @@ export async function portalPublicado(id: string): Promise<Portal | null> {
   return rows[0] ? conMarca({ aeropuerto: '', ...rows[0].config, id: rows[0].id }) : null
 }
 
-/** Solo cuenta eventos de sedes publicadas: un id inventado no inserta nada. */
-export async function registrarEvento(e: Evento): Promise<void> {
-  await database()`INSERT INTO ancla_eventos (portal_id, tipo, idioma, incrustado)
-    SELECT id, ${e.tipo}, ${e.idioma}, ${e.incrustado} FROM ancla_portales
-    WHERE id = ${e.portal} AND config->>'publicado' = 'true'`
+/** Solo cuenta eventos de sedes publicadas, y cada tipo una vez por visita. */
+export async function registrarEvento(e: Omit<Evento, 'ficha'>, visita: string): Promise<void> {
+  await database()`INSERT INTO ancla_eventos (portal_id, tipo, idioma, incrustado, visita)
+    SELECT id, ${e.tipo}, ${e.idioma}, ${e.incrustado}, ${visita} FROM ancla_portales
+    WHERE id = ${e.portal} AND config->>'publicado' = 'true'
+    ON CONFLICT (portal_id, visita, tipo) DO NOTHING`
 }
 
 /** Totales de los últimos 30 días por sede. */
