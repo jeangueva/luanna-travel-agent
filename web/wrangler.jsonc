@@ -4,6 +4,11 @@
   "compatibility_date": "2026-07-26",
   "compatibility_flags": ["nodejs_compat"],
   "main": "vinext/server/fetch-handler",
+  // Dominios de Luanna. Están aquí para que cada deploy los mantenga.
+  "routes": [
+    { "pattern": "luanna.app", "custom_domain": true },
+    { "pattern": "www.luanna.app", "custom_domain": true }
+  ],
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
