@@ -1,15 +1,16 @@
-import { autorizado, mismoOrigen } from '@/lib/portal-auth'
-import { guardarPortal, listarPortales, resumenEventos } from '@/lib/portal-store'
+import { mismoOrigen, sujeto } from '@/lib/portal-auth'
+import { guardarPortal, listarPortales, Rechazo, resumenEventos } from '@/lib/portal-store'
 import { esIdPortal, validarPortal } from '@/lib/portales'
 
 const headers = { 'Cache-Control': 'private, no-store' }
 
 export async function GET(request: Request) {
-  if (!autorizado(request)) return Response.json({ error: 'Inicia sesión.' }, { status: 401, headers })
+  const quien = sujeto(request)
+  if (!quien) return Response.json({ error: 'Inicia sesión.' }, { status: 401, headers })
   try {
-    const portales = await listarPortales()
+    const portales = await listarPortales(quien)
     // Sin la tabla de eventos (migración 002 pendiente) la plataforma sigue funcionando, solo sin números.
-    const resumen = await resumenEventos().catch(() => ({}))
+    const resumen = await resumenEventos(quien).catch(() => ({}))
     return Response.json({ portales, resumen, stay22: Boolean(process.env.NEXT_PUBLIC_STAY22_AID) }, { headers })
   } catch {
     return Response.json({ error: 'No se pudo cargar la base de datos. Revisa DATABASE_URL y la migración de portales.' }, { status: 503, headers })
@@ -17,7 +18,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!autorizado(request)) return Response.json({ error: 'La sesión expiró. Vuelve a iniciar sesión.' }, { status: 401, headers })
+  const quien = sujeto(request)
+  if (!quien) return Response.json({ error: 'La sesión expiró. Vuelve a iniciar sesión.' }, { status: 401, headers })
   if (!mismoOrigen(request)) return Response.json({ error: 'Origen no permitido.' }, { status: 403, headers })
   const raw = await request.text()
   if (raw.length > 8192) return Response.json({ error: 'Solicitud demasiado grande.' }, { status: 413, headers })
@@ -32,8 +34,9 @@ export async function POST(request: Request) {
     return Response.json({ error: error instanceof Error ? error.message : 'Datos inválidos.' }, { status: 400, headers })
   }
   try {
-    return Response.json({ portal: await guardarPortal(id, config) }, { headers })
-  } catch {
+    return Response.json({ portal: await guardarPortal(id, config, quien) }, { headers })
+  } catch (error) {
+    if (error instanceof Rechazo) return Response.json({ error: error.message }, { status: error.status, headers })
     return Response.json({ error: 'No se pudo guardar. Los datos del formulario siguen disponibles; revisa la conexión y vuelve a intentar.' }, { status: 503, headers })
   }
 }

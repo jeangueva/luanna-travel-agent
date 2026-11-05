@@ -20,7 +20,7 @@ test('Neon persiste, publica, actualiza y retira un portal', async () => {
   try {
     await guardarPortal(id, config)
     assert.equal(await portalPublicado(id), null)
-    assert.ok((await listarPortales()).some(portal => portal.id === id))
+    assert.ok((await listarPortales('admin')).some(portal => portal.id === id))
     await guardarPortal(id, { ...config, publicado: true })
     assert.equal((await portalPublicado(id))?.lat, 0)
     await guardarPortal(id, { ...config, publicado: true, titulo: 'Edición persistida' })

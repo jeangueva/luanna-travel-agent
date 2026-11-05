@@ -97,3 +97,43 @@ test('el portal elige idioma por ?lang= y luego por el navegador', () => {
   assert.equal(elegirIdioma(undefined, null), 'es')
   assert.equal(elegirIdioma('fr', 'de-DE'), 'en')
 })
+
+test('sesiones por cuenta firman el sujeto y no se pueden cambiar de dueño', async () => {
+  const { sujetoDeSesion } = await import('../src/lib/portal-auth')
+  const now = Date.UTC(2026, 9, 20)
+  const cuenta = 'a58bc2c0-8d73-453c-b3f0-f97e7e879351'
+  const token = crearSesion(secret, now, cuenta)
+  assert.equal(sujetoDeSesion(token, secret, now), cuenta)
+  assert.equal(sujetoDeSesion(crearSesion(secret, now), secret, now), 'admin')
+  assert.equal(sujetoDeSesion(token.replace(cuenta, 'admin'), secret, now), null)
+  assert.equal(sujetoDeSesion(token.replace(cuenta, 'b58bc2c0-8d73-453c-b3f0-f97e7e879351'), secret, now), null)
+  assert.throws(() => crearSesion(secret, now, "x' OR 1=1"))
+})
+
+test('correos y tokens de enlace se validan antes de tocar la base', async () => {
+  const { normalizarEmail, esToken, nuevoToken, hashToken } = await import('../src/lib/portal-auth')
+  assert.equal(normalizarEmail('  Ana@Clinica.PE '), 'ana@clinica.pe')
+  assert.equal(normalizarEmail('sin-arroba'), null)
+  assert.equal(normalizarEmail('a@b'), null)
+  assert.equal(esToken(nuevoToken()), true)
+  assert.equal(esToken('../x'), false)
+  assert.notEqual(hashToken('a'), 'a')
+})
+
+test('pedir enlace exige origen, correo configurado y correo válido', async () => {
+  const { POST: pedir } = await import('../app/api/plataforma/enlace/route')
+  const orig = { s: process.env.ANCLA_ADMIN_SECRET, r: process.env.RESEND_API_KEY }
+  process.env.ANCLA_ADMIN_SECRET = secret
+  const req = (body: unknown, origin = 'https://luanna.test') => new Request('https://luanna.test/api/plataforma/enlace', { method: 'POST', headers: { origin }, body: JSON.stringify(body) })
+  try {
+    delete process.env.RESEND_API_KEY
+    assert.equal((await pedir(req({ email: 'a@b.co' }))).status, 503)
+    process.env.RESEND_API_KEY = 're_test'
+    assert.equal((await pedir(req({ email: 'a@b.co' }, 'https://evil.test'))).status, 403)
+    assert.equal((await pedir(req({ email: 'nope' }))).status, 400)
+    assert.equal((await login(req({ token: 'corto' }))).status, 401)
+  } finally {
+    if (orig.s === undefined) delete process.env.ANCLA_ADMIN_SECRET; else process.env.ANCLA_ADMIN_SECRET = orig.s
+    if (orig.r === undefined) delete process.env.RESEND_API_KEY; else process.env.RESEND_API_KEY = orig.r
+  }
+})

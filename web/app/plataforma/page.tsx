@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { claveAdmin, COOKIE_PORTAL, sesionValida } from '@/lib/portal-auth'
+import { correoConfigurado } from '@/lib/correo'
 import { PortalLogin } from '@/components/plataforma/PortalLogin'
 import { PortalAdmin } from '@/components/plataforma/PortalAdmin'
 
@@ -15,6 +16,6 @@ export const metadata: Metadata = {
 export default async function PlataformaPage() {
   const secret = claveAdmin()
   const cookie = (await cookies()).get(COOKIE_PORTAL)?.value
-  if (!sesionValida(cookie, secret)) return <PortalLogin configurado={Boolean(secret)} />
+  if (!sesionValida(cookie, secret)) return <PortalLogin configurado={Boolean(secret)} correo={correoConfigurado()} />
   return <PortalAdmin />
 }
