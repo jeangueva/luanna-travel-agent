@@ -39,10 +39,13 @@ export async function guardarPortal(id: string, config: Omit<Portal, 'id'>, quie
   const actualizadas = await sql`UPDATE ancla_portales SET config = ${json}::jsonb, updated_at = now()
     WHERE id = ${id} AND cuenta_id = ${quien} RETURNING id`
   if (actualizadas.length) return { ...config, id }
-  const creadas = await sql`INSERT INTO ancla_portales (id, config, cuenta_id)
+  const [, creadas] = await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${'sedes:' + quien}))`,
+    sql`INSERT INTO ancla_portales (id, config, cuenta_id)
     SELECT ${id}, ${json}::jsonb, ${quien}
     WHERE (SELECT count(*) FROM ancla_portales WHERE cuenta_id = ${quien}) < ${MAX_SEDES}
-    ON CONFLICT (id) DO NOTHING RETURNING id`
+    ON CONFLICT (id) DO NOTHING RETURNING id`,
+  ])
   if (creadas.length) return { ...config, id }
   const existe = await sql`SELECT 1 FROM ancla_portales WHERE id = ${id}`
   if (existe.length) throw new Rechazo('Esta sede no es tuya.', 403)
@@ -51,10 +54,16 @@ export async function guardarPortal(id: string, config: Omit<Portal, 'id'>, quie
 
 /** Guarda un enlace de acceso. Devuelve false si se pidieron demasiados en la última hora. */
 export async function crearEnlace(email: string, token: string): Promise<boolean> {
-  const rows = await database()`INSERT INTO ancla_enlaces (token_hash, email, expira)
+  // Bloqueo por correo dentro de la transacción: peticiones simultáneas se esperan
+  // y la segunda sentencia ve las filas de la anterior (READ COMMITTED).
+  const sql = database()
+  const [, rows] = await sql.transaction([
+    sql`SELECT pg_advisory_xact_lock(hashtext(${'enlace:' + email}))`,
+    sql`INSERT INTO ancla_enlaces (token_hash, email, expira)
     SELECT ${hashToken(token)}, ${email}, now() + make_interval(secs => ${DURACION_ENLACE})
     WHERE (SELECT count(*) FROM ancla_enlaces WHERE email = ${email} AND creado > now() - interval '1 hour') < ${MAX_ENLACES_HORA}
-    RETURNING email`
+    RETURNING email`,
+  ])
   return rows.length > 0
 }
 
