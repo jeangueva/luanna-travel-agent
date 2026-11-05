@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Check, Code2, Menu, Plane, ShoppingBag, X } from 'lucide-react'
+import { ArrowRight, Check, Code2, Menu, ShoppingBag, X } from 'lucide-react'
 import { Personalizador } from './Personalizador'
 
 const VIDEO = 'https://pollen-batch-41236914.figma.site/_components/v2/f0ee2dae7671c170c34f12e31c4cb41418976c98/769c564298c132f7919405cd9f17c1b1231f341d.769c5642.mp4'
@@ -73,12 +73,9 @@ export default function Landing() {
         <div id="contenido" className="hero-body">
           <h1 id="hero-titulo">Que llegar a ti<br />sea fácil.</h1>
           <p className="hero-sub">Tus clientes encuentran su vuelo y dónde quedarse, desde cualquier país. Gratis para tu negocio.</p>
-          <div className="glass-card">
-            <p className="glass-prompt">Tengo una clínica dental en Lima. Mis pacientes vienen de Estados Unidos y Chile para tratamientos de cinco días…</p>
-            <div className="glass-actions">
-              <span className="glass-chip"><Plane size={16} aria-hidden="true" /> Vuelos a LIM + hoteles cerca</span>
-              <a href="/plataforma/demo" className="btn btn-dark">Probar gratis</a>
-            </div>
+          <div className="hero-ctas">
+            <a href="/plataforma" className="btn btn-dark btn-lg">Crear mi portal gratis</a>
+            <a href="/plataforma/demo" className="btn btn-light btn-lg">Ver cómo funciona</a>
           </div>
         </div>
       </div>
