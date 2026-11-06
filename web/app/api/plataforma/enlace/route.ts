@@ -18,7 +18,8 @@ export async function POST(request: Request) {
     if (!(await crearEnlace(email, token))) return Response.json({ error: 'Ya te enviamos varios enlaces. Revisa tu correo o espera una hora.' }, { status: 429, headers })
     const origen = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin
     await enviarEnlace(email, `${origen}/plataforma/entrar#${token}`)
-  } catch {
+  } catch (error) {
+    console.error('enlace:', error instanceof Error ? error.message : error)
     return Response.json({ error: 'No pudimos enviar el correo. Vuelve a intentar en un momento.' }, { status: 503, headers })
   }
   return Response.json({ ok: true }, { headers })

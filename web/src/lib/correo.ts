@@ -20,5 +20,5 @@ export async function enviarEnlace(email: string, enlace: string): Promise<void>
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: REMITENTE, to: [email], subject: 'Tu enlace para entrar a Luanna', html, text }),
   })
-  if (!r.ok) throw new Error(`Resend respondió ${r.status}`)
+  if (!r.ok) throw new Error(`Resend respondió ${r.status}: ${(await r.text()).slice(0, 300)}`)
 }
