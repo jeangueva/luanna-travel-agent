@@ -3,20 +3,90 @@
 @tailwind utilities;
 
 :root {
-  --surface-canvas: oklch(0.973 0.007 78);
-  --surface-paper: oklch(0.991 0.004 78);
-  --surface-tray: oklch(0.926 0.011 76);
-  --surface-obsidian: oklch(0.165 0.008 70);
-  --surface-obsidian-elevated: oklch(0.205 0.009 70);
-  --ink-primary: oklch(0.18 0.008 70);
-  --ink-secondary: oklch(0.41 0.01 72);
-  --ink-muted: oklch(0.51 0.01 74);
-  --border-mineral: oklch(0.885 0.012 75);
-  --border-strong: oklch(0.81 0.015 75);
-  --signal-terracotta: oklch(0.54 0.155 38);
-  --clinical-emerald: oklch(0.47 0.11 162);
+  /* Hopper + Agentic Design System Tokens (REDESIGN.md) */
+  --color-hopper-blue: #1878ec;
+  --color-white: #ffffff;
+  --color-cloud: #f6f6f6;
+  --color-mist: #ededed;
+  --color-divider-gray: #d9d9d9;
+  --color-ink: #111111;
+  --color-graphite: #606060;
+  --color-placeholder-gray: #b3b3b3;
 
-  /* Emil Kowalski / Motionsites curves */
+  /* Typography — Font Families */
+  --font-proxima-nova: 'Proxima Nova', 'Nunito Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Typography — Scale */
+  --text-destination-link: 14px;
+  --leading-destination-link: 1.43;
+  --tracking-destination-link: 0px;
+  --text-body: 16px;
+  --leading-body: 1.5;
+  --tracking-body: 0px;
+  --text-nav: 16px;
+  --leading-nav: 1.5;
+  --tracking-nav: 0px;
+  --text-section-heading: 20px;
+  --leading-section-heading: 1.4;
+  --tracking-section-heading: 0px;
+  --text-card-heading: 24px;
+  --leading-card-heading: 1.33;
+  --tracking-card-heading: 0px;
+  --text-app-heading: 32px;
+  --leading-app-heading: 1.25;
+  --tracking-app-heading: 0px;
+
+  /* Typography — Weights */
+  --font-weight-regular: 400;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  /* Spacing (4px base unit) */
+  --spacing-unit: 4px;
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-28: 28px;
+  --spacing-32: 32px;
+  --spacing-40: 40px;
+  --spacing-48: 48px;
+  --spacing-56: 56px;
+
+  /* Layout */
+  --section-gap: 48px;
+  --card-padding: 12px;
+  --element-gap: 8px;
+
+  /* Border Radius */
+  --radius-md: 4px;
+  --radius-md-2: 6.7px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-2xl-2: 20px;
+  --radius-3xl: 32px;
+  --radius-full: 1000px;
+  --radius-full-2: 9999px;
+
+  /* Named Radii */
+  --radius-cards: 16px;
+  --radius-links: 4px;
+  --radius-pills: 9999px;
+  --radius-images: 32px;
+  --radius-inputs: 0px;
+  --radius-buttons: 1000px;
+  --radius-compactcontrols: 12px;
+
+  /* Surfaces */
+  --surface-white-canvas: #ffffff;
+  --surface-cloud-surface: #f6f6f6;
+  --surface-mist-band: #ededed;
+  --surface-hopper-blue-surface: #1878ec;
+
+  /* Motion Curves */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -24,16 +94,18 @@
 
 html {
   scroll-behavior: smooth;
-  background-color: var(--surface-canvas);
-  color: var(--ink-primary);
+  background-color: var(--surface-white-canvas);
+  color: var(--color-ink);
 }
 
 body {
   margin: 0;
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-proxima-nova);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
   overflow-x: hidden;
-  background-color: var(--surface-canvas);
-  color: var(--ink-primary);
+  background-color: var(--surface-white-canvas);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -46,104 +118,84 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Tabular numbers for telemetry, coordinates, prices and timers */
+/* Tabular numbers for agentic telemetry, coordinates, prices and timers */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-/* Topographic coordinate subtle background pattern */
-.bg-topographic-grid {
-  background-image:
-    linear-gradient(to right, rgba(22, 22, 20, 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(22, 22, 20, 0.045) 1px, transparent 1px);
-  background-size: 48px 48px;
-}
-
-.bg-topographic-grid-dark {
-  background-image:
-    linear-gradient(to right, rgba(253, 252, 250, 0.055) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(253, 252, 250, 0.055) 1px, transparent 1px);
-  background-size: 44px 44px;
-}
-
-/* HorizonX Doppelrand / Double-Bezel Machined Enclosures */
+/* Hopper + Agentic Surface Primitives (Flat, border-led, zero box-shadow per REDESIGN.md) */
 .doppelrand-light {
-  background-color: rgba(234, 230, 221, 0.78);
-  padding: 6px;
-  border-radius: 22px;
-  border: 1px solid rgba(22, 22, 20, 0.08);
+  background-color: var(--surface-cloud-surface);
+  border-radius: var(--radius-cards);
+  border: 1px solid var(--color-divider-gray);
+  box-shadow: none;
 }
 
 .doppelrand-light-core {
-  background-color: #fdfcfa;
-  border-radius: 16px;
-  border: 1px solid rgba(22, 22, 20, 0.07);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background-color: var(--surface-cloud-surface);
+  border-radius: var(--radius-cards);
+  box-shadow: none;
 }
 
 .doppelrand-dark {
-  background-color: rgba(255, 255, 255, 0.05);
-  padding: 6px;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: var(--surface-white-canvas);
+  border-radius: var(--radius-images);
+  border: 1px solid var(--color-divider-gray);
+  box-shadow: none;
 }
 
 .doppelrand-dark-core {
-  background-color: #151513;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background-color: var(--surface-white-canvas);
+  border-radius: var(--radius-images);
+  box-shadow: none;
 }
 
-/* ReactBits Spotlight Surface (pointer-gated for fine pointers only) */
-.spotlight-card {
-  position: relative;
+.hopper-hero-frame {
+  border-radius: var(--radius-images);
   overflow: hidden;
-  --spot-x: 50%;
-  --spot-y: 50%;
-  --spot-opacity: 0;
+  position: relative;
+  background-color: #132d48;
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(12, 26, 44, 0.45) 0%,
+      rgba(12, 26, 44, 0.25) 48%,
+      rgba(12, 26, 44, 0.58) 100%
+    ),
+    url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2000&q=85');
+  background-size: cover;
+  background-position: center;
+  animation: hero-ken-burns 26s var(--ease-in-out) infinite alternate;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .spotlight-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: radial-gradient(
-      460px circle at var(--spot-x) var(--spot-y),
-      rgba(184, 68, 33, 0.075),
-      transparent 65%
-    );
-    opacity: var(--spot-opacity);
-    transition: opacity 220ms var(--ease-out);
-    z-index: 0;
+@keyframes hero-ken-burns {
+  0% {
+    background-size: 100% auto;
   }
+  100% {
+    background-size: 104% auto;
+  }
+}
 
-  .spotlight-card-dark::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: radial-gradient(
-      480px circle at var(--spot-x) var(--spot-y),
-      rgba(253, 252, 250, 0.07),
-      transparent 65%
-    );
-    opacity: var(--spot-opacity);
-    transition: opacity 220ms var(--ease-out);
-    z-index: 0;
-  }
+.hopper-card {
+  background-color: var(--surface-cloud-surface);
+  border-radius: var(--radius-cards);
+  border: 1px solid var(--color-divider-gray);
+  box-shadow: none;
+  transition:
+    transform 240ms var(--ease-out),
+    border-color 180ms ease;
+}
 
-  .hover-lift {
-    transition:
-      transform 200ms var(--ease-out),
-      border-color 200ms ease;
-  }
+.hopper-card:hover {
+  transform: translateY(-2px);
+}
 
-  .hover-lift:hover {
-    transform: translateY(-2px);
-  }
+.hopper-blue-tile {
+  background-color: var(--color-hopper-blue);
+  color: var(--color-white);
+  border-radius: var(--radius-images);
+  box-shadow: none;
 }
 
 /* Button physical press feedback */
@@ -156,16 +208,16 @@ textarea {
 }
 
 .press-scale:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
 /* Staggered scroll entry reveal */
 .reveal-item {
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateY(10px);
   transition:
-    opacity 450ms var(--ease-out),
-    transform 450ms var(--ease-out);
+    opacity 400ms var(--ease-out),
+    transform 400ms var(--ease-out);
   transition-delay: var(--reveal-delay, 0ms);
 }
 
@@ -174,11 +226,11 @@ textarea {
   transform: translateY(0);
 }
 
-/* Radar pulse for active geo-anchor coordinate */
+/* Agentic pulse indicator */
 @keyframes anchor-pulse {
   0% {
     transform: scale(0.92);
-    opacity: 0.75;
+    opacity: 0.8;
   }
   70% {
     transform: scale(1.65);
@@ -191,16 +243,16 @@ textarea {
 }
 
 .animate-anchor-pulse {
-  animation: anchor-pulse 2.6s var(--ease-out) infinite;
+  animation: anchor-pulse 2.4s var(--ease-out) infinite;
 }
 
-/* High-contrast accessible focus ring */
+/* High-contrast accessible focus ring in Hopper Blue (#1878ec) with 4px link radius */
 :focus-visible {
-  outline: 2px solid var(--signal-terracotta);
-  outline-offset: 3px;
+  outline: 2px solid var(--color-hopper-blue);
+  outline-offset: 2px;
+  border-radius: var(--radius-links);
 }
 
-/* Strict Reduced Motion compliance: keep gentle opacity/color, drop movement */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -216,8 +268,7 @@ textarea {
     animation: none !important;
   }
 
-  .press-scale:active,
-  .hover-lift:hover {
+  .press-scale:active {
     transform: none !important;
   }
 }

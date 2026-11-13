@@ -1,44 +1,6 @@
 import type { Metadata } from 'next'
 import { Legal } from '@/components/landing/Legal'
-
-export const metadata: Metadata = {
-  title: 'Términos de Uso',
-  description: 'Condiciones del servicio de auditoría post-reserva de hoteles y rescate de tasas aéreas de Luanna.',
-}
-
-export default function Terminos() {
-  return (
-    <Legal titulo="Términos de uso" actualizado="12 de noviembre de 2026">
-      <h2>1. El servicio de auditoría post-reserva</h2>
-      <p>
-        Luanna Audit analiza confirmaciones de hotel con cancelación gratuita y boletos aéreos proporcionados por el usuario o empresa para detectar tarifas mayoristas inferiores (Re-Pricer) y desglosar tasas aeroportuarias o compensaciones exigibles conforme a la normativa vigente en Latinoamérica.
-      </p>
-
-      <h2>2. Modelo de monetización transparente</h2>
-      <p>
-        El monitoreo y detección de bajadas de precio en hoteles es gratuito para el viajero individual. Cuando el usuario decide reservar la nueva tarifa más económica a través de los enlaces de nuestros proveedores afiliados (Stay22, Hotellook / Travelpayouts), dicho proveedor nos abona una comisión comercial sin encarecer el precio final para el viajero. Para empresas y agencias con volumen recurrente ofrecemos planes de suscripción B2B.
-      </p>
-
-      <h2>3. Ejecución de reservas y reclamos aéreos</h2>
-      <p>
-        Luanna no actúa como agencia emisora ni retiene fondos de reembolsos aéreos. En hoteles, el usuario confirma primero su nueva reserva más económica y posteriormente cancela su reserva original dentro de su ventana de cancelación gratuita. En boletos aéreos, Luanna genera el requerimiento formal fundamentado para que la aerolínea efectúe la devolución de tasas directamente al medio de pago original del titular.
-      </p>
-
-      <h2>4. Uso aceptable</h2>
-      <ul>
-        <li>Subir o reenviar únicamente comprobantes de viaje propios o de la empresa autorizada.</li>
-        <li>Verificar la fecha límite de cancelación gratuita de su reserva original antes de cancelarla.</li>
-        <li>No utilizar la plataforma para fines fraudulentos o automatizaciones abusivas.</li>
-      </ul>
-
-      <h2>5. Contacto</h2>
-      <p>
-        Para soporte operativo o consultas corporativas B2B escribe a{' '}
-        <a href="mailto:auditoria@luanna.app" className="font-mono text-ancla-ink underline">
-          auditoria@luanna.app
-        </a>
-        .
-      </p>
-    </Legal>
-  )
+export const metadata: Metadata = { title: 'Términos de uso' }
+export default function Page() {
+ return <Legal titulo="Términos de uso" actualizado="13 de noviembre de 2026"><h2>Qué puedes hacer con Luanna</h2><p>Luanna te ayuda a organizar la información de una reserva de hotel o de vuelo y a preparar una consulta para el proveedor. La demo utiliza ejemplos ficticios. La revisión automática puede contener errores: comprueba los datos con tu confirmación original.</p><h2>Qué depende del proveedor</h2><p>Luanna no confirma derechos de devolución, compensaciones ni ahorros. Las opciones y los importes dependen de tu caso, las condiciones de la reserva y las normas aplicables. La orientación y los mensajes preparados no sustituyen asesoría profesional.</p><p>No cancelamos reservas, compramos nuevos viajes ni presentamos reclamaciones en tu nombre. Tú decides si contactas al proveedor y qué información envías. Antes de cambiar una reserva, revisa disponibilidad, condiciones y posibles cargos.</p><h2>Costes y enlaces externos</h2><p>Puedes explorar la demo y usar la revisión sin introducir una tarjeta. Algunos enlaces pueden ser de afiliación y generar una comisión para Luanna si completas una compra. El precio y las condiciones finales se consultan con el proveedor. Cualquier servicio de pago adicional deberá indicarse antes de contratarlo.</p><h2>Uso responsable</h2><ul><li>Comparte solo reservas propias o que tengas autorización para revisar.</li><li>Oculta los datos personales que no sean necesarios.</li><li>No utilices el servicio para enviar información falsa o realizar solicitudes abusivas.</li></ul><h2>Si necesitas ayuda</h2><p>Para consultas sobre Luanna, escribe a <a href="mailto:hola@luanna.app">hola@luanna.app</a>. Para cambios urgentes en tu viaje, contacta al proveedor de tu reserva.</p></Legal>
 }

@@ -7,18 +7,19 @@ import '@/landing.css'
 import '@/portal.css'
 import '@/app.css'
 import '@/checkout-demo.css'
+import '@/care.css'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Luanna — Auditor Post-Reserva: Rebaja de Hoteles y Rescate de Tasas Aéreas',
-    template: '%s | Luanna Audit',
+    default: 'Luanna — Claridad para seguir tu viaje',
+    template: '%s | Luanna',
   },
   description:
-    'Plataforma de arbitraje post-reserva en LATAM: detecta bajadas de precio en hoteles ya reservados (Booking/Expedia) gratis y recupera tasas aeroportuarias de vuelos no usados.',
+    '¿Tuviste un problema con tu vuelo o tu hotel? Ordena los detalles de tu reserva y prepara el siguiente paso, a tu ritmo.',
 }
 
 export const viewport: Viewport = {
-  themeColor: '#f7f5f0',
+  themeColor: '#f8f8f3',
   width: 'device-width',
   initialScale: 1,
 }
@@ -30,11 +31,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Chivo+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;1,7..72,400&family=Special+Elite&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body className="bg-ancla-canvas text-ancla-ink antialiased selection:bg-ancla-signal selection:text-white">
+      <body className="antialiased">
         {children}
       </body>
     </html>

@@ -1,42 +1,6 @@
 import type { Metadata } from 'next'
 import { Legal } from '@/components/landing/Legal'
-
-export const metadata: Metadata = {
-  title: 'Política de Privacidad',
-  description: 'Cómo Luanna procesa y protege los datos de confirmaciones de hotel y boletos aéreos.',
-}
-
-export default function Privacidad() {
-  return (
-    <Legal titulo="Política de Privacidad" actualizado="12 de noviembre de 2026">
-      <h2>1. En pocas palabras</h2>
-      <p>
-        Luanna procesa únicamente los datos estrictamente necesarios de tu confirmación de viaje para encontrar tarifas de hotel más bajas o calcular las tasas aeroportuarias reembolsables de tu boleto aéreo. No vendemos tus datos ni almacenamos números de tarjetas de crédito.
-      </p>
-
-      <h2>2. Qué datos procesamos</h2>
-      <ul>
-        <li>
-          <strong>En reservas de hotel:</strong> nombre de la propiedad, ciudad, coordenadas, fechas de check-in y check-out, tipo de habitación, fecha límite de cancelación gratuita y monto pagado.
-        </li>
-        <li>
-          <strong>En boletos aéreos:</strong> código de reserva (PNR), aerolínea, ruta IATA, fecha del vuelo y desglose tarifario de tasas e impuestos aeroportuarios.
-        </li>
-      </ul>
-
-      <h2>3. Infraestructura y proveedores</h2>
-      <p>
-        Utilizamos Cloudflare Workers y Neon Postgres para la infraestructura operativa, la API de Anthropic (Claude) para la extracción estructurada de comprobantes sin entrenamiento sobre datos del usuario, y enlaces de conversión de Stay22 y Travelpayouts cuando el usuario decide tomar una tarifa de hotel más económica.
-      </p>
-
-      <h2>4. Derechos del titular</h2>
-      <p>
-        Puedes solicitar la eliminación inmediata de cualquier reserva auditada o de tu cuenta corporativa escribiendo a{' '}
-        <a href="mailto:auditoria@luanna.app" className="font-mono text-ancla-ink underline">
-          auditoria@luanna.app
-        </a>
-        .
-      </p>
-    </Legal>
-  )
+export const metadata: Metadata = { title: 'Privacidad' }
+export default function Page() {
+ return <Legal titulo="Tu información, con claridad" actualizado="13 de noviembre de 2026"><h2>Qué información compartes</h2><p>Cuando solicitas una revisión, envías el texto o el archivo que seleccionas. Puede incluir datos de tu hotel o vuelo, fechas, código de reserva, importes y condiciones. Evita incluir números de tarjeta, documentos de identidad o datos de otras personas que no sean necesarios.</p><h2>Para qué se utiliza</h2><p>La información se procesa para leer los detalles de la reserva y preparar una orientación. Los resultados de la revisión pueden guardarse en el servidor. La lista visible de consultas de esta versión solo se mantiene durante tu visita y no se recupera al recargar.</p><p>El recorrido de bienvenida guarda una preferencia en tu navegador para no mostrarse de nuevo. La demo funciona con datos ficticios y no envía una reserva real.</p><h2>Servicios que intervienen</h2><p>La infraestructura utiliza Cloudflare y Neon. El contenido de la confirmación puede enviarse a Anthropic para su lectura automática. Si utilizas el acceso por correo, tu dirección se emplea para enviarte el enlace. Al abrir un sitio de reservas externo, se aplican sus propias condiciones de privacidad.</p><h2>Consultas y eliminación</h2><p>Puedes escribir a <a href="mailto:hola@luanna.app">hola@luanna.app</a> para consultar el tratamiento de tus datos o solicitar su eliminación. Describe tu solicitud y aporta solo la información necesaria para identificarla.</p></Legal>
 }
