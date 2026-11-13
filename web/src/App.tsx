@@ -1,11 +1,5 @@
-import Landing from '@/components/landing/Landing'
+import AnclaLanding from '@/components/AnclaLanding'
 
-function App() {
-  return (
-    <div className="min-h-svh">
-      <Landing />
-    </div>
-  )
+export default function App() {
+  return <AnclaLanding />
 }
-
-export default App

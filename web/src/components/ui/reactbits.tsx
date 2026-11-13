@@ -3,7 +3,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 
 /**
- * Custom Geometric Technical SVG Primitives
+ * Compact Line Symbols (Hopper + Refero + Agentic Design System)
  * Consistent 1.75px stroke weight, zero generic icon packs, zero emojis.
  */
 export function IconArrowUpRight({ className = 'w-4 h-4' }: { className?: string }) {
@@ -19,6 +19,23 @@ export function IconArrowUpRight({ className = 'w-4 h-4' }: { className?: string
     >
       <path d="M4.5 11.5L11.5 4.5" />
       <path d="M5.5 4.5H11.5V10.5" />
+    </svg>
+  )
+}
+
+export function IconSearch({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="M10.5 10.5L14 14" />
     </svg>
   )
 }
@@ -128,16 +145,145 @@ export function IconRoute({ className = 'w-4 h-4' }: { className?: string }) {
 }
 
 /**
- * ReactBits Primitive 1: BlurWordReveal
- * Staggered optical word reveal using IntersectionObserver and GPU transforms.
- * Respects prefers-reduced-motion automatically.
+ * ScrollShaders Primitive (`scrollshaders.com/components`):
+ * GPU-accelerated WebGL / Canvas 2D Atmospheric Fluted Light & Liquid Refraction overlay
+ * that responds to scroll position and pointer coordinates inside the 32px Hopper Hero Frame.
+ */
+export function AtmosphericHorizonShader({ className = '' }: { className?: string }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    let rafId = 0
+    let pointerX = 0.5
+    let pointerY = 0.38
+    let scrollOffset = 0
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect()
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      canvas.width = Math.max(320, Math.floor(rect.width * dpr))
+      canvas.height = Math.max(200, Math.floor(rect.height * dpr))
+    }
+
+    resize()
+    window.addEventListener('resize', resize, { passive: true })
+
+    const onPointerMove = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return
+      pointerX = (e.clientX - rect.left) / rect.width
+      pointerY = (e.clientY - rect.top) / rect.height
+    }
+
+    const onScroll = () => {
+      scrollOffset = window.scrollY * 0.0015
+    }
+
+    window.addEventListener('pointermove', onPointerMove, { passive: true })
+    window.addEventListener('scroll', onScroll, { passive: true })
+
+    const renderFrame = (timeMs: number) => {
+      const t = timeMs * 0.00055 + scrollOffset
+      const w = canvas.width
+      const h = canvas.height
+
+      ctx.clearRect(0, 0, w, h)
+
+      // Subtle atmospheric daylight refraction (very low opacity so photography stays natural)
+      const cx = w * (0.5 + (pointerX - 0.5) * 0.12 + Math.sin(t) * 0.04)
+      const cy = h * (0.38 + (pointerY - 0.38) * 0.1 + Math.cos(t * 0.7) * 0.04)
+      const grad1 = ctx.createRadialGradient(cx, cy, w * 0.05, cx, cy, w * 0.55)
+      grad1.addColorStop(0, 'rgba(255, 255, 255, 0.12)')
+      grad1.addColorStop(0.5, 'rgba(24, 120, 236, 0.08)')
+      grad1.addColorStop(1, 'rgba(10, 20, 35, 0)')
+      ctx.fillStyle = grad1
+      ctx.fillRect(0, 0, w, h)
+
+      if (!reducedMotion) {
+        rafId = window.requestAnimationFrame(renderFrame)
+      }
+    }
+
+    renderFrame(0)
+
+    return () => {
+      window.cancelAnimationFrame(rafId)
+      window.removeEventListener('resize', resize)
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      className={`pointer-events-none absolute inset-0 h-full w-full mix-blend-screen ${className}`}
+    />
+  )
+}
+
+/**
+ * Scrolltide Primitive (`scrolltide.co`):
+ * Top viewport scroll progress telemetry bar in Hopper Blue (#1878ec).
+ */
+export function ScrollProgressBar() {
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    const updateProgress = () => {
+      const doc = document.documentElement
+      const total = doc.scrollHeight - doc.clientHeight
+      if (total <= 0) {
+        setProgress(0)
+        return
+      }
+      setProgress(Math.min(1, Math.max(0, window.scrollY / total)))
+    }
+
+    updateProgress()
+    window.addEventListener('scroll', updateProgress, { passive: true })
+    window.addEventListener('resize', updateProgress, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', updateProgress)
+      window.removeEventListener('resize', updateProgress)
+    }
+  }, [])
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed top-0 right-0 left-0 z-50 h-[3px] bg-transparent"
+    >
+      <div
+        style={{
+          transform: `scaleX(${progress})`,
+          transformOrigin: '0% 50%',
+        }}
+        className="h-full w-full bg-[#1878ec] transition-transform duration-75 ease-out"
+      />
+    </div>
+  )
+}
+
+/**
+ * BlurWordReveal: Staggered word reveal using IntersectionObserver and GPU transforms.
  */
 export function BlurWordReveal({
   text,
   as: Tag = 'h1',
   className = '',
   highlightWords = [],
-  highlightClassName = 'text-ancla-signal',
+  highlightClassName = 'text-[#1878ec]',
 }: {
   text: string
   as?: 'h1' | 'h2' | 'h3' | 'p' | 'span'
@@ -152,7 +298,10 @@ export function BlurWordReveal({
     const el = containerRef.current
     if (!el) return
 
-    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
       setVisible(true)
       return
     }
@@ -175,10 +324,7 @@ export function BlurWordReveal({
   const normalizedHighlights = new Set(highlightWords.map((w) => w.toLowerCase()))
 
   return (
-    <Tag
-      ref={containerRef as React.RefObject<never>}
-      className={className}
-    >
+    <Tag ref={containerRef as React.RefObject<never>} className={className}>
       {words.map((word, index) => {
         const cleanWord = word.replace(/[.,;:]/g, '').toLowerCase()
         const isHighlighted = normalizedHighlights.has(cleanWord)
@@ -186,10 +332,10 @@ export function BlurWordReveal({
           <span
             key={`${word}-${index}`}
             style={{
-              transitionDelay: visible ? `${Math.min(index * 32, 360)}ms` : '0ms',
+              transitionDelay: visible ? `${Math.min(index * 28, 320)}ms` : '0ms',
             }}
             className={`inline-block transition-[transform,opacity] duration-500 ease-out-strong ${
-              visible ? 'translate-y-0 opacity-100' : 'translate-y-2.5 opacity-0'
+              visible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
             } ${isHighlighted ? highlightClassName : ''}`}
           >
             {word}
@@ -202,8 +348,8 @@ export function BlurWordReveal({
 }
 
 /**
- * ReactBits + HorizonX Primitive 2: SpotlightTray (Double-Bezel / Doppelrand Hardware Enclosure)
- * Tracks cursor position directly via CSS custom properties without triggering React re-renders.
+ * SpotlightTray: Hopper + Agentic Design System Surface Enclosure
+ * Flat, border-led surfaces (16px radius on #f6f6f6 Cloud, 32px radius on #ffffff White, 1px solid #d9d9d9, zero box-shadow).
  */
 export function SpotlightTray({
   children,
@@ -219,48 +365,20 @@ export function SpotlightTray({
   coreClassName?: string
   as?: 'div' | 'section' | 'article' | 'aside'
 } & React.HTMLAttributes<HTMLElement>) {
-  const coreRef = useRef<HTMLDivElement>(null)
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const el = coreRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    el.style.setProperty('--spot-x', `${x}px`)
-    el.style.setProperty('--spot-y', `${y}px`)
-    el.style.setProperty('--spot-opacity', '1')
-  }
-
-  const handlePointerLeave = () => {
-    const el = coreRef.current
-    if (!el) return
-    el.style.setProperty('--spot-opacity', '0')
-  }
-
-  const outerClass = variant === 'dark' ? 'doppelrand-dark' : 'doppelrand-light'
-  const innerClass =
+  const surfaceClass =
     variant === 'dark'
-      ? 'doppelrand-dark-core spotlight-card spotlight-card-dark text-[#FDFCFA]'
-      : 'doppelrand-light-core spotlight-card text-ancla-ink'
+      ? 'rounded-[32px] border border-[#d9d9d9] bg-white text-[#111111]'
+      : 'rounded-[16px] border border-[#d9d9d9] bg-[#f6f6f6] text-[#111111]'
 
   return (
-    <Tag className={`${outerClass} ${className}`} {...rest}>
-      <div
-        ref={coreRef}
-        onPointerMove={handlePointerMove}
-        onPointerLeave={handlePointerLeave}
-        className={`${innerClass} relative z-[1] ${coreClassName}`}
-      >
-        <div className="relative z-[2]">{children}</div>
-      </div>
+    <Tag className={`${surfaceClass} ${className}`} {...rest}>
+      <div className={coreClassName}>{children}</div>
     </Tag>
   )
 }
 
 /**
- * ReactBits Primitive 3: TabularNumber
- * Smoothly interpolates numeric changes using ease-out quartic curve and tabular numerals.
+ * TabularNumber: Smooth numeric interpolation with tabular numerals.
  */
 export function TabularNumber({
   value,
@@ -295,7 +413,7 @@ export function TabularNumber({
       return
     }
 
-    const duration = 260
+    const duration = 240
     let startTime: number | null = null
     let rafId = 0
 
@@ -303,7 +421,6 @@ export function TabularNumber({
       if (startTime === null) startTime = timestamp
       const elapsed = timestamp - startTime
       const progress = Math.min(elapsed / duration, 1)
-      // Quartic ease-out
       const eased = 1 - Math.pow(1 - progress, 4)
       setDisplayValue(startValue + delta * eased)
 
@@ -333,8 +450,7 @@ export function TabularNumber({
 }
 
 /**
- * ReactBits + Emil Kowalski Primitive 4: SegmentedControl
- * Accessible WAI-ARIA tablist with ArrowLeft/ArrowRight support and GPU-translated active indicator.
+ * SegmentedControl: Accessible WAI-ARIA tablist styled with Hopper pills (9999px radius, 1px #d9d9d9 border, #1878ec active state).
  */
 export interface SegmentOption<T extends string> {
   id: T
@@ -365,13 +481,19 @@ export function SegmentedControl<T extends string>({
   )
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') {
+    if (
+      e.key !== 'ArrowRight' &&
+      e.key !== 'ArrowLeft' &&
+      e.key !== 'Home' &&
+      e.key !== 'End'
+    ) {
       return
     }
     e.preventDefault()
     let nextIndex = activeIndex
     if (e.key === 'ArrowRight') nextIndex = (activeIndex + 1) % options.length
-    if (e.key === 'ArrowLeft') nextIndex = (activeIndex - 1 + options.length) % options.length
+    if (e.key === 'ArrowLeft')
+      nextIndex = (activeIndex - 1 + options.length) % options.length
     if (e.key === 'Home') nextIndex = 0
     if (e.key === 'End') nextIndex = options.length - 1
 
@@ -384,15 +506,18 @@ export function SegmentedControl<T extends string>({
 
   const containerStyle =
     tone === 'dark'
-      ? 'bg-[#1e1e1b] border border-white/10 text-[#d8d5ce]'
-      : 'bg-[#ebe7de] border border-[#161614]/10 text-ancla-inkSecondary'
+      ? 'bg-white/15 border border-white/40 text-white'
+      : 'bg-[#f6f6f6] border border-[#d9d9d9] text-[#606060]'
 
   const pillStyle =
     tone === 'dark'
-      ? 'bg-[#fdfcfa] text-[#11110f]'
-      : 'bg-[#161614] text-[#fdfcfa]'
+      ? 'bg-white text-[#111111]'
+      : 'bg-[#1878ec] text-white'
 
-  const padClass = size === 'sm' ? 'py-1.5 px-3 text-xs' : 'py-2 px-4 text-[13px]'
+  const padClass =
+    size === 'sm'
+      ? 'py-2 px-3 text-[14px] leading-[20px] font-semibold'
+      : 'py-2 px-4 text-[16px] leading-[24px] font-semibold'
 
   return (
     <div
@@ -404,7 +529,6 @@ export function SegmentedControl<T extends string>({
       }}
       className={`relative inline-grid rounded-full p-1 select-none ${containerStyle}`}
     >
-      {/* Hardware-accelerated sliding active pill */}
       <span
         aria-hidden="true"
         style={{
@@ -428,14 +552,14 @@ export function SegmentedControl<T extends string>({
             aria-selected={isSelected}
             tabIndex={isSelected ? 0 : -1}
             onClick={() => onChange(opt.id)}
-            className={`relative z-10 flex items-center justify-center gap-2 rounded-full font-sans font-medium tracking-[-0.01em] transition-colors duration-150 ${padClass} ${
+            className={`relative z-10 flex items-center justify-center gap-2 rounded-full font-sans transition-colors duration-150 ${padClass} ${
               isSelected
                 ? tone === 'dark'
-                  ? 'text-[#11110f]'
-                  : 'text-[#fdfcfa]'
+                  ? 'text-[#111111]'
+                  : 'text-white'
                 : tone === 'dark'
-                  ? 'text-[#a6a29a] hover:text-white'
-                  : 'text-ancla-inkSecondary hover:text-ancla-ink'
+                  ? 'text-white/85 hover:text-white'
+                  : 'text-[#606060] hover:text-[#111111]'
             }`}
           >
             <span>{opt.label}</span>
@@ -444,11 +568,11 @@ export function SegmentedControl<T extends string>({
                 className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
                   isSelected
                     ? tone === 'dark'
-                      ? 'bg-[#11110f]/10 text-[#11110f]'
-                      : 'bg-white/15 text-white'
+                      ? 'bg-[#1878ec] text-white'
+                      : 'bg-white/25 text-white'
                     : tone === 'dark'
-                      ? 'bg-white/10 text-[#d8d5ce]'
-                      : 'bg-black/5 text-ancla-inkSecondary'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-[#ededed] text-[#606060]'
                 }`}
               >
                 {opt.badge}
@@ -462,8 +586,7 @@ export function SegmentedControl<T extends string>({
 }
 
 /**
- * HorizonX Primitive 5: IslandButton (Button-in-Button Architecture)
- * Primary interactive pill button with nested circular trailing icon that translates diagonally on hover.
+ * IslandButton: Hopper 1000px Pill Button with circular trailing icon (`cta.gallery` pattern).
  */
 export function IslandButton({
   children,
@@ -484,35 +607,35 @@ export function IslandButton({
 }) {
   const variantStyles = {
     obsidian: {
-      outer: 'bg-ancla-obsidian text-[#fdfcfa] hover:bg-[#23231f]',
-      circle: 'bg-white/12 text-[#fdfcfa]',
+      outer: 'bg-[#1878ec] text-white hover:bg-[#1466ca]',
+      circle: 'bg-white/20 text-white',
     },
     signal: {
-      outer: 'bg-ancla-signal text-[#fdfcfa] hover:bg-[#9f3819]',
-      circle: 'bg-black/15 text-[#fdfcfa]',
+      outer: 'bg-[#111111] text-white hover:bg-[#2a2a2a]',
+      circle: 'bg-white/15 text-white',
     },
     paper: {
       outer:
-        'bg-[#fdfcfa] text-ancla-ink border border-ancla-lineStrong hover:border-ancla-ink',
-      circle: 'bg-ancla-tray text-ancla-ink',
+        'bg-white text-[#111111] border border-[#d9d9d9] hover:border-[#111111]',
+      circle: 'bg-[#f6f6f6] text-[#1878ec]',
     },
   }[variant]
 
   const content = (
     <>
-      <span className="pl-2 font-sans text-[14px] font-medium tracking-[-0.01em]">
+      <span className="pl-3 font-sans text-[16px] leading-[24px] font-semibold">
         {children}
       </span>
       <span
         aria-hidden="true"
-        className={`flex h-7 w-7 items-center justify-center rounded-full transition-transform duration-200 ease-out-strong group-hover:translate-x-0.5 group-hover:-translate-y-0.5 ${variantStyles.circle}`}
+        className={`flex h-8 w-8 items-center justify-center rounded-full transition-transform duration-200 ease-out-strong group-hover:translate-x-0.5 group-hover:-translate-y-0.5 ${variantStyles.circle}`}
       >
-        <IconArrowUpRight className="h-3.5 w-3.5" />
+        <IconArrowUpRight className="h-4 w-4" />
       </span>
     </>
   )
 
-  const sharedClasses = `group press-scale inline-flex items-center gap-3 rounded-full p-1.5 pr-2 transition-colors duration-200 ${variantStyles.outer} ${className}`
+  const sharedClasses = `group press-scale inline-flex items-center gap-2 rounded-full py-2 pr-2 pl-2 transition-colors duration-200 ${variantStyles.outer} ${className}`
 
   if (href) {
     return (

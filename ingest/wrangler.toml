@@ -7,9 +7,12 @@ compatibility_flags = ["nodejs_compat"]
 # LLM por query) tarda minutos, no segundos. Un cron semanal cabe de sobra en
 # los 15 min de CPU de un scheduled handler en el plan de pago.
 [triggers]
-crons = ["0 2 * * 0"]
+crons = ["0 */6 * * *", "0 2 * * SUN"]
 
 [vars]
+# Sitio al que el cron le pide revisar las reservas de hotel (POST /api/auditar/cron).
+# Sin esta variable el cron de auditoría no se dispara.
+AUDIT_API_URL = "https://luanna.app"
 # Matriz de búsqueda: categorías × países × años. El cron genera una query por
 # combinación, así que crecer esto multiplica el costo de Brave y del LLM.
 INGEST_CATEGORIAS = "triatlon,aguas_abiertas,maraton,ciclismo"

@@ -1,0 +1,58 @@
+
+> luanna-web@0.0.0 typecheck
+> tsc --noEmit
+
+
+> luanna-web@0.0.0 test
+> tsx --test test/*.test.ts
+
+✔ un texto de confirmación de hotel detecta ahorro mayorista y comisión directa (2.169ms)
+✔ un texto de boleto aéreo separa tarifa base de tasas aeroportuarias reembolsables (0.941041ms)
+✔ el enlace de re-reserva afiliado usa el wrapper de Hotellook y Stay22 geo-anclado (0.778083ms)
+✔ el expediente legal de vuelo incluye PNR, tasas desglosadas y monto total exigible (0.348917ms)
+✔ el simulador financiero suma comisiones afiliadas de hotel e ingresos SaaS B2B (0.292208ms)
+✔ las 8 armas secretas (1 a 8) generan datos financieros, legales y virales válidos (1.165833ms)
+✔ la bóveda persiste en memoria local cuando no hay DATABASE_URL y filtra por correo (2.796875ms)
+✔ enviarReporteAuditoria no lanza excepción si RESEND_API_KEY no está configurada (0.691125ms)
+✔ demo calcula noches y cruces de mes sin zona horaria local (3.869417ms)
+✔ demo rechaza fechas imposibles, vacías, invertidas o más de 90 noches (0.384875ms)
+✔ la fecha se interpreta en calendario local, no en UTC (7.347208ms)
+✔ sumarDias cruza fin de mes y de año sin pasar por UTC (0.365084ms)
+✔ diasFaltantes cuenta días de calendario (0.300209ms)
+✔ la ventana de estadía cubre víspera y recuperación (1.271125ms)
+✔ Stay22 se ancla en la coordenada de partida, no en la ciudad (0.605042ms)
+✔ el enlace de hoteles de respaldo lleva el marker de afiliado (0.461375ms)
+✔ un evento de una disciplina obtiene su tramo con el color correcto (0.395667ms)
+✔ los tramos explícitos del triatlón ganan sobre la ruta única (0.181083ms)
+✔ los tramos se ordenan natación → ciclismo → carrera, no como vinieron (0.548041ms)
+✔ una columna DATE que llega como Date se normaliza a ISO (0.407ms)
+✔ cualquier color de marca queda legible sobre fondo claro y oscuro (28.736709ms)
+✔ los textos de cada fondo cumplen AA sobre fondo y superficie (0.395959ms)
+✔ validarMarca descarta valores inventados y conserva los válidos (1.389667ms)
+✔ validarEvento exige ficha y tipos conocidos (3.656625ms)
+✔ la ficha solo vale para su sede y mientras está vigente (6.919292ms)
+✔ la API rechaza otros orígenes, datos inválidos y fichas falsas (67.293375ms)
+✔ con ficha válida y sin base de datos, no rompe al visitante (1.248084ms)
+✔ valida fechas de calendario y conserva coordenadas cero (6.5805ms)
+✔ rechaza identificadores que no son UUID v4 (0.446042ms)
+✔ sesiones firmadas expiran y rechazan firmas alteradas y claves rotadas (1.431083ms)
+✔ mutaciones exigen el origen de la aplicación (51.452375ms)
+✔ API privada rechaza acceso anónimo, valida entradas y crea cookies seguras (14.371542ms)
+✔ el aeropuerto es opcional, se normaliza y rechaza códigos inválidos (0.833792ms)
+✔ la búsqueda de vuelos lleva origen, destino, fechas y marker (0.303208ms)
+✔ el portal elige idioma por ?lang= y luego por el navegador (0.298958ms)
+✔ sesiones por cuenta firman el sujeto y no se pueden cambiar de dueño (1.033416ms)
+✔ correos y tokens de enlace se validan antes de tocar la base (1.241ms)
+✔ pedir enlace exige origen, correo configurado y correo válido (15.5915ms)
+✔ cada par de contraste del contrato cumple su mínimo WCAG (2.738375ms)
+✔ ningún tamaño de texto baja de 13px y los controles miden al menos 44px (7.418667ms)
+✔ src/tokens.css está al día con design/tokens.json (2.432334ms)
+✔ textoSobre elige el color legible (0.455834ms)
+ℹ tests 42
+ℹ suites 0
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 753.29775

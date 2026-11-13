@@ -1,20 +1,7 @@
 import type { Metadata } from 'next'
-import { headers } from 'next/headers'
 import { GuiaIntegraciones } from '@/components/landing/Integraciones'
-
-export const metadata: Metadata = { title: 'Integraciones', description: 'Pon Luanna en Shopify, WordPress, cualquier web o compártelo con un enlace.' }
-
-export default async function IntegracionesPage() {
-  const h = await headers()
-  const origen = `${h.get('x-forwarded-proto') ?? 'https'}://${h.get('host') ?? 'luanna.app'}`
-  return <div className="ds-page">
-    <nav className="ds-nav ds-nav-simple" aria-label="Principal"><a href="/" className="wordmark" aria-label="Luanna, inicio">luanna</a><a href="/plataforma" className="btn btn-dark">Crear mi portal</a></nav>
-    <main className="ds-section">
-      <p className="eyebrow">Integraciones</p>
-      <h1 className="titulo-pagina">Ponlo donde ya vendes.</h1>
-      <p className="lead">Elige dónde lo vas a usar y sigue los pasos. Toma menos de cinco minutos.</p>
-      <GuiaIntegraciones origen={origen} />
-      <p className="nota-pagina">¿No encuentras tu id? Está en tu plataforma, en «Compartir». Y recuerda: es gratis. Ganamos una comisión cuando tus clientes reservan vuelo u hotel.</p>
-    </main>
-  </div>
+import { CareFooter, CareHeader } from '@/components/care/Shell'
+export const metadata: Metadata = { title: 'Luanna para empresas', description: 'Comparte una demo de Luanna con tus clientes y explora una integración para tu negocio.' }
+export default function Page() {
+  return <div className="care"><CareHeader simple /><main className="care-container" id="contenido"><div className="care-reading"><span className="care-eyebrow">Para empresas y comunidades</span><h1>Ayuda a tus viajeros<br />a dar el siguiente paso.</h1><p>Una forma sencilla de mostrar cómo organizar una consulta sobre un hotel o un vuelo. Empieza por conocer la demo.</p><GuiaIntegraciones origen="https://luanna.app" /></div></main><CareFooter /></div>
 }

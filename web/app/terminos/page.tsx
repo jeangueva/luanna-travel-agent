@@ -1,25 +1,6 @@
 import type { Metadata } from 'next'
 import { Legal } from '@/components/landing/Legal'
-
-export const metadata: Metadata = { title: 'Términos', description: 'Las reglas de uso de Luanna.' }
-
-export default function Terminos() {
-  return <Legal titulo="Términos de uso" actualizado="4 de noviembre de 2026">
-    <h2>El servicio</h2>
-    <p>Luanna permite a los negocios crear portales donde sus clientes buscan vuelos y alojamiento cerca de una sede. Es gratis para los negocios.</p>
-    <h2>Cómo ganamos</h2>
-    <p>Cuando alguien reserva un vuelo o un hotel desde un portal, el proveedor nos paga una comisión. El precio para quien reserva es el mismo que en el sitio del proveedor.</p>
-    <h2>Las reservas</h2>
-    <p>Luanna no vende vuelos ni hoteles ni cobra pagos. Precios, disponibilidad, cambios, cancelaciones y reembolsos dependen de cada proveedor. Ante un problema con una reserva, el contacto es ese proveedor.</p>
-    <h2>Lo que pedimos a los negocios</h2>
-    <ul>
-      <li>Usar datos reales de su sede y mantener las fechas al día.</li>
-      <li>No publicar datos personales de sus clientes.</li>
-      <li>No usar Luanna para engañar a nadie ni para actividades ilegales.</li>
-    </ul>
-    <h2>Cambios y disponibilidad</h2>
-    <p>Podemos mejorar o cambiar el servicio. Si un cambio afecta tu portal, te avisaremos antes. Podemos retirar portales que incumplan estos términos.</p>
-    <h2>Contacto</h2>
-    <p><a href="mailto:hola@luanna.app">hola@luanna.app</a></p>
-  </Legal>
+export const metadata: Metadata = { title: 'Términos de uso' }
+export default function Page() {
+ return <Legal titulo="Términos de uso" actualizado="13 de noviembre de 2026"><h2>Qué puedes hacer con Luanna</h2><p>Luanna te ayuda a organizar la información de una reserva de hotel o de vuelo y a preparar una consulta para el proveedor. La demo utiliza ejemplos ficticios. La revisión automática puede contener errores: comprueba los datos con tu confirmación original.</p><h2>Qué depende del proveedor</h2><p>Luanna no confirma derechos de devolución, compensaciones ni ahorros. Las opciones y los importes dependen de tu caso, las condiciones de la reserva y las normas aplicables. La orientación y los mensajes preparados no sustituyen asesoría profesional.</p><p>No cancelamos reservas, compramos nuevos viajes ni presentamos reclamaciones en tu nombre. Tú decides si contactas al proveedor y qué información envías. Antes de cambiar una reserva, revisa disponibilidad, condiciones y posibles cargos.</p><h2>Costes y enlaces externos</h2><p>Puedes explorar la demo y usar la revisión sin introducir una tarjeta. Algunos enlaces pueden ser de afiliación y generar una comisión para Luanna si completas una compra. El precio y las condiciones finales se consultan con el proveedor. Cualquier servicio de pago adicional deberá indicarse antes de contratarlo.</p><h2>Uso responsable</h2><ul><li>Comparte solo reservas propias o que tengas autorización para revisar.</li><li>Oculta los datos personales que no sean necesarios.</li><li>No utilices el servicio para enviar información falsa o realizar solicitudes abusivas.</li></ul><h2>Si necesitas ayuda</h2><p>Para consultas sobre Luanna, escribe a <a href="mailto:hola@luanna.app">hola@luanna.app</a>. Para cambios urgentes en tu viaje, contacta al proveedor de tu reserva.</p></Legal>
 }

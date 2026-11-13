@@ -7,6 +7,7 @@ export interface Env {
   ADMIN_API_KEY: string;
   REVALIDATE_URL?: string;
   REVALIDATE_SECRET?: string;
+  AUDIT_API_URL?: string;
   // Vars
   INGEST_CATEGORIAS?: string;
   INGEST_PAISES?: string;

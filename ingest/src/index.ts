@@ -66,6 +66,49 @@ export default {
         (e) => console.error("[ingesta] falló", e),
       ),
     );
+
+    if (env.AUDIT_API_URL) {
+      const cronUrl = `${env.AUDIT_API_URL.replace(/\/$/, "")}/api/auditar/cron`;
+      ctx.waitUntil(
+        fetch(cronUrl, {
+          method: "POST",
+          headers: env.REVALIDATE_SECRET
+            ? { authorization: `Bearer ${env.REVALIDATE_SECRET}` }
+            : {},
+        }).catch((e) => console.error("[auditor-cron] falló", e)),
+      );
+    }
+  },
+
+  async email(
+    message: {
+      from: string;
+      to: string;
+      raw: ReadableStream<Uint8Array>;
+      headers: Headers;
+    },
+    env: Env,
+    ctx: ExecutionContext,
+  ) {
+    // `message.from` es el sobre SMTP: cualquiera que nos escriba puede poner ahí el correo de
+    // otra persona. No hay cabecera en la que podamos confiar para verificarlo sin asumir cómo
+    // la agrega Cloudflare, así que no la usamos como prueba de identidad. En vez de intentar
+    // validarla, dejamos de mandar correo a esa dirección: procesamos el voucher reenviado y lo
+    // guardamos sin dueño, pero nunca disparamos un "reembolso exigible" a quien sea que diga
+    // ser el remitente. Quien reenvió el correo puede ver el resultado desde su cuenta en el
+    // portal, igual que cualquier otro caso.
+    const baseApi = (env.AUDIT_API_URL || "https://luanna.app").replace(/\/$/, "");
+    const subject = message.headers.get("subject") ?? "Reserva reenviada";
+    const rawText = await new Response(message.raw).text().catch(() => "");
+    const extracto = `${subject}\n${rawText.slice(0, 6000)}`;
+
+    ctx.waitUntil(
+      fetch(`${baseApi}/api/auditar`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ texto: extracto }),
+      }).catch((e) => console.error("[email-auditor] falló", e)),
+    );
   },
 
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

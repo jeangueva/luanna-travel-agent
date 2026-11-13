@@ -1,35 +1,10 @@
 'use client'
-
 import { useState } from 'react'
-import { Check, Copy } from 'lucide-react'
-
-/** Fragmentos para instalar Luanna. `sede` vacío muestra un marcador. */
-export function fragmentos(origen: string, sede = 'ID-DE-TU-SEDE') {
-  return [
-    { id: 'web', nombre: 'Cualquier web', pasos: ['Copia estas dos líneas.', 'Pégalas en tu web donde quieras que aparezca (en Wix: «Insertar código»; en Webflow: «Embed»).'], codigo: `<div data-luanna="${sede}"></div>\n<script src="${origen}/embed.js" async></script>` },
-    { id: 'wordpress', nombre: 'WordPress', pasos: ['Descarga el plugin e instálalo en Plugins › Añadir nuevo › Subir.', 'En Ajustes › Luanna, pega el id de tu sede.', 'Escribe este atajo en cualquier página:'], codigo: '[luanna]' },
-    { id: 'shopify', nombre: 'Shopify', pasos: ['Instala la app de Luanna en tu tienda.', 'Ve a Tienda online › Personalizar y agrega el bloque «Luanna».', 'Pega el id de tu sede en el bloque:'], codigo: sede },
-    { id: 'enlace', nombre: 'Un enlace', pasos: ['Sin web y sin código. Comparte este enlace por WhatsApp, correo o redes.'], codigo: `${origen}/p/${sede}` },
-  ]
-}
-
+import { Copy } from 'lucide-react'
 export function GuiaIntegraciones({ origen, sede }: { origen: string; sede?: string }) {
-  const lista = fragmentos(origen, sede)
-  const [activa, setActiva] = useState(lista[0].id)
-  const [copiado, setCopiado] = useState(false)
-  const actual = lista.find(f => f.id === activa)!
-  async function copiar() {
-    try { await navigator.clipboard.writeText(actual.codigo); setCopiado(true); setTimeout(() => setCopiado(false), 2000) } catch { setCopiado(false) }
-  }
-  return <div className="guia">
-    <div className="segmentos" role="tablist" aria-label="Dónde lo vas a usar">
-      {lista.map(f => <button key={f.id} role="tab" id={`tab-${f.id}`} aria-selected={activa === f.id} aria-controls="guia-panel" aria-pressed={activa === f.id} onClick={() => { setActiva(f.id); setCopiado(false) }}>{f.nombre}</button>)}
-    </div>
-    <div id="guia-panel" role="tabpanel" aria-labelledby={`tab-${activa}`} className="guia-panel">
-      <ol>{actual.pasos.map(p => <li key={p}>{p}</li>)}</ol>
-      <pre><code>{actual.codigo}</code></pre>
-      <button type="button" className="btn btn-dark" onClick={copiar}>{copiado ? <><Check size={16} aria-hidden="true" /> Copiado</> : <><Copy size={16} aria-hidden="true" /> Copiar</>}</button>
-      <span className="sr-only" role="status">{copiado ? 'Copiado al portapapeles' : ''}</span>
-    </div>
-  </div>
+  void sede
+  const [notice, setNotice] = useState('')
+  const snippet = `<iframe\n  src="${origen}/demo"\n  title="Ejemplo de revisión de reserva con Luanna"\n  style="width:100%;height:900px;border:0;border-radius:16px"\n  loading="lazy"\n></iframe>`
+  async function copy() { try { await navigator.clipboard.writeText(snippet); setNotice('Código copiado.') } catch { setNotice('No pudimos copiarlo. Selecciona el código y cópialo manualmente.') } }
+  return <div className="care-integrations"><section className="care-panel"><h2>Comparte un ejemplo en tu web</h2><p>Deja que tus clientes conozcan el recorrido con datos ficticios. La demo no envía documentos ni genera reservas.</p><ol><li>Copia este código en un bloque HTML de tu sitio.</li><li>Comprueba que el recorrido se ve bien en móvil y ordenador.</li><li>Ofrece también un enlace para abrir la demo en una página completa.</li></ol><pre><code>{snippet}</code></pre><div className="care-actions"><button className="care-button care-button-secondary" onClick={copy}><Copy size={17} aria-hidden="true" /> Copiar código</button><a className="care-text-link" href="/demo">Abrir demo</a></div><p role="status" className="care-helper">{notice}</p></section><section className="care-panel"><h2>¿Necesitas conectar tu sistema?</h2><p>Cuéntanos cómo trabajas y qué información necesitas compartir. Antes de automatizar el envío de reservas, hay que acordar el acceso, el tratamiento de datos y el alcance del servicio.</p><a className="care-text-link" href="mailto:hola@luanna.app?subject=Integraci%C3%B3n%20con%20Luanna">Hablar sobre una integración</a></section></div>
 }

@@ -7,21 +7,21 @@ import '@/landing.css'
 import '@/portal.css'
 import '@/app.css'
 import '@/checkout-demo.css'
+import '@/care.css'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Luanna — Vuelos y alojamiento para quien viaja a verte',
-    template: '%s · Luanna',
+    default: 'Luanna — Claridad para seguir tu viaje',
+    template: '%s | Luanna',
   },
   description:
-    'Un enlace para que tus visitantes, desde cualquier país, encuentren cómo llegar y dónde quedarse cerca de tu negocio, evento o clínica.',
+    '¿Tuviste un problema con tu vuelo o tu hotel? Ordena los detalles de tu reserva y prepara el siguiente paso, a tu ritmo.',
 }
 
 export const viewport: Viewport = {
-  themeColor: '#171717',
+  themeColor: '#f8f8f3',
   width: 'device-width',
   initialScale: 1,
-  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -31,11 +31,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Special+Elite&family=Poppins:wght@400;500;600&family=Source+Serif+4:ital,wght@1,400;1,500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body className="bg-ancla-canvas text-ancla-ink antialiased selection:bg-ancla-signal selection:text-white">
+      <body className="antialiased">
         {children}
       </body>
     </html>
