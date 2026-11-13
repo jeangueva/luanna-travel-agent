@@ -26,9 +26,35 @@ const MIMES_VALIDOS = new Set<string>([
   'image/webp',
 ])
 
+/**
+ * Solo copia de `entrada` las claves que ya existen en `plantilla` y con el mismo tipo básico
+ * (string, number, boolean u objeto plano, recursivamente). Evita que la respuesta del LLM
+ * agregue campos propios o cambie el tipo de uno existente (asignación masiva).
+ */
+function sanearContraPlantilla<T extends Record<string, unknown>>(entrada: unknown, plantilla: T): Partial<T> {
+  if (typeof entrada !== 'object' || entrada === null || Array.isArray(entrada)) return {}
+  const out: Record<string, unknown> = {}
+  for (const [clave, valorPlantilla] of Object.entries(plantilla)) {
+    const valor = (entrada as Record<string, unknown>)[clave]
+    if (valor === undefined) continue
+    if (Array.isArray(valorPlantilla)) {
+      if (Array.isArray(valor)) out[clave] = valor
+    } else if (typeof valorPlantilla === 'object' && valorPlantilla !== null) {
+      out[clave] = sanearContraPlantilla(valor, valorPlantilla as Record<string, unknown>)
+    } else if (typeof valor === typeof valorPlantilla) {
+      out[clave] = typeof valor === 'string' ? valor.slice(0, 500) : valor
+    }
+  }
+  return out as Partial<T>
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const email = url.searchParams.get('email') ?? undefined
+  // Sin correo no hay a quién mostrarle: antes esto devolvía toda la bóveda a cualquiera.
+  if (!esEmailValido(email)) {
+    return NextResponse.json({ error: 'Falta el correo de la cuenta.' }, { status: 400 })
+  }
   const resultado = await listarAuditoriasBoveda(email)
   return NextResponse.json(resultado)
 }
@@ -123,11 +149,19 @@ export async function POST(req: Request) {
           const jsonLimpio = rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
           const parsed = JSON.parse(jsonLimpio) as Partial<CasoAuditoria>
 
-          if (parsed && (parsed.tipo === 'hotel' || parsed.tipo === 'vuelo')) {
+          if (parsed && (parsed.tipo === 'hotel' || parsed.tipo === 'vuelo') && parsed.tipo === fallbackResult.tipo) {
+            // El LLM solo puede rellenar campos que ya existen en nuestra plantilla, y con el mismo tipo
+            // de dato (string/number/object): así una respuesta manipulada no agrega claves nuevas ni
+            // cambia un string por un objeto para colarse en el correo o en la bóveda.
+            const limpio = sanearContraPlantilla(parsed, fallbackResult as unknown as Record<string, unknown>)
             casoFinal = {
               ...fallbackResult,
-              ...parsed,
+              ...limpio,
               id: `aud-${parsed.tipo}-${Date.now()}`,
+              // Los enlaces de devolución siempre salen de nuestras rutas oficiales, nunca del LLM.
+              ...(fallbackResult.tipo === 'vuelo'
+                ? { urlPortalDevolucionAerolinea: fallbackResult.urlPortalDevolucionAerolinea }
+                : {}),
             } as CasoAuditoria
             motor = archivoBase64 ? 'claude-vision-pdf' : 'claude-api'
           }

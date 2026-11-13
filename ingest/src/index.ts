@@ -29,6 +29,20 @@ function tokenValido(recibido: string | null, esperado: string): boolean {
   return diff === 0;
 }
 
+/**
+ * Cloudflare Email Routing agrega su propio `Authentication-Results` con lo que SU servidor
+ * verificó (no algo que el remitente pueda escribir él mismo). Exigimos dkim=pass o spf=pass
+ * sobre el mismo dominio que dice `message.from` antes de confiar en esa dirección.
+ */
+function remitenteAutenticado(headers: Headers, from: string): boolean {
+  const dominio = from.split("@")[1]?.toLowerCase();
+  if (!dominio) return false;
+  // Headers.get() ya devuelve todas las repeticiones de esta cabecera unidas con ", ".
+  const texto = (headers.get("Authentication-Results") ?? "").toLowerCase();
+  if (!texto.includes(dominio)) return false;
+  return /\bdkim=pass\b/.test(texto) || /\bspf=pass\b/.test(texto);
+}
+
 function autorizado(request: Request, env: Env): boolean {
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
@@ -90,6 +104,14 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ) {
+    // `message.from` es el sobre SMTP, no algo verificado: sin SPF/DKIM alineados cualquiera
+    // puede poner el correo de otra persona ahí y hacer que le mandemos un "reembolso exigible"
+    // con contenido que él mismo escribió. Si no viene alineado, no reenviamos nada a ese correo.
+    if (!remitenteAutenticado(message.headers, message.from)) {
+      console.warn("[email-auditor] remitente sin SPF/DKIM alineado, se descarta", message.from);
+      return;
+    }
+
     const baseApi = (env.AUDIT_API_URL || "https://luanna.app").replace(/\/$/, "");
     const subject = message.headers.get("subject") ?? "Reserva reenviada";
     const rawText = await new Response(message.raw).text().catch(() => "");

@@ -4,6 +4,7 @@ import {
   marcarRevisionAuditoria,
 } from '@/lib/auditor-store'
 import { enviarReporteAuditoria } from '@/lib/correo'
+import { iguales } from '@/lib/portal-auth'
 
 /**
  * Endpoint invocado por el Cron de Cloudflare cada 6 horas (`POST /api/auditar/cron`)
@@ -11,15 +12,15 @@ import { enviarReporteAuditoria } from '@/lib/correo'
  * y disparar la alerta por correo con el enlace afiliado de Stay22 / Travelpayouts.
  */
 export async function POST(req: Request) {
-  const secretEsperado =
-    process.env.REVALIDATE_SECRET || process.env.ADMIN_API_KEY || ''
-
-  if (secretEsperado) {
-    const authHeader = req.headers.get('authorization') ?? ''
-    const tokenRecibido = authHeader.replace(/^Bearer\s+/i, '').trim()
-    if (tokenRecibido !== secretEsperado) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+  // Cierra en falso: sin secreto configurado, el cron no corre (antes quedaba abierto a cualquiera).
+  const secretEsperado = process.env.REVALIDATE_SECRET || ''
+  if (!secretEsperado) {
+    return NextResponse.json({ error: 'REVALIDATE_SECRET no configurado' }, { status: 503 })
+  }
+  const authHeader = req.headers.get('authorization') ?? ''
+  const tokenRecibido = authHeader.replace(/^Bearer\s+/i, '').trim()
+  if (!iguales(tokenRecibido, secretEsperado)) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
   const activos = await listarHotelesActivosParaCron()
