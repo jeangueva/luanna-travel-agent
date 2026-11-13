@@ -1,25 +1,44 @@
 import type { Metadata } from 'next'
 import { Legal } from '@/components/landing/Legal'
 
-export const metadata: Metadata = { title: 'Términos', description: 'Las reglas de uso de Luanna.' }
+export const metadata: Metadata = {
+  title: 'Términos de Uso',
+  description: 'Condiciones del servicio de auditoría post-reserva de hoteles y rescate de tasas aéreas de Luanna.',
+}
 
 export default function Terminos() {
-  return <Legal titulo="Términos de uso" actualizado="4 de noviembre de 2026">
-    <h2>El servicio</h2>
-    <p>Luanna permite a los negocios crear portales donde sus clientes buscan vuelos y alojamiento cerca de una sede. Es gratis para los negocios.</p>
-    <h2>Cómo ganamos</h2>
-    <p>Cuando alguien reserva un vuelo o un hotel desde un portal, el proveedor nos paga una comisión. El precio para quien reserva es el mismo que en el sitio del proveedor.</p>
-    <h2>Las reservas</h2>
-    <p>Luanna no vende vuelos ni hoteles ni cobra pagos. Precios, disponibilidad, cambios, cancelaciones y reembolsos dependen de cada proveedor. Ante un problema con una reserva, el contacto es ese proveedor.</p>
-    <h2>Lo que pedimos a los negocios</h2>
-    <ul>
-      <li>Usar datos reales de su sede y mantener las fechas al día.</li>
-      <li>No publicar datos personales de sus clientes.</li>
-      <li>No usar Luanna para engañar a nadie ni para actividades ilegales.</li>
-    </ul>
-    <h2>Cambios y disponibilidad</h2>
-    <p>Podemos mejorar o cambiar el servicio. Si un cambio afecta tu portal, te avisaremos antes. Podemos retirar portales que incumplan estos términos.</p>
-    <h2>Contacto</h2>
-    <p><a href="mailto:hola@luanna.app">hola@luanna.app</a></p>
-  </Legal>
+  return (
+    <Legal titulo="Términos de uso" actualizado="12 de noviembre de 2026">
+      <h2>1. El servicio de auditoría post-reserva</h2>
+      <p>
+        Luanna Audit analiza confirmaciones de hotel con cancelación gratuita y boletos aéreos proporcionados por el usuario o empresa para detectar tarifas mayoristas inferiores (Re-Pricer) y desglosar tasas aeroportuarias o compensaciones exigibles conforme a la normativa vigente en Latinoamérica.
+      </p>
+
+      <h2>2. Modelo de monetización transparente</h2>
+      <p>
+        El monitoreo y detección de bajadas de precio en hoteles es gratuito para el viajero individual. Cuando el usuario decide reservar la nueva tarifa más económica a través de los enlaces de nuestros proveedores afiliados (Stay22, Hotellook / Travelpayouts), dicho proveedor nos abona una comisión comercial sin encarecer el precio final para el viajero. Para empresas y agencias con volumen recurrente ofrecemos planes de suscripción B2B.
+      </p>
+
+      <h2>3. Ejecución de reservas y reclamos aéreos</h2>
+      <p>
+        Luanna no actúa como agencia emisora ni retiene fondos de reembolsos aéreos. En hoteles, el usuario confirma primero su nueva reserva más económica y posteriormente cancela su reserva original dentro de su ventana de cancelación gratuita. En boletos aéreos, Luanna genera el requerimiento formal fundamentado para que la aerolínea efectúe la devolución de tasas directamente al medio de pago original del titular.
+      </p>
+
+      <h2>4. Uso aceptable</h2>
+      <ul>
+        <li>Subir o reenviar únicamente comprobantes de viaje propios o de la empresa autorizada.</li>
+        <li>Verificar la fecha límite de cancelación gratuita de su reserva original antes de cancelarla.</li>
+        <li>No utilizar la plataforma para fines fraudulentos o automatizaciones abusivas.</li>
+      </ul>
+
+      <h2>5. Contacto</h2>
+      <p>
+        Para soporte operativo o consultas corporativas B2B escribe a{' '}
+        <a href="mailto:auditoria@luanna.app" className="font-mono text-ancla-ink underline">
+          auditoria@luanna.app
+        </a>
+        .
+      </p>
+    </Legal>
+  )
 }

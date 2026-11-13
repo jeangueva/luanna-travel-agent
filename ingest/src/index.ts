@@ -66,6 +66,45 @@ export default {
         (e) => console.error("[ingesta] falló", e),
       ),
     );
+
+    if (env.AUDIT_API_URL) {
+      const cronUrl = `${env.AUDIT_API_URL.replace(/\/$/, "")}/api/auditar/cron`;
+      ctx.waitUntil(
+        fetch(cronUrl, {
+          method: "POST",
+          headers: env.REVALIDATE_SECRET
+            ? { authorization: `Bearer ${env.REVALIDATE_SECRET}` }
+            : {},
+        }).catch((e) => console.error("[auditor-cron] falló", e)),
+      );
+    }
+  },
+
+  async email(
+    message: {
+      from: string;
+      to: string;
+      raw: ReadableStream<Uint8Array>;
+      headers: Headers;
+    },
+    env: Env,
+    ctx: ExecutionContext,
+  ) {
+    const baseApi = (env.AUDIT_API_URL || "https://luanna.app").replace(/\/$/, "");
+    const subject = message.headers.get("subject") ?? "Reserva reenviada";
+    const rawText = await new Response(message.raw).text().catch(() => "");
+    const extracto = `${subject}\n${rawText.slice(0, 6000)}`;
+
+    ctx.waitUntil(
+      fetch(`${baseApi}/api/auditar`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          texto: extracto,
+          email: message.from,
+        }),
+      }).catch((e) => console.error("[email-auditor] falló", e)),
+    );
   },
 
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

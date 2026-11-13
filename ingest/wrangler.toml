@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 # LLM por query) tarda minutos, no segundos. Un cron semanal cabe de sobra en
 # los 15 min de CPU de un scheduled handler en el plan de pago.
 [triggers]
-crons = ["0 2 * * 0"]
+crons = ["0 */6 * * *", "0 2 * * SUN"]
 
 [vars]
 # Matriz de búsqueda: categorías × países × años. El cron genera una query por

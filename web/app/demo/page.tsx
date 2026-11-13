@@ -1,9 +1,17 @@
 import type { Metadata } from 'next'
-import { CheckoutDemo } from '@/components/demo/CheckoutDemo'
+import { ConsolaAncla } from '@/components/plataforma/ConsolaAncla'
 
-export const metadata: Metadata = { title: 'Demo libre · Del pago al alojamiento', robots: { index: false, follow: false } }
+export const metadata: Metadata = {
+  title: 'Demo Interactiva · Auditor Post-Reserva',
+  robots: { index: false, follow: false },
+}
 
-export default async function DemoPage({ searchParams }: { searchParams: Promise<{ paso?: string }> }) {
-  const { paso } = await searchParams
-  return <CheckoutDemo confirmed={paso === 'confirmacion'} />
+export default function DemoPage() {
+  return (
+    <div className="min-h-svh bg-ancla-canvas text-ancla-ink">
+      <main id="contenido-demo">
+        <ConsolaAncla />
+      </main>
+    </div>
+  )
 }

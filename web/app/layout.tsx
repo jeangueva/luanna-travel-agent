@@ -10,18 +10,17 @@ import '@/checkout-demo.css'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Luanna — Vuelos y alojamiento para quien viaja a verte',
-    template: '%s · Luanna',
+    default: 'Luanna — Auditor Post-Reserva: Rebaja de Hoteles y Rescate de Tasas Aéreas',
+    template: '%s | Luanna Audit',
   },
   description:
-    'Un enlace para que tus visitantes, desde cualquier país, encuentren cómo llegar y dónde quedarse cerca de tu negocio, evento o clínica.',
+    'Plataforma de arbitraje post-reserva en LATAM: detecta bajadas de precio en hoteles ya reservados (Booking/Expedia) gratis y recupera tasas aeroportuarias de vuelos no usados.',
 }
 
 export const viewport: Viewport = {
-  themeColor: '#171717',
+  themeColor: '#f7f5f0',
   width: 'device-width',
   initialScale: 1,
-  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -31,7 +30,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Special+Elite&family=Poppins:wght@400;500;600&family=Source+Serif+4:ital,wght@1,400;1,500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Chivo+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;1,7..72,400&family=Special+Elite&display=swap"
           rel="stylesheet"
         />
       </head>
